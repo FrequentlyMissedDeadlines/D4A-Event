@@ -8,6 +8,7 @@
 #include <unihiker_k10.h>
 #include "udp_handler.h"
 #include "web_server.h"
+#include "camera_handler.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -22,7 +23,10 @@ const int UDP_PORT = 12345;
 
 unsigned long lastDisplayUpdate = 0;
 const unsigned long DISPLAY_UPDATE_INTERVAL = 2500; // Update display every 2500ms
-
+String master_IP;
+String master_TOKEN;
+boolean IS_UDP_RUNNING=false;
+boolean IS_HTTP_RUNNING=false;
 // Separate buffer for display (non-blocking)
 const int MAX_MESSAGE_LEN = 256;
 char lastMessage[MAX_MESSAGE_LEN] = "";
@@ -38,7 +42,21 @@ void udpTask(void *pvParameters) {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
+void updateScreenWithStatus() {
+  char line =1;
+  unihiker.canvas->canvasText(WiFi.localIP().toString().c_str(), line++, 0xFFFFFF);
+  if (IS_UDP_RUNNING) {
+    unihiker.canvas->canvasText("UDP on "+String(UDP_PORT), line++, 0x00FF00);    
+  }else{
+    unihiker.canvas->canvasText("NO UDP ("+String(UDP_PORT)+")", line++, 0xFF0000);
+  }
+  if (IS_HTTP_RUNNING) {
+    unihiker.canvas->canvasText("HTTP on "+String(WEB_PORT), line++, 0x00FF00);}
+    else{
+    unihiker.canvas->canvasText("NO HTTP ("+String(WEB_PORT)+")", line++, 0xFF0000);
+    }
 
+}
 // FreeRTOS Task: Update display on Core 1 (non-blocking) - SIMPLIFIED to avoid blocking
 void displayTask(void *pvParameters) {
   char localLastMessage[MAX_MESSAGE_LEN];
@@ -47,6 +65,10 @@ void displayTask(void *pvParameters) {
 
 
   for (;;) {
+    // Check if there's a master conflict to handle
+    // This will display the dialog and wait for button input
+    WebServerModule_handleMasterConflict();
+    
     unsigned long now = millis();
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
       lastDisplayUpdate = now;
@@ -72,9 +94,16 @@ void displayTask(void *pvParameters) {
 
 // FreeRTOS Task: Handle web server on Core 1
 void webServerTask(void *pvParameters) {
+  Serial.println("WebServer task started on Core 1");
+  int loopCount = 0;
   for (;;) {
     WebServerModule_handleClient(&server);
-    vTaskDelay(10 / portTICK_PERIOD_MS); // Small delay to prevent watchdog
+    loopCount++;
+    if (loopCount % 1000 == 0) {
+      Serial.printf("WebServer loop count: %d\n", loopCount);
+    }
+    // Very short delay to allow other tasks to run
+    vTaskDelay(10 / portTICK_PERIOD_MS); 
   }
 }
 
@@ -85,7 +114,11 @@ void webServerTask(void *pvParameters) {
 void setup() {
   // Small delay to ensure system stabilizes
   delay(1000);
-  
+  u_int line=0;
+  // Initialize Serial for debugging
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("\n\n=== K10 UDP Receiver Starting ===");
   
   // Initialize the display
   unihiker.begin();
@@ -101,33 +134,49 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   
-  unihiker.canvas->canvasText("Connecting WiFi...", 2, 0xFFFFFF);
+  unihiker.canvas->canvasText("Connecting WiFi...", 1, 0xFFFFFF);
   unihiker.canvas->updateCanvas();
   
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
     attempts++;
-    unihiker.canvas->canvasText(String(ssid)+" (#" + String(attempts) + ")", 2, 0xFFFFFF);
+    unihiker.canvas->canvasText("#" + String(attempts) + " "+String(ssid), 1, 0xFFFFFF);
     unihiker.canvas->updateCanvas();
   }
   
   unihiker.canvas->canvasClear();
+  line=0;
   
   if (WiFi.status() == WL_CONNECTED) {
-    unihiker.canvas->canvasText("WiFi Connected!", 1, 0x00FF00);
-    unihiker.canvas->canvasText(WiFi.localIP().toString().c_str(), 2, 0xFFFFFF);
+    unihiker.canvas->canvasText("WiFi Ok.", 1, 0x00FF00);
+
     
     // Start UDP listener - listen on UDP_PORT
     if (UDPHandler_begin(&udp, UDP_PORT)) {
-      unihiker.canvas->canvasText("UDP:"+String(UDP_PORT), 3, 0x00FFFF);
-    } else {
-      unihiker.canvas->canvasText("NO UDP:"+String(UDP_PORT), 3, 0xFF0000);
+      IS_UDP_RUNNING=true;
     }
     
     // Start the web server
     WebServerModule_begin(&server);
-    unihiker.canvas->canvasText("HTTP:"+String(WEB_PORT), 4, 0x00FF00);
+    IS_HTTP_RUNNING=true;
+    
+    // Initialize camera using who_camera API
+    if (CameraHandler_init()) {
+      if (CameraHandler_startCapture()) {
+        unihiker.canvas->canvasText("Camera: Started", line++, 0x00FF00);    
+        Serial.println("Camera initialized successfully with who_camera API");
+        
+        // Register webcam routes with the web server
+        WebServerModule_registerWebcam(&server);
+      } else {
+        unihiker.canvas->canvasText("Camera: Start Failed", line++, 0xFF8800);
+        Serial.println("ERROR: Failed to start camera capture");
+      }
+    } else {
+      unihiker.canvas->canvasText("Camera: Init Failed", line++, 0xFF0000);
+      Serial.println("ERROR: Failed to initialize camera handler");
+    }    
     
     // Create FreeRTOS tasks
     // UDP task on Core 0 (priority 3) - handles async UDP listener - HIGHEST priority
@@ -139,9 +188,10 @@ void setup() {
     // Web server task on Core 1 (priority 2) - higher priority than display
     xTaskCreatePinnedToCore(webServerTask, "WebServer_Task", 4096, NULL, 2, NULL, 1);
     
-    unihiker.canvas->canvasText("Tasks started", 5, 0x00FF00);
+    unihiker.canvas->canvasText("All tasks started.", line++, 0x00FF00);
+    unihiker.canvas->canvasText("Ready!", line++, 0x00FF00);
   } else {
-    unihiker.canvas->canvasText("WiFi Failed.", 1, 0xFF0000);
+    unihiker.canvas->canvasText("WiFi Failed.", line++, 0xFF0000);
   }
   
   unihiker.canvas->updateCanvas();

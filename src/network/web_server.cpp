@@ -7,6 +7,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <unihiker_k10.h>
+#include <pgmspace.h>
 
 #ifdef DEBUG
 #define DEBUG_TO_SERIAL(x) Serial.println(x)
@@ -48,23 +49,7 @@ static volatile bool masterConflictAccepted = false;
 static unsigned long conflictStartTime = 0;
 static const unsigned long CONFLICT_TIMEOUT_MS = 15000; // 15 second timeout
 
-// Webcam instance for camera streaming
-
-void WebServerModule_begin(WebServer* server) {
-  if (!server) {
-    DEBUG_TO_SERIAL("ERROR: WebServer pointer is NULL!");
-    return;
-  }
-
-  DEBUG_TO_SERIAL("WebServer Module Init");
-  DEBUGF_TO_SERIAL("Server instance: %p\n", (void*)server);
-
-  // Root route - serve embedded index.html
-  server->on("/", HTTP_GET, [server]() {
-    DEBUG_TO_SERIAL(">>> GET / - Serving HTML");
-    
-    // Embedded HTML content directly in program memory
-    const char* html = R"rawliteral(<!DOCTYPE html>
+static const char WEB_ROOT_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html>
 <head>
   <title>K10 UDP Receiver</title>
@@ -94,7 +79,7 @@ void WebServerModule_begin(WebServer* server) {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
-      margin: 20px 0;a
+      margin: 20px 0;
     }
     .stat-box {
       background-color: #3d3d3d;
@@ -107,7 +92,7 @@ void WebServerModule_begin(WebServer* server) {
       color: #888;
       text-transform: uppercase;
     }
-    .stat-value {a
+    .stat-value {
       font-size: 28px;
       font-weight: bold;
       color: #00ff00;
@@ -203,70 +188,93 @@ void WebServerModule_begin(WebServer* server) {
         <div class="stat-label">Free Stack (bytes)</div>
         <div class="stat-value" id="freeStackBytes">0</div>
       </div>
+      <div class="stat-box">
+        <div class="stat-label">MAC Address</div>
+        <div class="stat-value" id="macAddress">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Master IP</div>
+        <div class="stat-value" id="masterIp">-</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Master Token</div>
+        <div class="stat-value" id="masterToken">-</div>
+      </div>
     </div>
   </div>
-        <div class="refresh-info">
-      ⟳ Auto-refreshing every 2 seconds
-    </div>
+  
+  <div class="container">
+    <h1>⚙️ Controls</h1>
+    <button onclick="fetchStats()">Refresh Stats</button>
+    <button onclick="fetchUdpMessages()">Refresh Messages</button>
+  </div>
+  
   <script>
-    async function updateSystemInfo() {
+    async function fetchStats() {
       try {
-        const response = await fetch('/api/system');
+        const response = await fetch('/api/status');
         const data = await response.json();
-        
-        document.getElementById('heapTotal').textContent = data.heapTotal || "?";
-        document.getElementById('heapUsed').textContent = data.heapUsed || "?";
-        document.getElementById('heapFree').textContent = data.heapFree || "?";
-        document.getElementById('heapUsagePercent').textContent = (data.heapUsagePercent || "?") + '%';
-        document.getElementById('uptimeMs').textContent = data.uptimeMs || "?";
-        document.getElementById('wifiRssi').textContent = data.wifiRssi || "?";
-        document.getElementById('freeStackBytes').textContent = data.freeStackBytes || "?";
-      } catch (error) {
-        console.error('Error fetching system info:', error);
-      }
-    }
-    
-    async function updateMessages() {
-      try {
-        const response = await fetch('/api/messages');
-        const data = await response.json();
-        
-        const total = data.total || 0;
-        const dropped = data.dropped || 0;
-        const lossRate = total + dropped > 0 ? ((dropped / (total + dropped)) * 100).toFixed(2) : 0;
-        
-        document.getElementById('totalCount').textContent = total;
-        document.getElementById('droppedCount').textContent = dropped;
-        document.getElementById('lossRate').textContent = lossRate + '%';
-        document.getElementById('bufferStatus').textContent = data.buffer || '0/20';
-        
-        const container = document.getElementById('messagesContainer');
-        if (data.messages && data.messages.length > 0) {
-          container.innerHTML = data.messages.map(msg => `
-            <div class="message">
-              <div class="message-time">${msg}</div>
-            </div>
-          `).join('');
-        } else {
-          container.innerHTML = '<div class="message">No messages yet...</div>';
+        if (data.status === 'ok') {
+          document.getElementById('heapTotal').textContent = data.heapTotal;
+          document.getElementById('heapUsed').textContent = data.heapUsed;
+          document.getElementById('heapFree').textContent = data.heapFree;
+          document.getElementById('heapUsagePercent').textContent = data.heapUsagePercent;
+          document.getElementById('uptimeMs').textContent = data.uptimeMs;
+          document.getElementById('wifiRssi').textContent = data.wifiRssi;
+          document.getElementById('freeStackBytes').textContent = data.freeStackBytes;
+          document.getElementById('macAddress').textContent = data.macAddress;
+          document.getElementById('masterIp').textContent = data.master_ip;
+          document.getElementById('masterToken').textContent = data.master_token;
         }
-        
-        updateSystemInfo();
       } catch (error) {
-        console.error('Error fetching messages:', error);
+        console.error('Failed to fetch stats:', error);
       }
     }
-    
-    // Update on page load
-    updateMessages();
-    
-    // Auto-refresh every 2 seconds
-    setInterval(updateMessages, 2000);
+
+    async function fetchUdpMessages() {
+      try {
+        const response = await fetch('/api/udp/messages');
+        const data = await response.json();
+        const container = document.getElementById('messagesContainer');
+        container.innerHTML = '';
+        data.messages.forEach(msg => {
+          const div = document.createElement('div');
+          div.className = 'message';
+          div.innerHTML = `<div class="message-time">${msg.timestamp}</div>${msg.content}`;
+          container.appendChild(div);
+        });
+        document.getElementById('totalCount').textContent = data.total;
+        document.getElementById('droppedCount').textContent = data.dropped;
+        document.getElementById('bufferStatus').textContent = `${data.buffer_length}/${data.buffer_capacity}`;
+        document.getElementById('lossRate').textContent = `${data.loss_rate}%`;
+      } catch (error) {
+        console.error('Failed to fetch UDP messages:', error);
+      }
+    }
+
+    fetchStats();
+    fetchUdpMessages();
+    setInterval(fetchStats, 5000);
+    setInterval(fetchUdpMessages, 3000);
   </script>
 </body>
 </html>)rawliteral";
-    
-    server->send(200, "text/html", html);
+
+// Webcam instance for camera streaming
+
+void WebServerModule_begin(WebServer* server) {
+  if (!server) {
+    DEBUG_TO_SERIAL("ERROR: WebServer pointer is NULL!");
+    return;
+  }
+
+  DEBUG_TO_SERIAL("WebServer Module Init");
+  DEBUGF_TO_SERIAL("Server instance: %p\n", (void*)server);
+
+  // Root route - serve embedded index.html
+  server->on("/", HTTP_GET, [server]() {
+    DEBUG_TO_SERIAL(">>> GET / - Serving HTML");
+    server->send_P(200, "text/html", WEB_ROOT_HTML);
   });
 
   // Simple status endpoint

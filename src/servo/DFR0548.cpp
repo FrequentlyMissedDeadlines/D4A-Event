@@ -9,13 +9,6 @@
 
 #include "DFR0548.h"
 
-#ifdef DEBUG
-#define DEBUG_TO_SERIAL(x) Serial.println(x)
-#define DEBUGF_TO_SERIAL(fmt, ...) Serial.printf(fmt, __VA_ARGS__)
-#else
-#define DEBUG_TO_SERIAL(x)
-#define DEBUGF_TO_SERIAL(fmt, ...)
-#endif
 // Constructor
 DFR0548_Controller::DFR0548_Controller() : _i2cAddr(DFR0548_DEFAULT_I2C_ADDR), _initialized(false) {
     // Initialize all servos with default settings

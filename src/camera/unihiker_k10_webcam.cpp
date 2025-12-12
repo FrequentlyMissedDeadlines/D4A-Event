@@ -11,12 +11,13 @@
 #include "unihiker_k10_webcam.h"
 #include "app_httpd.hpp"
 #include "esp_http_server.h"
+#include <pgmspace.h>
 
 extern QueueHandle_t xQueueCamer;
 
 static camera_fb_t *frame = NULL;
 
-const char index_html[] = R"rawliteral(
+static const char index_html[] PROGMEM = R"rawliteral(
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -102,7 +103,7 @@ bool ServerModule_registerCamera(WebServer* server, UNIHIKER_K10 &k10) {
   
  
   server->on("/camera", HTTP_GET, [server]() {
-    server->send(200, "text/plain", index_html);
+    server->send_P(200, "text/html", index_html);
   });
 
   server->on("/api/camera/capture", HTTP_GET, [server]() {

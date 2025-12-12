@@ -28,6 +28,6 @@ bool ServoHandler_stopServo(uint8_t channel);
 // Get servo status
 String ServoHandler_getStatus(uint8_t channel);
 
-bool WebServerModule_registerServo(WebServer* server);
+bool ServoModule_registerRoutes(WebServer* server);
 
 #endif // SERVO_HANDLER_H

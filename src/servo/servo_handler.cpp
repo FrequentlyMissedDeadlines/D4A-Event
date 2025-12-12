@@ -7,6 +7,7 @@
 
 #include "servo_handler.h"
 #include <WebServer.h>
+#include <pgmspace.h>
 
 #ifdef DEBUG
 #define DEBUG_TO_SERIAL(x) Serial.println(x)
@@ -15,6 +16,107 @@
 #define DEBUG_TO_SERIAL(x)
 #define DEBUGF_TO_SERIAL(fmt, ...)
 #endif
+
+static const char SERVO_CONTROL_PANEL_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Servo Control Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #1e1e1e; color: #e0e0e0; margin: 20px; }
+        h1 { color: #00d4ff; }
+        .channel { background-color: #2d2d2d; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        input { padding: 8px; margin: 5px; }
+        button { background-color: #00d4ff; color: #1e1e1e; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #00a8cc; }
+        .status-link { margin-top: 20px; }
+        a { color: #00d4ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>🤖 Servo Control Panel</h1>
+    <p>Control up to 8 servos (channels 0-7)</p>
+    
+    <div class="channel">
+        <h3>Set Servo Angle</h3>
+        <label>Channel (0-7): <input type="number" id="angle_ch" min="0" max="7" value="0"></label>
+        <label>Angle (0-180): <input type="number" id="angle_val" min="0" max="180" value="90"></label>
+        <button onclick="setAngle()">Set Angle</button>
+        <div id="angle_result"></div>
+    </div>
+    
+    <div class="channel">
+        <h3>Set Servo Speed (Continuous Rotation)</h3>
+        <label>Channel (0-7): <input type="number" id="speed_ch" min="0" max="7" value="0"></label>
+        <label>Speed (-100 to 100): <input type="number" id="speed_val" min="-100" max="100" value="50"></label>
+        <button onclick="setSpeed()">Set Speed</button>
+        <div id="speed_result"></div>
+    </div>
+    
+    <div class="channel">
+        <h3>Quick Actions</h3>
+        <button onclick="centerAll()">Center All Servos</button>
+        <button onclick="stopAll()">Stop All Servos</button>
+        <div id="action_result"></div>
+    </div>
+    
+    <div class="status-link">
+        <p><a href="/servo/status">View Servo Status</a></p>
+    </div>
+    
+    <script>
+        async function setAngle() {
+            const ch = document.getElementById('angle_ch').value;
+            const angle = document.getElementById('angle_val').value;
+            try {
+                const response = await fetch(`/api/servo/set?ch=${ch}&angle=${angle}`, { method: 'PUT' });
+                const data = await response.json();
+                document.getElementById('angle_result').innerHTML = 
+                    response.ok ? `✓ Channel ${ch} set to ${angle}°` : `✗ Error: ${data.message}`;
+            } catch(e) {
+                document.getElementById('angle_result').innerHTML = `✗ Error: ${e.message}`;
+            }
+        }
+        
+        async function setSpeed() {
+            const ch = document.getElementById('speed_ch').value;
+            const speed = document.getElementById('speed_val').value;
+            try {
+                const response = await fetch(`/api/servo/speed?ch=${ch}&speed=${speed}`, { method: 'PUT' });
+                const data = await response.json();
+                document.getElementById('speed_result').innerHTML = 
+                    response.ok ? `✓ Channel ${ch} speed set to ${speed}%` : `✗ Error: ${data.message}`;
+            } catch(e) {
+                document.getElementById('speed_result').innerHTML = `✗ Error: ${e.message}`;
+            }
+        }
+        
+        async function centerAll() {
+            try {
+                const response = await fetch('/api/servo/center', { method: 'PUT' });
+                const data = await response.json();
+                document.getElementById('action_result').innerHTML = 
+                    response.ok ? '✓ All servos centered' : `✗ Error: ${data.message}`;
+            } catch(e) {
+                document.getElementById('action_result').innerHTML = `✗ Error: ${e.message}`;
+            }
+        }
+        
+        async function stopAll() {
+            try {
+                const response = await fetch('/api/servo/stop_all', { method: 'PUT' });
+                const data = await response.json();
+                document.getElementById('action_result').innerHTML = 
+                    response.ok ? '✓ All servos stopped' : `✗ Error: ${data.message}`;
+            } catch(e) {
+                document.getElementById('action_result').innerHTML = `✗ Error: ${e.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
+)rawliteral";
 
 // Global servo controller instance
 DFR0548_Controller servoController;
@@ -104,7 +206,7 @@ String ServoHandler_getStatus(uint8_t channel) {
     return servoController.getChannelStatus(channel);
 }
 
-bool WebServerModule_registerServo(WebServer* server) {
+bool ServoModule_registerRoutes(WebServer* server) {
     if (!server) {
         DEBUG_TO_SERIAL("ERROR: Cannot register servo routes - WebServer pointer is NULL!");
         return false;
@@ -118,107 +220,7 @@ bool WebServerModule_registerServo(WebServer* server) {
 
     // Servo control panel HTML page at /servo
     server->on("/servo", HTTP_GET, [server]() {
-        String html = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Servo Control Panel</title>
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #1e1e1e; color: #e0e0e0; margin: 20px; }
-        h1 { color: #00d4ff; }
-        .channel { background-color: #2d2d2d; padding: 15px; margin: 10px 0; border-radius: 5px; }
-        input { padding: 8px; margin: 5px; }
-        button { background-color: #00d4ff; color: #1e1e1e; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #00a8cc; }
-        .status-link { margin-top: 20px; }
-        a { color: #00d4ff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <h1>🤖 Servo Control Panel</h1>
-    <p>Control up to 8 servos (channels 0-7)</p>
-    
-    <div class="channel">
-        <h3>Set Servo Angle</h3>
-        <label>Channel (0-7): <input type="number" id="angle_ch" min="0" max="7" value="0"></label>
-        <label>Angle (0-180): <input type="number" id="angle_val" min="0" max="180" value="90"></label>
-        <button onclick="setAngle()">Set Angle</button>
-        <div id="angle_result"></div>
-    </div>
-    
-    <div class="channel">
-        <h3>Set Servo Speed (Continuous Rotation)</h3>
-        <label>Channel (0-7): <input type="number" id="speed_ch" min="0" max="7" value="0"></label>
-        <label>Speed (-100 to 100): <input type="number" id="speed_val" min="-100" max="100" value="50"></label>
-        <button onclick="setSpeed()">Set Speed</button>
-        <div id="speed_result"></div>
-    </div>
-    
-    <div class="channel">
-        <h3>Quick Actions</h3>
-        <button onclick="centerAll()">Center All Servos</button>
-        <button onclick="stopAll()">Stop All Servos</button>
-        <div id="action_result"></div>
-    </div>
-    
-    <div class="status-link">
-        <p><a href="/servo/status">View Servo Status</a></p>
-    </div>
-    
-    <script>
-        async function setAngle() {
-            const ch = document.getElementById('angle_ch').value;
-            const angle = document.getElementById('angle_val').value;
-            try {
-                const response = await fetch(`/api/servo/set?ch=${ch}&angle=${angle}`, { method: 'PUT' });
-                const data = await response.json();
-                document.getElementById('angle_result').innerHTML = 
-                    response.ok ? `✓ Channel ${ch} set to ${angle}°` : `✗ Error: ${data.message}`;
-            } catch(e) {
-                document.getElementById('angle_result').innerHTML = `✗ Error: ${e.message}`;
-            }
-        }
-        
-        async function setSpeed() {
-            const ch = document.getElementById('speed_ch').value;
-            const speed = document.getElementById('speed_val').value;
-            try {
-                const response = await fetch(`/api/servo/speed?ch=${ch}&speed=${speed}`, { method: 'PUT' });
-                const data = await response.json();
-                document.getElementBDEBUG_TO_SERIAL("Servo routes registered successfully!");yId('speed_result').innerHTML = 
-                    response.ok ? `✓ Channel ${ch} speed set to ${speed}%` : `✗ Error: ${data.message}`;
-            } catch(e) {
-                document.getElementById('speed_result').innerHTML = `✗ Error: ${e.message}`;
-            }
-        }
-        
-        async function centerAll() {
-            try {
-                const response = await fetch('/api/servo/center', { method: 'PUT' });
-                const data = await response.json();
-                document.getElementById('action_result').innerHTML = 
-                    response.ok ? '✓ All servos centered' : `✗ Error: ${data.message}`;
-            } catch(e) {
-                document.getElementById('action_result').innerHTML = `✗ Error: ${e.message}`;
-            }
-        }
-        
-        async function stopAll() {
-            try {
-                const response = await fetch('/api/servo/stop_all', { method: 'PUT' });
-                const data = await response.json();
-                document.getElementById('action_result').innerHTML = 
-                    response.ok ? '✓ All servos stopped' : `✗ Error: ${data.message}`;
-            } catch(e) {
-                document.getElementById('action_result').innerHTML = `✗ Error: ${e.message}`;
-            }
-        }
-    </script>
-</body>
-</html>
-        )rawliteral";
-        server->send(200, "text/html", html);
+        server->send_P(200, "text/html", SERVO_CONTROL_PANEL_HTML);
         DEBUG_TO_SERIAL("  - GET /servo (servo control panel)");
     
     });

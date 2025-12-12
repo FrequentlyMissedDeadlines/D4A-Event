@@ -14,11 +14,12 @@
 #include "unihiker_k10.h"
 #include <WebServer.h>
 
-#define ENABLE_DBG ///< Enable this macro to view the detailed execution process of the program.
-#ifdef ENABLE_DBG
-#define DBG(...) {Serial.print("[");Serial.print(__FUNCTION__); Serial.print("(): "); Serial.print(__LINE__); Serial.print(" ] "); Serial.println(__VA_ARGS__);}
+#ifdef DEBUG
+#define DEBUG_TO_SERIAL(x) Serial.println(x)
+#define DEBUGF_TO_SERIAL(fmt, ...) Serial.printf(fmt, __VA_ARGS__)
 #else
-#define DBG(...)
+#define DEBUG_TO_SERIAL(x)
+#define DEBUGF_TO_SERIAL(fmt, ...)
 #endif
 
 class unihiker_k10_webcam
@@ -37,12 +38,7 @@ public:
      */
     bool enableWebcam();
 
-    /**
-     * @fn disableWebcam
-     * @brief Disable the network camera
-     * @return Returns true on success, false on failure
-     */
-    bool disableWebcam(void);
+
 
 private:
     WebServer* _server;

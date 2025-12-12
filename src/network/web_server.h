@@ -15,3 +15,5 @@ void WebServerModule_handleMasterConflict(void);
 // Button handlers for master conflict resolution
 void WebServerModule_acceptMasterConflict(void);   // Call when button A pressed
 void WebServerModule_denyMasterConflict(void);     // Call when button B pressed
+
+bool WebServerModule_registerServo(WebServer* server);

@@ -49,7 +49,6 @@ static unsigned long conflictStartTime = 0;
 static const unsigned long CONFLICT_TIMEOUT_MS = 15000; // 15 second timeout
 
 // Webcam instance for camera streaming
-static unihiker_k10_webcam webcam;
 
 void WebServerModule_begin(WebServer* server) {
   if (!server) {

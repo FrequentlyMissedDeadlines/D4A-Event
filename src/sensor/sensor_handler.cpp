@@ -9,10 +9,10 @@
 #define DEBUGF_TO_SERIAL(fmt, ...)
 #endif
 #include <unihiker_k10.h>
-UNIHIKER_K10 unihiker;
+
 DFRobot_AHT20 sensor;
 
-bool WebServerModule_registerSensors (WebServer* server){
+bool WebServerModule_registerSensors (WebServer* server,UNIHIKER_K10 &k10){
    if (!server) {
         DEBUG_TO_SERIAL("ERROR: Cannot register sensor routes - WebServer pointer is NULL!");
         return false;
@@ -28,16 +28,16 @@ bool WebServerModule_registerSensors (WebServer* server){
         return false;
     }
 
-      server->on("/api/sensor", HTTP_PUT, [server]() {
+      server->on("/api/sensor", HTTP_PUT, [server, &k10]() {
         DEBUG_TO_SERIAL("PUT /api/sensor (sensor data)");
 
-        uint16_t als = unihiker.readALS();
+        uint16_t als = k10.readALS();
         float humidity = sensor.getHumidity_RH();
         float temperature = sensor.getTemperature_C();
-        u_int64_t micData = unihiker.readMICData();
-        int16_t accelerometerX = unihiker.getAccelerometerX();
-        int16_t accelerometerY = unihiker.getAccelerometerY();
-        int16_t accelerometerZ = unihiker.getAccelerometerZ();
+        u_int64_t micData = k10.readMICData();
+        int16_t accelerometerX = k10.getAccelerometerX();
+        int16_t accelerometerY = k10.getAccelerometerY();
+        int16_t accelerometerZ = k10.getAccelerometerZ();
         String jsonResponse = "{";
         jsonResponse += "\"light\":" + String(als) + ",";
         jsonResponse += "\"humidity\":" + String(humidity, 2) + ",";

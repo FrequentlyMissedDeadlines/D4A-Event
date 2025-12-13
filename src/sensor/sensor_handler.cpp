@@ -15,29 +15,18 @@
 
 DFRobot_AHT20 sensor;
 
-namespace {
-
-constexpr size_t kSensorResponseBufferSize = 192;
-
-struct SensorSnapshot {
-  uint16_t light;
-  float humidity;
-  float temperature;
-  uint64_t micData;
-  int16_t accelerometerX;
-  int16_t accelerometerY;
-  int16_t accelerometerZ;
-};
-
-bool ensureSensorReady() {
-  if (sensor.startMeasurementReady()) {
+bool SensorModule::sensorReady()
+{
+  if (sensor.startMeasurementReady())
+  {
     return true;
   }
   DEBUG_TO_SERIAL("WARN: AHT20 sensor not ready for measurement");
   return false;
 }
 
-SensorSnapshot collectSensorSnapshot(UNIHIKER_K10 &k10) {
+SensorSnapshot SensorModule::collectSensorSnapshot(UNIHIKER_K10 &k10)
+{
   SensorSnapshot snapshot{};
   snapshot.light = k10.readALS();
   snapshot.humidity = sensor.getHumidity_RH();
@@ -49,61 +38,69 @@ SensorSnapshot collectSensorSnapshot(UNIHIKER_K10 &k10) {
   return snapshot;
 }
 
-bool buildSensorJson(const SensorSnapshot &snapshot, char *buffer, size_t bufferLen) {
+bool SensorModule::buildSensorJson(const SensorSnapshot &snapshot, char *buffer, size_t bufferLen)
+{
   const int written = snprintf(
-    buffer,
-    bufferLen,
-    "{\"light\":%u,\"humidity\":%.2f,\"temperature\":%.2f,\"mic_data\":%" PRIu64 ",\"accelerometer\":[%d,%d,%d]}",
-    snapshot.light,
-    snapshot.humidity,
-    snapshot.temperature,
-    snapshot.micData,
-    snapshot.accelerometerX,
-    snapshot.accelerometerY,
-    snapshot.accelerometerZ);
+      buffer,
+      bufferLen,
+      "{\"light\":%u,\"humidity\":%.2f,\"temperature\":%.2f,\"mic_data\":%" PRIu64 ",\"accelerometer\":[%d,%d,%d]}",
+      snapshot.light,
+      snapshot.humidity,
+      snapshot.temperature,
+      snapshot.micData,
+      snapshot.accelerometerX,
+      snapshot.accelerometerY,
+      snapshot.accelerometerZ);
 
-  if (written < 0 || static_cast<size_t>(written) >= bufferLen) {
+  if (written < 0 || static_cast<size_t>(written) >= bufferLen)
+  {
     DEBUG_TO_SERIAL("ERROR: Sensor JSON buffer too small");
     return false;
   }
   return true;
 }
 
-} // namespace
-
-bool SensorModule_registerRoutes (WebServer* server,UNIHIKER_K10 &k10){
-   if (!server) {
-        DEBUG_TO_SERIAL("ERROR: Cannot register sensor routes - WebServer pointer is NULL!");
-        return false;
-    }
-     DEBUG_TO_SERIAL("Registering sensor routes with WebServer...");
-
-    if (sensor.begin()!=0){
-        DEBUG_TO_SERIAL("ERROR: Failed to initialize AHT20 sensor");
-        return false;
-    }
-  if (!ensureSensorReady()){
-    DEBUG_TO_SERIAL("ERROR: AHT20 sensor measurement not ready during initialization");
+bool SensorModule::registerRoutes(WebServer *server, UNIHIKER_K10 &k10)
+{
+  if (!server)
+  {
+    DEBUG_TO_SERIAL("ERROR: Cannot register sensor routes - WebServer pointer is NULL!");
     return false;
   }
+  DEBUG_TO_SERIAL("Registering sensor routes with WebServer...");
 
-      server->on("/api/sensor", HTTP_PUT, [server, &k10]() {
-        DEBUG_TO_SERIAL("PUT /api/sensor (sensor data)");
+  if (sensor.begin() != 0)
+  {
+    DEBUG_TO_SERIAL("ERROR: Failed to initialize AHT20 sensor");
+    server->on("/api/sensors", HTTP_GET, [server]() {
+    server->send(503, "application/json", "{\"error\":\"ERROR: Failed to initialize AHT20 sensor\"}"); 
+  });
+    return true;
+  }
 
-    if (!ensureSensorReady()) {
-      server->send(503, "application/json", "{\"error\":\"sensor_busy\"}");
-      return;
-    }
+  if (!sensorReady())
+  {
+    DEBUG_TO_SERIAL("ERROR: AHT20 sensor measurement not reAuto-detected: /dev/ttyACM1ady during initialization");
+    server->on("/api/sensors", HTTP_GET, [server]() {
+    server->send(503, "application/json", "{\"error\":\"AHT20 sensor measurement not ready during initialization\"}"); 
+  });
+    return true;
+  }
 
-    const SensorSnapshot snapshot = collectSensorSnapshot(k10);
+  server->on("/api/sensors", HTTP_GET, [server, &k10, this]()
+             {
+         DEBUG_TO_SERIAL("GET /api/sensors (sensor data)");
+
+
+
+    const SensorSnapshot snapshot = this->collectSensorSnapshot(k10);
     char response[kSensorResponseBufferSize];
-    if (!buildSensorJson(snapshot, response, sizeof(response))) {
-      server->send(500, "application/json", "{\"error\":\"sensor_response_overflow\"}");
+    if (!this->buildSensorJson(snapshot, response, sizeof(response))) {
+      server->send(503, "application/json", "{\"error\":\"sensors error.\"}");
       return;
     }
 
-    server->send(200, "application/json", response);
-      });
-  
+    server->send(200, "application/json", response); });
 
-  return (true);}
+  return (true);
+}

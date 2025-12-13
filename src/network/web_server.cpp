@@ -1,5 +1,4 @@
 #include "web_server.h"
-#include "udp_handler.h"
 #include "../camera/unihiker_k10_webcam.h"
 #include <Arduino.h>
 #include <esp_system.h>
@@ -23,23 +22,23 @@ extern String master_TOKEN;
 extern UNIHIKER_K10 unihiker;
 
 // JSON Key Constants
-static const char* JSON_STATUS = "status";
-static const char* JSON_ERROR = "error";
-static const char* JSON_OK = "ok";
-static const char* JSON_REGISTERED = "registered";
-static const char* JSON_UPTIME_MS = "uptime_ms";
-static const char* JSON_MASTER_IP = "master_ip";
-static const char* JSON_MASTER_TOKEN = "master_token";
-static const char* JSON_HEAP_TOTAL = "heapTotal";
-static const char* JSON_HEAP_USED = "heapUsed";
-static const char* JSON_HEAP_FREE = "heapFree";
-static const char* JSON_HEAP_USAGE_PERCENT = "heapUsagePercent";
-static const char* JSON_UPTIME_SEC = "uptimeSec";
-static const char* JSON_UPTIME_MIN = "uptimeMin";
-static const char* JSON_UPTIME_HOUR = "uptimeHour";
-static const char* JSON_MAC_ADDRESS = "macAddress";
-static const char* JSON_WIFI_RSSI = "wifiRssi";
-static const char* JSON_FREE_STACK_BYTES = "freeStackBytes";
+static const char *JSON_STATUS = "status";
+static const char *JSON_ERROR = "error";
+static const char *JSON_OK = "ok";
+static const char *JSON_REGISTERED = "registered";
+static const char *JSON_UPTIME_MS = "uptime_ms";
+static const char *JSON_MASTER_IP = "master_ip";
+static const char *JSON_MASTER_TOKEN = "master_token";
+static const char *JSON_HEAP_TOTAL = "heapTotal";
+static const char *JSON_HEAP_USED = "heapUsed";
+static const char *JSON_HEAP_FREE = "heapFree";
+static const char *JSON_HEAP_USAGE_PERCENT = "heapUsagePercent";
+static const char *JSON_UPTIME_SEC = "uptimeSec";
+static const char *JSON_UPTIME_MIN = "uptimeMin";
+static const char *JSON_UPTIME_HOUR = "uptimeHour";
+static const char *JSON_MAC_ADDRESS = "macAddress";
+static const char *JSON_WIFI_RSSI = "wifiRssi";
+static const char *JSON_FREE_STACK_BYTES = "freeStackBytes";
 
 // Pending master registration (when there's a conflict and waiting for user decision)
 static String pendingMasterIP = "";
@@ -262,30 +261,33 @@ static const char WEB_ROOT_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
 // Webcam instance for camera streaming
 
-void WebServerModule_begin(WebServer* server) {
-  if (!server) {
+void WebServerModule::begin(WebServer *server)
+{
+  if (!server)
+  {
     DEBUG_TO_SERIAL("ERROR: WebServer pointer is NULL!");
     return;
   }
 
   DEBUG_TO_SERIAL("WebServer Module Init");
-  DEBUGF_TO_SERIAL("Server instance: %p\n", (void*)server);
+  DEBUGF_TO_SERIAL("Server instance: %p\n", (void *)server);
 
   // Root route - serve embedded index.html
-  server->on("/", HTTP_GET, [server]() {
+  server->on("/", HTTP_GET, [server]()
+             {
     DEBUG_TO_SERIAL(">>> GET / - Serving HTML");
-    server->send_P(200, "text/html", WEB_ROOT_HTML);
-  });
+    server->send_P(200, "text/html", WEB_ROOT_HTML); });
 
   // Simple status endpoint
-  server->on("/status", HTTP_GET, [server]() {
+  server->on("/status", HTTP_GET, [server]()
+             {
     DEBUG_TO_SERIAL(">>> GET /status - Returning status");
     String status = "{\"" + String(JSON_STATUS) + "\": \"" + String(JSON_OK) + "\", \"" + String(JSON_UPTIME_MS) + "\": " + String(millis()) + "}";
-    server->send(200, "application/json", status);
-  });
+    server->send(200, "application/json", status); });
 
   // API endpoint for ESP32 system metrics
-  server->on("/api/system", HTTP_GET, [server]() {
+  server->on("/api/system", HTTP_GET, [server]()
+             {
     DEBUG_TO_SERIAL("GET /api/system");
     // Get ESP32 chip information
     uint32_t freeHeap = ESP.getFreeHeap();
@@ -324,18 +326,14 @@ void WebServerModule_begin(WebServer* server) {
     json += "\"" + String(JSON_FREE_STACK_BYTES) + "\":" + String(freeStackCore0);
     json += "}";
     
-    server->send(200, "application/json", json);
-  });
+    server->send(200, "application/json", json); });
 
   // API endpoint for JSON data - returns all UDP messages and statistics
-  server->on("/api/messages", HTTP_GET, [server]() {
-    DEBUG_TO_SERIAL("GET /api/messages");
-    String json = UDPHandler_buildJson();
-    server->send(200, "application/json", json);
-  });
+  
 
   // API endpoint for master registration - PUT to set master IP and generate token
-      server->on("/api/master", HTTP_PUT, [server]() {
+  server->on("/api/master", HTTP_PUT, [server]()
+             {
         DEBUG_TO_SERIAL("PUT /api/master");
     
     // Check if master_IP is already set
@@ -420,13 +418,12 @@ void WebServerModule_begin(WebServer* server) {
     
     // Return the token and master IP
     String json = "{\"" + String(JSON_STATUS) + "\": \"" + String(JSON_REGISTERED) + "\", \"" + String(JSON_MASTER_IP) + "\": \"" + master_IP + "\", \"" + String(JSON_MASTER_TOKEN) + "\": \"" + master_TOKEN + "\"}";
-    server->send(200, "application/json", json);
-  });
+    server->send(200, "application/json", json); });
 
   // // Camera status endpoint - using who_camera API
   // server->on("/api/camera/status", HTTP_GET, [server]() {
   //   DEBUG_TO_SERIAL("GET /api/camera/status");
-    
+
   //   // Note: This endpoint is ready for camera integration
   //   // Camera handler will be initialized in main.cpp
   //   String json = "{\"status\": \"camera_module_available\", \"note\": \"Use who_camera API only\"}";
@@ -437,29 +434,29 @@ void WebServerModule_begin(WebServer* server) {
   // // Note: who_camera on K10 provides RGB565 format, not JPEG
   // server->on("/camera/snapshot.ppm", HTTP_GET, [server]() {
   //   DEBUG_TO_SERIAL("GET /camera/snapshot.ppm");
-    
+
   //   if (!CameraHandler_isRunning()) {
   //     DEBUG_TO_SERIAL("  Camera not running");
   //     server->send(503, "text/plain", "Camera not available");
   //     return;
   //   }
-    
+
   //   QueueHandle_t frameQueue = CameraHandler_getFrameQueue();
   //   if (!frameQueue) {
   //     DEBUG_TO_SERIAL("  Frame queue not initialized");
   //     server->send(503, "text/plain", "Camera not initialized");
   //     return;
   //   }
-    
+
   //   // Wait up to 1 second for a frame from who_camera
   //   // The queue contains camera_fb_t* pointers
   //   camera_fb_t* fb = NULL;
   //   if (xQueueReceive(frameQueue, &fb, 1000 / portTICK_PERIOD_MS)) {
   //     if (fb != NULL && fb->len > 0) {
   //       // Frame received - debug output
-  //       DEBUG_TO_SERIAL("  Frame received: %d bytes, %dx%d, format=%d\n", 
+  //       DEBUG_TO_SERIAL("  Frame received: %d bytes, %dx%d, format=%d\n",
   //                    fb->len, fb->width, fb->height, fb->format);
-        
+
   //       // DEBUG: Show first 32 bytes in hex to analyze format
   //       DEBUG_TO_SERIAL("  First 32 bytes (hex): ");
   //       uint8_t* debug_buf = (uint8_t*)fb->buf;
@@ -467,7 +464,7 @@ void WebServerModule_begin(WebServer* server) {
   //         DEBUG_TO_SERIAL("%02x ", debug_buf[i]);
   //       }
   //       DEBUG_TO_SERIAL("");
-        
+
   //       // Show first 8 pixels as 16-bit values
   //       DEBUG_TO_SERIAL("  First 8 pixels (16-bit LE): ");
   //       for (int i = 0; i < 8; i++) {
@@ -475,51 +472,51 @@ void WebServerModule_begin(WebServer* server) {
   //         DEBUG_TO_SERIAL("%04x ", val);
   //       }
   //       DEBUG_TO_SERIAL("");
-        
+
   //       // K10 camera provides RGB565 format (not JPEG)
   //       // Send as PPM format (simple, uncompressed, but any viewer can read it)
   //       // PPM format: ASCII header + raw RGB24 data
-        
+
   //       // Calculate PPM file size: header + (3 bytes per pixel)
   //       int ppm_data_size = fb->width * fb->height * 3;
-        
+
   //       // Create PPM header
   //       char ppm_header[100];
   //       int header_len = snprintf(ppm_header, sizeof(ppm_header),
   //                                 "P6\n%d %d\n255\n",
   //                                 fb->width, fb->height);
-        
+
   //       int total_size = header_len + ppm_data_size;
-        
-  //       Serial.printf("  Sending PPM: %d bytes (header=%d, data=%d)\n", 
+
+  //       Serial.printf("  Sending PPM: %d bytes (header=%d, data=%d)\n",
   //                    total_size, header_len, ppm_data_size);
-        
+
   //       // Send HTTP headers
   //       server->setContentLength(total_size);
   //       server->sendHeader("Content-Type", "image/x-portable-pixmap");
   //       server->sendHeader("X-Frame-Width", String(fb->width));
   //       server->sendHeader("X-Frame-Height", String(fb->height));
   //       server->send(200);
-        
+
   //       // Send PPM header
   //       server->client().write((const uint8_t*)ppm_header, header_len);
-        
+
   //       // Convert RGB565 to RGB24 and send
   //       // RGB565: RRRRRGGGGGGBBBBB (5-6-5 bits)
   //       // Use smaller buffer to avoid stack overflow (128 pixels = 384 bytes)
-        
+
   //       uint8_t* rgb565_buf = (uint8_t*)fb->buf;
   //       uint8_t rgb_buffer[384];  // 128 pixels * 3 bytes = 384 bytes (safe)
   //       int buf_idx = 0;
   //       int pixels_buffered = 0;
-        
+
   //       for (int i = 0; i < fb->width * fb->height; i++) {
   //           // Read RGB565 value (2 bytes, little-endian from camera)
   //           // Little-endian: byte[0] is LSB, byte[1] is MSB
   //           uint8_t lo = rgb565_buf[i*2];
   //           uint8_t hi = rgb565_buf[i*2+1];
   //           uint16_t rgb565 = lo | ((uint16_t)hi << 8);
-            
+
   //           // Standard RGB565 format: RRRRRGGGGGGBBBBB
   //           // Bits 15-11: Red (5 bits)
   //           // Bits 10-5: Green (6 bits)
@@ -527,21 +524,21 @@ void WebServerModule_begin(WebServer* server) {
   //           uint8_t r5 = (rgb565 >> 11) & 0x1F;  // 5 bits
   //           uint8_t g6 = (rgb565 >> 5) & 0x3F;   // 6 bits
   //           uint8_t b5 = rgb565 & 0x1F;          // 5 bits
-            
+
   //           // Scale to 8-bit: replicate MSBs to LSBs for better color precision
   //           // 5-bit to 8-bit: shift left 3 bits, then copy top 3 bits to bottom
   //           // 6-bit to 8-bit: shift left 2 bits, then copy top 2 bits to bottom
   //           uint8_t r8 = (r5 << 3) | (r5 >> 2);  // Scale 5-bit red to 8-bit
   //           uint8_t g8 = (g6 << 2) | (g6 >> 4);  // Scale 6-bit green to 8-bit
   //           uint8_t b8 = (b5 << 3) | (b5 >> 2);  // Scale 5-bit blue to 8-bit
-            
+
   //           // Output as RGB24 (PPM format expects RGB order)
   //           rgb_buffer[buf_idx++] = r8;
   //           rgb_buffer[buf_idx++] = g8;
   //           rgb_buffer[buf_idx++] = b8;
-            
+
   //           pixels_buffered++;
-            
+
   //           // Flush buffer after 128 pixels
   //           if (pixels_buffered >= 128) {
   //               server->client().write(rgb_buffer, buf_idx);
@@ -549,12 +546,12 @@ void WebServerModule_begin(WebServer* server) {
   //               pixels_buffered = 0;
   //           }
   //       }
-        
+
   //       // Flush any remaining data
   //       if (buf_idx > 0) {
   //           server->client().write(rgb_buffer, buf_idx);
   //       }
-        
+
   //       // Return the frame buffer to who_camera for reuse
   //       // CRITICAL: This must be done or who_camera will run out of buffers
   //       esp_camera_fb_return(fb);
@@ -573,27 +570,27 @@ void WebServerModule_begin(WebServer* server) {
   // // This endpoint just sends the raw RGB565 bytes so we can debug the format
   // server->on("/camera/snapshot", HTTP_GET, [server]() {
   //   DEBUG_TO_SERIAL("GET /camera/snapshot (raw RGB565)");
-    
+
   //   if (!CameraHandler_isRunning()) {
   //     DEBUG_TO_SERIAL("  Camera not running");
   //     server->send(503, "text/plain", "Camera not available");
   //     return;
   //   }
-    
+
   //   QueueHandle_t frameQueue = CameraHandler_getFrameQueue();
   //   if (!frameQueue) {
   //     DEBUG_TO_SERIAL("  Frame queue not initialized");
   //     server->send(503, "text/plain", "Camera not initialized");
   //     return;
   //   }
-    
+
   //   // Wait for frame
   //   camera_fb_t* fb = NULL;
   //   if (xQueueReceive(frameQueue, &fb, 1000 / portTICK_PERIOD_MS)) {
   //     if (fb != NULL && fb->len > 0) {
-  //       Serial.printf("  Frame: %d bytes, %dx%d, format=%d\n", 
+  //       Serial.printf("  Frame: %d bytes, %dx%d, format=%d\n",
   //                    fb->len, fb->width, fb->height, fb->format);
-        
+
   //       // Send raw RGB565 data with metadata headers
   //       server->setContentLength(fb->len);
   //       server->sendHeader("Content-Type", "application/octet-stream");
@@ -602,10 +599,10 @@ void WebServerModule_begin(WebServer* server) {
   //       server->sendHeader("X-Frame-Height", String(fb->height));
   //       server->sendHeader("X-Frame-Bytes", String(fb->len));
   //       server->send(200);
-        
+
   //       // Send raw frame data
   //       server->client().write((const uint8_t*)fb->buf, fb->len);
-        
+
   //       // Return buffer
   //       esp_camera_fb_return(fb);
   //       DEBUG_TO_SERIAL("  Raw RGB565 sent");
@@ -620,87 +617,87 @@ void WebServerModule_begin(WebServer* server) {
   // });
 
   // 404 handler
-  server->onNotFound([server]() {
+  server->onNotFound([server]()
+                     {
     Serial.printf("404 Not Found: %s\n", server->uri().c_str());
-    server->send(404, "text/plain", "Not Found");
-  });
+    server->send(404, "text/plain", "Not Found"); });
 
   DEBUG_TO_SERIAL("Starting WebServer on port 80");
   server->begin();
   DEBUG_TO_SERIAL("WebServer started successfully");
 }
 
-void WebServerModule_handleClient(WebServer* server) {
-  if (server) {
+void WebServerModule::handleClient(WebServer *server)
+{
+  if (server)
+  {
     server->handleClient();
   }
 }
 
-// Handle master registration conflict - called by display task
-void WebServerModule_handleMasterConflict(void) {
-  if (!masterConflictPending) {
-    return; // No conflict to handle
-  }
-  
-  unsigned long elapsedMs = millis() - conflictStartTime;
-  
-  // Display conflict dialog on K10 screen
-  unihiker.canvas->canvasClear();
-  unihiker.canvas->canvasText("Master Conflict!", 1, 0xFFFF00); // Yellow
-  unihiker.canvas->canvasText("Replace " + master_IP, 2, 0xFFFFFF);
-  unihiker.canvas->canvasText("with " + pendingMasterIP + "?", 3, 0xFFFFFF);
-  unihiker.buttonA->setPressedCallback(WebServerModule_acceptMasterConflict);
-  unihiker.buttonB->setPressedCallback(WebServerModule_denyMasterConflict);
-
-  unihiker.canvas->canvasText("A=Yes  B=No", 5, 0x00FF00); // Green
-  
-  // Show timeout countdown
-  unsigned long remainingMs = (elapsedMs < CONFLICT_TIMEOUT_MS) ? (CONFLICT_TIMEOUT_MS - elapsedMs) : 0;
-  unsigned long remainingSec = remainingMs / 1000;
-  unihiker.canvas->canvasText("(" + String(remainingSec) + "s)", 6, 0xFF8800); // Orange
-  
-  unihiker.canvas->updateCanvas();
-  
-  // Check for button presses - the K10 should send key events
-  // This will be handled by the main task or key handler
-  // For now, we rely on external code to call:
-  // WebServerModule_acceptMasterConflict() for button A
-  // WebServerModule_denyMasterConflict() for button 
-}
-
-// Call this when button A is pressed to accept new master
-void WebServerModule_acceptMasterConflict(void) {
-  if (masterConflictPending) {
+// Static callback wrappers for button callbacks
+static void acceptMasterConflictCallback(void)
+{
+  if (masterConflictPending)
+  {
     DEBUG_TO_SERIAL("Button A pressed - accepting new master");
     masterConflictAccepted = true;
     masterConflictPending = false;
   }
 }
 
-// Call this when button B is pressed to deny new master
-void WebServerModule_denyMasterConflict(void) {
-  if (masterConflictPending) {
+static void denyMasterConflictCallback(void)
+{
+  if (masterConflictPending)
+  {
     DEBUG_TO_SERIAL("Button B pressed - denying new master");
     masterConflictAccepted = false;
     masterConflictPending = false;
   }
 }
 
-// Camera webcam registration - registers video streaming routes
-void WebServerModule_registerWebcam(WebServer* server) {
-  if (!server) {
-    DEBUG_TO_SERIAL("ERROR: Cannot register webcam - WebServer pointer is NULL!");
-    return;
+// Handle master registration conflict - called by display task
+void WebServerModule::handleMasterConflict(void)
+{
+  if (!masterConflictPending)
+  {
+    return; // No conflict to handle
   }
-  
-  DEBUG_TO_SERIAL("Registering webcam routes with WebServer...");
-  
-  // if (webcam.enableWebcam(server)) {
-  //   DEBUG_TO_SERIAL("Webcam routes registered successfully!");
-  //   DEBUG_TO_SERIAL("  - /video (camera index page)");
-  //   DEBUG_TO_SERIAL("  - /video/stream (MJPEG stream)");
-  //   DEBUG_TO_SERIAL("  - /video/capture (single frame capture)");
-  // } else {
-  //   DEBUG_TO_SERIAL("ERROR: Failed to register webcam routes!");
-  // }
+
+  unsigned long elapsedMs = millis() - conflictStartTime;
+
+  // Display conflict dialog on K10 screen
+  unihiker.canvas->canvasClear();
+  unihiker.canvas->canvasText("Master Conflict!", 1, 0xFFFF00); // Yellow
+  unihiker.canvas->canvasText("Replace " + master_IP, 2, 0xFFFFFF);
+  unihiker.canvas->canvasText("with " + pendingMasterIP + "?", 3, 0xFFFFFF);
+  unihiker.buttonA->setPressedCallback(acceptMasterConflictCallback);
+  unihiker.buttonB->setPressedCallback(denyMasterConflictCallback);
+
+  unihiker.canvas->canvasText("A=Yes  B=No", 5, 0x00FF00); // Green
+
+  // Show timeout countdown
+  unsigned long remainingMs = (elapsedMs < CONFLICT_TIMEOUT_MS) ? (CONFLICT_TIMEOUT_MS - elapsedMs) : 0;
+  unsigned long remainingSec = remainingMs / 1000;
+  unihiker.canvas->canvasText("(" + String(remainingSec) + "s)", 6, 0xFF8800); // Orange
+
+  unihiker.canvas->updateCanvas();
+
+  // Check for button presses - the K10 should send key events
+  // This will be handled by the main task or key handler
+  // For now, we rely on external code to call:
+  // WebServerModule_acceptMasterConflict() for button A
+  // WebServerModule_denyMasterConflict() for button
+}
+
+// Call this when button A is pressed to accept new master
+void WebServerModule::acceptMasterConflict(void)
+{
+  acceptMasterConflictCallback();
+}
+
+// Call this when button B is pressed to deny new master
+void WebServerModule::denyMasterConflict(void)
+{
+  denyMasterConflictCallback();
 }

@@ -2,13 +2,20 @@
 #pragma once
 
 #include <AsyncUDP.h>
+#include <WebServer.h>
+class UDPModule
+{
+public:
+    bool begin(AsyncUDP *udp, int port);
+    // Try to copy the latest message for display; returns true if copied
+    bool tryCopyDisplay(char *outBuf, int bufLen, int &outTotalMessages);
+    bool registerRoutes(WebServer *server);
+private:
+    // Build a JSON message containing all infos.
+    String buildJson();
 
-bool UDPHandler_begin(AsyncUDP* udp, int port);
-// Build a JSON message containing all infos.
-String UDPHandler_buildJson();
-// Try to copy the latest message for display; returns true if copied
-bool UDPHandler_tryCopyDisplay(char* outBuf, int bufLen, int& outTotalMessages);
-// Get the number of dropped packets (thread-safe)
-unsigned long UDPHandler_getDroppedPackets();
-// Get the number of handled packets (thread-safe)
-unsigned long UDPHandler_getHandledPackets();
+    // Get the number of dropped packets (thread-safe)
+    unsigned long getDroppedPackets();
+    // Get the number of handled packets (thread-safe)
+    unsigned long getHandledPackets();
+};

@@ -1,32 +1,26 @@
-#include "udp_handler.h"
+#include "UDPService.h"
 #include <Arduino.h>
 #include <AsyncUDP.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <WebServer.h>
 
-#ifdef DEBUG
-#define DEBUG_TO_SERIAL(x) Serial.println(x)
-#define DEBUGF_TO_SERIAL(fmt, ...) Serial.printf(fmt, __VA_ARGS__)
-#else
-#define DEBUG_TO_SERIAL(x)
-#define DEBUGF_TO_SERIAL(fmt, ...)
-#endif
 // Mirror of previous globals, but scoped to this module
 static const int MAX_MESSAGES = 20;
 static const int MAX_MESSAGE_LEN = 256;
-static char messages[MAX_MESSAGES][MAX_MESSAGE_LEN];
-static int messageCount = 0;
-static int messageIndex = 0;
-static unsigned long totalMessages = 0;
-static unsigned long lastMessageTime = 0;
-static char lastMessage[MAX_MESSAGE_LEN] = "";
-static SemaphoreHandle_t messageMutex = NULL;
-static AsyncUDP *udpInstance = nullptr;
-static unsigned long packetsDropped = 0; // Add this
+ char messages[MAX_MESSAGES][MAX_MESSAGE_LEN];
+ int messageCount = 0;
+ int messageIndex = 0;
+ unsigned long totalMessages = 0;
+ unsigned long lastMessageTime = 0;
+ char lastMessage[MAX_MESSAGE_LEN] = "";
+ SemaphoreHandle_t messageMutex = NULL;
+ AsyncUDP *udpInstance = nullptr;
+ unsigned long packetsDropped = 0; // Add this
 
-// Packet callback (must be non-blocking)
-static void handleUDPPacket(AsyncUDPPacket packet)
+ std::set <std::string> routes = {};
+
+void handleUDPPacket(AsyncUDPPacket packet)
 {
   if (packet.length() == 0)
     return;
@@ -68,14 +62,40 @@ static void handleUDPPacket(AsyncUDPPacket packet)
   }
 }
 
-bool UDPModule::begin(AsyncUDP *udp, int port)
+bool UDPService::begin(AsyncUDP *udpPtr, int portNum)
 {
-  if (!udp)
-    return false;
+  this->udp = udpPtr;
+  this->port = portNum;
+  return true;
+}
+
+bool UDPService::init()
+{
   if (!messageMutex)
   {
     messageMutex = xSemaphoreCreateMutex();
   }
+  return true;
+}
+
+bool UDPService::stop()
+{
+  if (udpInstance)
+  {
+    udpInstance->close();
+    udpInstance = nullptr;
+  }
+  if (messageMutex)
+  {
+    vSemaphoreDelete(messageMutex);
+    messageMutex = nullptr;
+  }
+  return true;    
+}
+bool UDPService::start()
+{
+  if (!udp || port == 0)
+    return false;
 
   udpInstance = udp;
   if (udpInstance->listen(port))
@@ -86,20 +106,20 @@ bool UDPModule::begin(AsyncUDP *udp, int port)
   return false;
 }
 
-String UDPModule::buildJson()
+std::string UDPService::buildJson()
 {
 
   if (!messageMutex)
     return "{\"total\": 0, \"dropped\": 0, \"buffer\": 0, \"messages\": []}";
 
-  String json;
+  std::string json;
 
   if (xSemaphoreTake(messageMutex, 100 / portTICK_PERIOD_MS))
   {
 
-    json += "{\"total\":" + String(totalMessages) + ", ";
-    json += "\"dropped\": " + String(packetsDropped) + ",";
-    json += "\"buffer\": \"" + String(messageCount) + "/" + String(MAX_MESSAGES) + "\", ";
+    json += "{\"total\":" + std::to_string(totalMessages) + ", ";
+    json += "\"dropped\": " + std::to_string(packetsDropped) + ",";
+    json += "\"buffer\": \"" + std::to_string(messageCount) + "/" + std::to_string(MAX_MESSAGES) + "\", ";
     json += "\"messages\": [";
     int count = (messageCount < MAX_MESSAGES) ? messageCount : MAX_MESSAGES;
     for (int i = 0; i < count; i++)
@@ -108,11 +128,27 @@ String UDPModule::buildJson()
       if (messages[idx][0] != '\0')
       {
         // Escape the message string for JSON
-        String escaped = String(messages[idx]);
-        escaped.replace("\\", "\\\\"); // Escape backslashes first
-        escaped.replace("\"", "\\\""); // Escape quotes
-        escaped.replace("\n", "\\n");  // Escape newlines
-        escaped.replace("\r", "\\r");  // Escape carriage returns
+        std::string escaped = std::string(messages[idx]);
+        size_t pos = 0;
+        while ((pos = escaped.find('\\', pos)) != std::string::npos) {
+          escaped.replace(pos, 1, "\\\\");
+          pos += 2;
+        }
+        pos = 0;
+        while ((pos = escaped.find('"', pos)) != std::string::npos) {
+          escaped.replace(pos, 1, "\\\"");
+          pos += 2;
+        }
+        pos = 0;
+        while ((pos = escaped.find('\n', pos)) != std::string::npos) {
+          escaped.replace(pos, 1, "\\n");
+          pos += 2;
+        }
+        pos = 0;
+        while ((pos = escaped.find('\r', pos)) != std::string::npos) {
+          escaped.replace(pos, 1, "\\r");
+          pos += 2;
+        }
         json += "\"" + escaped + "\"";
       }
       else
@@ -136,35 +172,35 @@ String UDPModule::buildJson()
   return json;
 }
 
-bool UDPModule::tryCopyDisplay(char *outBuf, int bufLen, int &outTotalMessages)
-{
-  if (!messageMutex)
-    return false;
-  bool ok = false;
-  if (xSemaphoreTake(messageMutex, 10 / portTICK_PERIOD_MS))
-  {
-    strncpy(outBuf, lastMessage, bufLen - 1);
-    outBuf[bufLen - 1] = '\0';
-    outTotalMessages = (int)totalMessages;
-    xSemaphoreGive(messageMutex);
-    ok = true;
-  }
-  return ok;
-}
+// bool UDPService::tryCopyDisplay(char *outBuf, int bufLen, int &outTotalMessages)
+// {
+//   if (!messageMutex)
+//     return false;
+//   bool ok = false;
+//   if (xSemaphoreTake(messageMutex, 10 / portTICK_PERIOD_MS))
+//   {
+//     strncpy(outBuf, lastMessage, bufLen - 1);
+//     outBuf[bufLen - 1] = '\0';
+//     outTotalMessages = (int)totalMessages;
+//     xSemaphoreGive(messageMutex);
+//     ok = true;
+//   }
+//   return ok;
+// }
 
-unsigned long UDPModule::getDroppedPackets()
+unsigned long UDPService::getDroppedPackets()
 {
   unsigned long dropped = 0;
   if (messageMutex && xSemaphoreTake(messageMutex, 10 / portTICK_PERIOD_MS))
   {
     dropped = packetsDropped;
-    xSemaphoreGive(messageMutex);
+    xSemaphoreGive(messageMutex);    
   }
   return dropped;
 }
 
 
-unsigned long UDPModule::getHandledPackets()
+unsigned long UDPService::getHandledPackets()
 {
   unsigned long handled = 0;
   if (messageMutex && xSemaphoreTake(messageMutex, 10 / portTICK_PERIOD_MS))
@@ -176,16 +212,16 @@ unsigned long UDPModule::getHandledPackets()
 }
 
 
-bool UDPModule::registerRoutes(WebServer *server)
+bool UDPService::registerRoutes(WebServer *server, std::string basePath)
 {
   if (!server)
     return false;
-
-  server->on("/api/messages", HTTP_GET, [server, this]()
+  std::string path = "/api/" + basePath; 
+  server->on(path.c_str(), HTTP_GET, [server, this]()
              {
-    DEBUG_TO_SERIAL("GET /api/messages");
-    String json = this->buildJson();
-    server->send(200, "application/json", json); });
+    std::string json = this->buildJson();
+    server->send(200, "application/json", json.c_str()); });
 
+  routes.insert(path);
   return true;
 }

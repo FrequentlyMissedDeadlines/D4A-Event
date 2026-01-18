@@ -48,13 +48,13 @@ namespace
 
   WifiService wifiService;
 
-  void initializeDisplayHardware();
-  void drawRuntimeStatus(uint8_t startLine);
-  void startCommunicationModules(uint8_t &line);
-  void startServoAndRoutes(uint8_t &line);
-  void createApplicationTasks();
-  void drawCanvasLine(uint8_t line, const char *text, uint32_t color);
-  void refreshCanvas();
+  void initialize_display_hardware();
+  void draw_runtime_status(uint8_t start_line);
+  void start_communication_modules();
+  void start_servo_and_routes();
+  void create_application_tasks();
+  void draw_canvas_line(uint8_t line, const char *text, uint32_t color);
+  void refresh_canvas();
   // Separate buffer for display (non-blocking)
   constexpr int MAX_MESSAGE_LEN = 256;
   std::set<std::string> allRoutes = {};
@@ -139,7 +139,7 @@ void webServerTask(void *pvParameters)
 namespace
 {
 
-  void initializeDisplayHardware()
+  void initialize_display_hardware()
   {
     unihiker.begin();
     unihiker.initScreen(2, 30);
@@ -148,12 +148,12 @@ namespace
     unihiker.canvas->canvasClear();
   }
 
-  void drawCanvasLine(uint8_t line, const char *text, uint32_t color)
+  void draw_canvas_line(uint8_t line, const char *text, uint32_t color)
   {
     unihiker.canvas->canvasText(text, line, color);
   }
 
-  void refreshCanvas()
+  void refresh_canvas()
   {
     unihiker.canvas->updateCanvas();
   }
@@ -189,7 +189,7 @@ namespace
   //   return false;
   // }
 
-  void startCommunicationModules()
+  void start_communication_modules()
   {
     // Initialize and start HTTP service
     debugLogger.info("WebServer: Initializing");
@@ -246,7 +246,7 @@ namespace
 
   }
 
-  void startServoAndRoutes()
+  void start_servo_and_routes()
   {
     // Initialize and start K10 sensors service
     debugLogger.info("Sensors: Initializing");
@@ -273,7 +273,7 @@ namespace
     }
   }
 
-  void createApplicationTasks()
+  void create_application_tasks()
   {
     xTaskCreatePinnedToCore(udpTask, "UDP_Task", 2048, nullptr, 3, nullptr, 0);
     xTaskCreatePinnedToCore(displayTask, "Display_Task", 4096, nullptr, 1, nullptr, 1);
@@ -292,20 +292,20 @@ void setup()
   delay(500);
 
   // Initialize the display once via the helper
-  initializeDisplayHardware();
+  initialize_display_hardware();
 
   utb2026UI.init();
 
-  appInfoLog.setLoggerViewPort(0, 120, 240, 320);
-  appInfoLog.setLoggerTextColor(TFT_GREEN, TFT_DARKGREY);
-  appInfoLog.setMaxRows(4);
-  appInfoLog.setLogLevel(LoggerService::DEBUG);
+  appInfoLog.set_logger_viewport(0, 120, 240, 320);
+  appInfoLog.set_logger_text_color(TFT_GREEN, TFT_DARKGREY);
+  appInfoLog.set_max_rows(4);
+  appInfoLog.set_log_level(LoggerService::DEBUG);
   appInfoLog.info("AppLogger initialized.");
 
-  debugLogger.setLoggerTextColor(TFT_BLUE, TFT_BLUE);
-  debugLogger.setLoggerViewPort(0, 40, 240, 160);
-  debugLogger.setMaxRows(10);
-  debugLogger.setLogLevel(LoggerService::DEBUG);
+  debugLogger.set_logger_text_color(TFT_BLUE, TFT_BLUE);
+  debugLogger.set_logger_viewport(0, 40, 240, 160);
+  debugLogger.set_max_rows(10);
+  debugLogger.set_log_level(LoggerService::DEBUG);
   debugLogger.info("Logger initialized.");
 
   debugLogger.info("Wifi_activation");
@@ -316,28 +316,28 @@ void setup()
     return;
   }
 
-  utb2026UI.drawAll();
+  utb2026UI.draw_all();
   debugLogger.info("WiFi Ok.");
   appInfoLog.info("SSID:"+wifiService.getSSID());
-  utb2026UI.setInfo(utb2026UI.KEY_WIFI_NAME, wifiService.getSSID().c_str());
+  utb2026UI.set_info(utb2026UI.KEY_WIFI_NAME, wifiService.getSSID().c_str());
   
   appInfoLog.info("IP:"+  wifiService.getIP());
-  utb2026UI.setInfo(utb2026UI.KEY_IP_ADDRESS, wifiService.getIP() .c_str());
-  utb2026UI.drawAll();  
+  utb2026UI.set_info(utb2026UI.KEY_IP_ADDRESS, wifiService.getIP() .c_str());
+  utb2026UI.draw_all();  
   
   debugLogger.info("startCommunicationModules.");
-  startCommunicationModules();
-  utb2026UI.drawAll();
+  start_communication_modules();
+  utb2026UI.draw_all();
   
   debugLogger.info("startServoAndRoutes.");
-  startServoAndRoutes();
-  utb2026UI.drawAll();
+  start_servo_and_routes();
+  utb2026UI.draw_all();
   
   debugLogger.info("createApplicationTasks.");
-  createApplicationTasks();
+  create_application_tasks();
   debugLogger.log("Ready!", LoggerService::INFO);
 
-  utb2026UI.drawAll();
+  utb2026UI.draw_all();
 }
 
 void loop()

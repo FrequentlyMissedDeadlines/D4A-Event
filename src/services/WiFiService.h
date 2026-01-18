@@ -2,7 +2,7 @@
 #include <WebServer.h>
 #include "HasLoggerInterface.h"
 /**
- * @file wifi_handler.h
+ * @file WiFiService.h
  * @brief Header for WiFi module integration with the main application
  * @details Provides methods to manage WiFi connections and access points.
  */

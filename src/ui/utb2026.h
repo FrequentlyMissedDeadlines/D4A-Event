@@ -4,6 +4,7 @@
  */
 #include <Arduino.h>
 #include <map>
+
     
 // ConnectionStatus enum definition
 enum ConnectionStatus
@@ -30,7 +31,6 @@ public:
     void draw_all();
     void draw_servos();
     void draw_network_info();
-    bool attach_logger(LoggerService* logger, int x, int y, int width, int height);
 
     const std::string KEY_UDP_STATE = "udp_status";
     const std::string  KEY_UDP_PORT = "udp_port";

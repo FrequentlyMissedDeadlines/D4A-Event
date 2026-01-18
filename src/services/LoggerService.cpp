@@ -18,8 +18,8 @@ extern TFT_eSPI tft;
 
 // Constructor
 LoggerService::LoggerService() 
-    : currentLogLevel(INFO)
-    , maxRows(MAX_ROWS)
+    : current_log_level(INFO)
+    , max_rows(MAX_ROWS)
     , vp_x(0)
     , vp_y(0)
     , viewport_width(320)
@@ -35,10 +35,10 @@ void LoggerService::renderLogs()
     tft.setViewport(vp_x, vp_y, viewport_width, viewport_height);
     tft.fillRect(vp_x, vp_y, viewport_width, viewport_height, background_color);
 
-    // Compose visible lines limited by maxRows
+    // Compose visible lines limited by max_rows
     int n_rows = log_rows.size();
-    int start = (n_rows > maxRows) ? (n_rows - maxRows) : 0;
-    for (int i = 0; i < maxRows; ++i)
+    int start = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+    for (int i = 0; i < max_rows; ++i)
     {
         int u = start + i;
         if (u >= 0 && u < n_rows)
@@ -81,7 +81,7 @@ void LoggerService::renderLogs()
 
 void LoggerService::log(std::string message, const LogLevel level)
 {
-    if (level >= currentLogLevel)
+    if (level >= current_log_level)
         return;
     
 
@@ -89,42 +89,42 @@ void LoggerService::log(std::string message, const LogLevel level)
     renderLogs();
 }
 
-void LoggerService::setLogLevel(const LogLevel level)
+void LoggerService::set_log_level(const LogLevel level)
 {
-    currentLogLevel = level;
+    current_log_level = level;
 }
 
-LoggerService::LogLevel LoggerService::getLogLevel()
+LoggerService::LogLevel LoggerService::get_log_level()
 {
-    return currentLogLevel;
+    return current_log_level;
 }
 
-void LoggerService::setMaxRows(int rows)
+void LoggerService::set_max_rows(int rows)
 {
     if (rows <= 0)
         return;
-    maxRows = rows;
+    max_rows = rows;
     // Trim if needed
-    if ((int)log_rows.size() > maxRows)
+    if ((int)log_rows.size() > max_rows)
     {
-        int drop = log_rows.size() - maxRows;
+        int drop = log_rows.size() - max_rows;
         log_rows.erase(log_rows.begin(), log_rows.begin() + drop);
     }
     renderLogs();
 }
 
-int LoggerService::getMaxRows()
+int LoggerService::get_max_rows()
 {
-    return maxRows;
+    return max_rows;
 }
 
-void LoggerService::setLoggerTextColor(uint16_t color, uint16_t bgColor)
+void LoggerService::set_logger_text_color(uint16_t color, uint16_t bg_color)
 {
     text_color = color;
-    background_color = bgColor;
+    background_color = bg_color;
 }
 
-void LoggerService::setLoggerViewPort(int x, int y, int width, int height)
+void LoggerService::set_logger_viewport(int x, int y, int width, int height)
 {
     vp_x = x;
     vp_y = y;

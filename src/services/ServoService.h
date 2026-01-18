@@ -1,7 +1,8 @@
 // Servo controller handler for DFR0548 board
 /**
- * @file servo_handler.h
+ * @file ServoService.h
  * @brief Header for servo controller integration with the main application
+ * @details Handles servo initialization, control, and HTTP route registration.
  */
 #pragma once
 

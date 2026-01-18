@@ -224,14 +224,14 @@ void UTB2026::draw_servos() {
     tft.print(output.c_str());
 };
 
-void UTB2026::drawNetworkInfo() {
+void UTB2026::draw_network_info() {
 
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextDatum(TL_DATUM);
     char line=0;
 
-    std::string wifi_name = UTB2026::getInfo(KEY_WIFI_NAME).substr(0,MAX_NETWORK_LEN);
-    std::string ip_addr = UTB2026::getInfo(KEY_IP_ADDRESS).substr(0,MAX_IP_LEN);
+    std::string wifi_name = UTB2026::get_info(KEY_WIFI_NAME).substr(0,MAX_NETWORK_LEN);
+    std::string ip_addr = UTB2026::get_info(KEY_IP_ADDRESS).substr(0,MAX_IP_LEN);
     
     std::vector<std::string> wifivalues = {wifi_name, ip_addr};
     std::string output = format_with_equal_spacing(wifivalues, OUTPUT_LEN);
@@ -244,10 +244,10 @@ void UTB2026::drawNetworkInfo() {
     tft.print(textline.c_str());
     tft.setCursor(0,LINE_HEIGHT*line++);
     
-    std::string state = UTB2026::getInfo(KEY_UDP_STATE, "?");
-    std::string port = UTB2026::getInfo(KEY_UDP_PORT, "?");
-    std::string in = std::to_string(UTB2026::getCounter(KEY_UDP_IN));
-    std::string drop = std::to_string(UTB2026::getCounter(KEY_UDP_DROP));
+    std::string state = UTB2026::get_info(KEY_UDP_STATE, "?");
+    std::string port = UTB2026::get_info(KEY_UDP_PORT, "?");
+    std::string in = std::to_string(UTB2026::get_counter(KEY_UDP_IN));
+    std::string drop = std::to_string(UTB2026::get_counter(KEY_UDP_DROP));
     
     std::vector<std::string> udpvalues = {state, port, in, drop};
     textline = format_with_equal_spacing(udpvalues, 40);

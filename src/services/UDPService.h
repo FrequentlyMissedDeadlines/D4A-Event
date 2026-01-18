@@ -9,7 +9,7 @@
 #include "HasRoutesInterface.h"
 #include "IsServiceInterface.h"
 /**
- * @file udp_server.h
+ * @file UDPService.h
  * @brief Header for UDP server module.
  * @details Provides methods to receive UDP messages and maintain statistics.   
  * Inherits from withRoutes to register HTTP routes with a WebServer instance.
@@ -18,6 +18,7 @@
 class UDPService : public HasRoutesInterface, public    IsServiceInterface
 {
 public:
+
 /**
     // Initialize UDP server on given port; returns true if successful
     */
@@ -27,6 +28,7 @@ public:
     */
 
     bool registerRoutes(WebServer *server, std::string basePath) override;
+
     bool init() override;
     bool start() override;
     bool stop() override; 

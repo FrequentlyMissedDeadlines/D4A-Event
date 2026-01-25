@@ -8,53 +8,35 @@
 #include <AsyncUDP.h>
 #include <unihiker_k10.h>
 
-#include "board/BoardInfo.h"
-#include "camera/K10Webcam.h"
+#include "board/BoardInfoService.h"
+#include "services/WebcamService.h"
 #include "services/ServoService.h"
 #include "services/UDPService.h"
 #include "services/HTTPService.h"
 #include "sensor/K10sensorsService.h"
 #include "ui/utb2026.h"
-#include "services/LoggerService.h"
+#include "services/RollingLogger.h"
 
-#define LOAD_FONT8N // TFT font
-#define DEFAULT_HTTP_PORT 80
-#define DEFAULT_UDP_PORT 22026
-#define DEFAULT_UDP_DELAY_TICKS 1000
-#define DEFAULT_DISPLAY_DELAY_TICKS 250
-#define DEFAULT_UI_DELAY_TICKS 25000
-#define DEFAULT_HTTP_DELAY_TICKS 10
-#define DEFAULT_WIFI_MAX_ATTEMPTS 20
-#define DEFAULT_WIFI_DELAY_MS 500
-#define DEFAULT_SERIAL_BAUD 115200
+#define LOAD_FONT8N // TFT font - special case for library config
 
 namespace
 {
-  constexpr uint16_t kWebPort = DEFAULT_HTTP_PORT;
-  constexpr uint16_t kUdpPort = DEFAULT_UDP_PORT;
-  constexpr TickType_t kUdpTaskDelayTicks = pdMS_TO_TICKS(DEFAULT_UDP_DELAY_TICKS);
-  constexpr TickType_t kDisplayTaskDelayTicks = pdMS_TO_TICKS(DEFAULT_DISPLAY_DELAY_TICKS);
-  constexpr TickType_t kDisplayUpdateIntervalTicks = pdMS_TO_TICKS (DEFAULT_UI_DELAY_TICKS);
-  constexpr TickType_t kWebServerTaskDelayTicks = pdMS_TO_TICKS(DEFAULT_HTTP_DELAY_TICKS);
-  constexpr uint8_t kWifiMaxAttempts = DEFAULT_WIFI_MAX_ATTEMPTS;
-  constexpr uint16_t kWifiAttemptDelayMs = DEFAULT_WIFI_DELAY_MS;
+  constexpr uint16_t kWebPort = 80;
+  constexpr TickType_t kUdpTaskDelayTicks = pdMS_TO_TICKS(1000);
+  constexpr TickType_t kDisplayTaskDelayTicks = pdMS_TO_TICKS(250);
+  constexpr TickType_t kDisplayUpdateIntervalTicks = pdMS_TO_TICKS(25000);
+  constexpr TickType_t kWebServerTaskDelayTicks = pdMS_TO_TICKS(10);
+  constexpr uint8_t kWifiMaxAttempts = 20;
+  constexpr uint16_t kWifiAttemptDelayMs = 500;
+  constexpr uint32_t kSerialBaud = 115200;
   constexpr uint32_t kColorOk = 0x00D000;
   constexpr uint32_t kColorError = 0xD00000;
   constexpr uint32_t kColorInfo = 0xD0D0D0;
   constexpr uint32_t kColorSubtle = 0xE0E0E0;
 
-  std::string ssid ="" ; 
-  std::string password ="" ; 
+  std::string ssid = "";
+  std::string password = "";
 
-  WifiService wifiService;
-
-  void initialize_display_hardware();
-  void draw_runtime_status(uint8_t start_line);
-  void start_communication_modules();
-  void start_servo_and_routes();
-  void create_application_tasks();
-  void draw_canvas_line(uint8_t line, const char *text, uint32_t color);
-  void refresh_canvas();
   // Separate buffer for display (non-blocking)
   constexpr int MAX_MESSAGE_LEN = 256;
   std::set<std::string> allRoutes = {};
@@ -64,27 +46,26 @@ namespace
 }
 TFT_eSPI tft;
 
-
 UNIHIKER_K10 unihiker;
 
-WifiService wifi = WifiService();
-HTTPService httpService = HTTPService();
+WifiService wifiService = WifiService();
+WebServer webserver(kWebPort);
 UDPService udpService = UDPService();
+HTTPService httpService = HTTPService();
 K10SensorsService k10sensorsService = K10SensorsService();
-BoardInfo boardInfo = BoardInfo();
-LoggerService debugLogger =LoggerService();
-LoggerService appInfoLog=LoggerService();
-WebServer server(kWebPort);
+BoardInfoService boardInfo = BoardInfoService();
+ServoService servoService = ServoService();
+WebcamService webcamService = WebcamService();
+RollingLogger debugLogger = RollingLogger();
+RollingLogger appInfoLogger = RollingLogger();
 
 UTB2026 utb2026UI;
-volatile bool gUdpRunning = false;
-volatile bool gHttpRunning = false;
 
 // Camera frame queue
 // Packet handling is implemented in udp_handler module
 
 // FreeRTOS Task: Handle UDP messages on Core 0
-void udpTask(void *pvParameters)
+void udpSvrTask(void *pvParameters)
 {
   for (;;)
   {
@@ -104,14 +85,11 @@ void displayTask(void *pvParameters)
   {
     // Check if there's a master conflict to handle
     // This will display the dialog and wait for button input
-    httpService.handleMasterConflict();
 
     TickType_t now = xTaskGetTickCount();
     if ((now - lastUpdateTick) >= kDisplayUpdateIntervalTicks)
     {
       lastUpdateTick = now;
-
-
     }
 
     vTaskDelayUntil(&lastWakeTick, kDisplayTaskDelayTicks);
@@ -119,17 +97,17 @@ void displayTask(void *pvParameters)
 }
 
 // FreeRTOS Task: Handle web server on Core 1
-void webServerTask(void *pvParameters)
+void httpSvrTask(void *pvParameters)
 {
-
+  debugLogger.info("HTTP server task started");
   int loopCount = 0;
   for (;;)
   {
-    httpService.handleClient(&server);
+    httpService.handleClient(&webserver);
     loopCount++;
     if (loopCount % 1000 == 0)
     {
-      debugLogger.debug("WebServer task running...");
+      debugLogger.trace("WebServer task running...");
     }
     // Very short delay to allow other tasks to run
     vTaskDelay(kWebServerTaskDelayTicks);
@@ -139,145 +117,59 @@ void webServerTask(void *pvParameters)
 namespace
 {
 
-  void initialize_display_hardware()
+  /**
+   * @fn start_service
+   * @brief Initialize and start a service, attaching the debug logger. Uses LED 0 tp express state.
+   * @param service Reference to the ServiceInterface to start.
+   * @return true if the service started successfully, false otherwise.
+   */
+  bool start_service(IsServiceInterface &service)
   {
-    unihiker.begin();
-    unihiker.initScreen(2, 30);
-    unihiker.creatCanvas();
-    unihiker.setScreenBackground(0);
-    unihiker.canvas->canvasClear();
-  }
-
-  void draw_canvas_line(uint8_t line, const char *text, uint32_t color)
-  {
-    unihiker.canvas->canvasText(text, line, color);
-  }
-
-  void refresh_canvas()
-  {
-    unihiker.canvas->updateCanvas();
-  }
-
-  // bool connectToWiFi()
-  // {
-  //   WiFi.mode(WIFI_STA);
-  //   WiFi.begin(ssid.c_str(), password.c_str());
-
-  //   unihiker.canvas->canvasClear();
-  //   applogger.log("Connecting WiFi...", Logger::INFO);
-  //   refreshCanvas();
-
-  //   for (uint8_t attempt = 1; attempt <= kWifiMaxAttempts; ++attempt)
-  //   {
-  //     if (WiFi.status() == WL_CONNECTED)
-  //     {
-  //       applogger.log(WiFi.localIP().toString().c_str(), Logger::INFO);
-
-  //       refreshCanvas();
-  //       return true;
-  //     }
-
-  //     char attemptBuffer[48];
-  //     snprintf(attemptBuffer, sizeof(attemptBuffer), "#%u %s", attempt, ssid);
-  //     applogger.log(attemptBuffer, Logger::INFO);
-  //     refreshCanvas();
-  //     delay(kWifiAttemptDelayMs);
-  //   }
-
-  //   applogger.log("WiFi FWifiServiceailed.", Logger::ERROR);
-  //   refreshCanvas();
-  //   return false;
-  // }
-
-  void start_communication_modules()
-  {
-    // Initialize and start HTTP service
-    debugLogger.info("WebServer: Initializing");
-    if (!httpService.init())
+    // If the service supports logging, attach the global debug logger.
+    unihiker.rgb->write(0, 32, 0, 0); // pixel0 = red
+    service.setLogger(&debugLogger);
+    debugLogger.debug("Service " + service.getName());
+    if (service.initializeService())
     {
-      debugLogger.error("HTTP init failed.");
-    }
-    
-    debugLogger.info("WebServer: Starting on port " + std::to_string(kWebPort));
-    httpService.begin(&server);
-    if (!httpService.start())
-    {
-      debugLogger.error("HTTP start failed.");
-    }
-    
-    // Initialize and start UDP service
-    appInfoLog.info("UDP: Starting on port " + std::to_string(kUdpPort));
-    if (udpService.init() && udpService.start())
-    {
-      gUdpRunning = true;
-      appInfoLog.info("UDP: Started");
+      unihiker.rgb->write(0, 32, 32, 0); // pixel0 = red
+      if (!service.startService())
+      {
+        appInfoLogger.error(service.getName() + " start failed.");
+      }
+      else
+      {
+        unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
+        appInfoLogger.debug(service.getName() + " started.");
+      }
     }
     else
     {
-      appInfoLog.error("UDP: Failed");
+      appInfoLogger.error(service.getName() + " initialize failed.");
     }
-    
-    // Register UDP routes
-    if (udpService.registerRoutes(&server, "udp_in"))
-    { 
-      debugLogger.info("WebServer: Started");
-      debugLogger.info("Register UDP routes");
-      allRoutes.insert(udpService.getRoutes().begin(), udpService.getRoutes().end());
+
+    // // Register OpenAPI routes if the service implements IsOpenAPIInterface
+    IsOpenAPIInterface *openapi = service.asOpenAPIInterface();
+    if (openapi)
+    {
+      openapi->registerRoutes();
+      try
+      {
+        httpService.registerOpenAPIService(openapi);
+        debugLogger.info("OpenAPI registered " + service.getName());
+        debugLogger.debug(std::to_string(openapi->getOpenAPIRoutes().size()));
+      }
+      catch (const std::exception &e)
+      {
+        debugLogger.error("registerOpenAPIService failed for " + service.getName());
+      }
     }
     else
     {
-      debugLogger.error("WebServer: Failed.");
+      debugLogger.debug("No OpenAPI service " + service.getName());
     }
-    
-    // Register board info routes
-    debugLogger.info("Register board routes");
-    if (boardInfo.registerRoutes(&server, "board"))
-    {
-      debugLogger.info("Board routes registered.");
-      allRoutes.insert(boardInfo.getRoutes().begin(), boardInfo.getRoutes().end());
-    }
-    else
-    {
-      debugLogger.error("Board routes failed.");
-    }
-
-    gHttpRunning = true;
-    appInfoLog.info("HTTP: Started");
-
-  }
-
-  void start_servo_and_routes()
-  {
-    // Initialize and start K10 sensors service
-    debugLogger.info("Sensors: Initializing");
-    if (!k10sensorsService.init())
-    {
-      debugLogger.error("Sensors init failed.");
-    }
-    
-    debugLogger.info("Sensors: Starting");
-    if (!k10sensorsService.start())
-    {
-      debugLogger.error("Sensors start failed.");
-    }
-    
-    // Register sensor routes
-    if (k10sensorsService.registerRoutes(&server, "sensors"))
-    {
-      debugLogger.info("Sensor routes registered.");
-      allRoutes.insert(k10sensorsService.getRoutes().begin(), k10sensorsService.getRoutes().end());
-    }
-    else
-    {
-      debugLogger.error("Sensor routes failed.");
-    }
-  }
-
-  void create_application_tasks()
-  {
-    xTaskCreatePinnedToCore(udpTask, "UDP_Task", 2048, nullptr, 3, nullptr, 0);
-    xTaskCreatePinnedToCore(displayTask, "Display_Task", 4096, nullptr, 1, nullptr, 1);
-    xTaskCreatePinnedToCore(webServerTask, "WebServer_Task", 4096, nullptr, 2, nullptr, 1);
+    unihiker.rgb->write(0, 0, 0, 0); // pixel0 = red
+    sleep(1);
+    return true;
   }
 
 } // namespace
@@ -286,67 +178,99 @@ void setup()
 {
   // Small delay to ensure system stabilizes
   delay(500);
-
   // Initialize Serial for debugging
-  Serial.begin(DEFAULT_SERIAL_BAUD);
-  delay(500);
+  Serial.begin(kSerialBaud);
+  delay(1000); // Wait for Serial to initialize
+  Serial.println("\n\n===========================================");
+  Serial.println("[BOOT] K10-Bot Starting...");
+  Serial.println("===========================================");
+  Serial.flush();
 
+  Serial.println("[INIT] Initializing UNIHIKER...");
+  unihiker.begin();
+  unihiker.initScreen(2, 30);
+  unihiker.creatCanvas();
+  unihiker.setScreenBackground(TFT_DARKGREY);
+  unihiker.canvas->canvasClear();
+  Serial.println("[INIT] Display initialized");
+
+  unihiker.rgb->write(0, 0, 0, 0);
+  unihiker.rgb->write(1, 0, 0, 0);
+  unihiker.rgb->write(2, 0, 0, 0);
   // Initialize the display once via the helper
-  initialize_display_hardware();
 
-  utb2026UI.init();
+  appInfoLogger.set_logger_viewport(0, 120, 240, 320);
+  appInfoLogger.set_logger_text_color(TFT_WHITE, TFT_DARKCYAN);
+  appInfoLogger.set_max_rows(8);
+  appInfoLogger.set_log_level(RollingLogger::DEBUG);
 
-  appInfoLog.set_logger_viewport(0, 120, 240, 320);
-  appInfoLog.set_logger_text_color(TFT_GREEN, TFT_DARKGREY);
-  appInfoLog.set_max_rows(4);
-  appInfoLog.set_log_level(LoggerService::DEBUG);
-  appInfoLog.info("AppLogger initialized.");
+  debugLogger.set_logger_text_color(TFT_BLACK, TFT_BLACK);
+  debugLogger.set_logger_viewport(0, 40, 240, 200);
+  debugLogger.set_max_rows(16);
+  debugLogger.set_log_level(RollingLogger::DEBUG);
 
-  debugLogger.set_logger_text_color(TFT_BLUE, TFT_BLUE);
-  debugLogger.set_logger_viewport(0, 40, 240, 160);
-  debugLogger.set_max_rows(10);
-  debugLogger.set_log_level(LoggerService::DEBUG);
-  debugLogger.info("Logger initialized.");
-
-  debugLogger.info("Wifi_activation");
-  // Establish WiFi before starting any modules
-  if (!wifiService.wifi_activation())
+  debugLogger.info("Starting services...");
+  if (!start_service(wifiService))
   {
-    debugLogger.error("WiFi failed. Reboot to retry.");
+    appInfoLogger.error("WiFi failed to start.");
+    appInfoLogger.error("Fix code.");
     return;
   }
 
-  utb2026UI.draw_all();
-  debugLogger.info("WiFi Ok.");
-  appInfoLog.info("SSID:"+wifiService.getSSID());
-  utb2026UI.set_info(utb2026UI.KEY_WIFI_NAME, wifiService.getSSID().c_str());
-  
-  appInfoLog.info("IP:"+  wifiService.getIP());
-  utb2026UI.set_info(utb2026UI.KEY_IP_ADDRESS, wifiService.getIP() .c_str());
-  utb2026UI.draw_all();  
-  
-  debugLogger.info("startCommunicationModules.");
-  start_communication_modules();
-  utb2026UI.draw_all();
-  
-  debugLogger.info("startServoAndRoutes.");
-  start_servo_and_routes();
-  utb2026UI.draw_all();
-  
-  debugLogger.info("createApplicationTasks.");
-  create_application_tasks();
-  debugLogger.log("Ready!", LoggerService::INFO);
+  // Register 404 handler before starting services
+  webserver.onNotFound([]()
+                       { webserver.send(404, "text/plain", "404 Not Found"); });
 
+  // Start services and register routes BEFORE webserver.begin()
+  start_service(k10sensorsService);
+  debugLogger.info("OK");
+
+  start_service(boardInfo);
+  start_service(servoService);
+  // //start_service(webcamService);
+  if (start_service(udpService))
+  {
+    xTaskCreatePinnedToCore(udpSvrTask, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);
+  }
+  else
+  {
+    appInfoLogger.error("Failed to start UDP service");
+  }
+
+  if (start_service(httpService))
+  {
+    xTaskCreatePinnedToCore(httpSvrTask, "WebServer_Task", 8192, nullptr, 2, nullptr, 1);
+  }
+  else
+  {
+    appInfoLogger.error("Failed to start webserver");
+  }
+
+  utb2026UI.init();
+
+  utb2026UI.set_info(utb2026UI.KEY_WIFI_NAME, wifiService.getSSID().c_str());
+  utb2026UI.set_info(utb2026UI.KEY_IP_ADDRESS, wifiService.getIP().c_str());
   utb2026UI.draw_all();
+  unihiker.rgb->write(0, 0, 0, 0);
+  unihiker.rgb->write(1, 0, 0, 0);
+  unihiker.rgb->write(2, 0, 0, 0);
+
+  appInfoLogger.info("SSID:" + wifiService.getSSID());
+  appInfoLogger.info("IP:" + wifiService.getIP());
+  appInfoLogger.info("HostName:" + wifiService.getHostname());
+  appInfoLogger.info("UDP port:" + std::to_string(udpService.getPort()));
+  appInfoLogger.info("HTTP port:" + std::to_string(kWebPort));
+
+  xTaskCreatePinnedToCore(displayTask, "Display_Task", 4096, nullptr, 1, nullptr, 1);
 }
 
 void loop()
 {
-  debugLogger.debug("debug msg");
-  debugLogger.info("info msg");
-  debugLogger.warning("warning msg");
-  debugLogger.error("error msg");
+  // debugLogger.debug("debug msg");
+  // debugLogger.info("info msg");
+  // debugLogger.warning("warning msg");
+  // debugLogger.error("error msg");
 
-  // All application logic runs inside FreeRTOS tasks
-  delay(1500);
+  // // All application logic runs inside FreeRTOS tasks
+  // delay(60000);
 }

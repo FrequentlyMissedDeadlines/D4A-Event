@@ -107,7 +107,7 @@ public:
     uint16_t getPWM(uint8_t channel);                                // Get current PWM setting
 
     // ===== DIAGNOSTIC AND STATUS FUNCTIONS =====
-    bool isConnected();                       // Check if PCA9685 is responding
+    bool isConnected();                            // Check if PCA9685 is responding
     std::string getChannelStatus(uint8_t channel); // Get servo status for channel
 
     // ===== UTILITY FUNCTIONS =====

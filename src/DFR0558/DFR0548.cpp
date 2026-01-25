@@ -9,7 +9,6 @@
 
 #include "DFR0548.h"
 
-
 // Constructor
 DFR0548_Controller::DFR0548_Controller() : _i2cAddr(DFR0548_DEFAULT_I2C_ADDR), _initialized(false)
 {

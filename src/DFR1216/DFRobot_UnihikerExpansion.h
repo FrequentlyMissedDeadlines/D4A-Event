@@ -13,30 +13,41 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-//#define ENABLE_DBG  1 ///> Open this macro and you can see the details of the program
+// #define ENABLE_DBG  1 ///> Open this macro and you can see the details of the program
 #ifdef ENABLE_DBG
-  #define DBG(...) {Serial.print("[");Serial.print(__FUNCTION__); Serial.print("(): "); Serial.print(__LINE__); Serial.print(" ] "); Serial.println(__VA_ARGS__);}
+#define DBG(...)                 \
+  {                              \
+    Serial.print("[");           \
+    Serial.print(__FUNCTION__);  \
+    Serial.print("(): ");        \
+    Serial.print(__LINE__);      \
+    Serial.print(" ] ");         \
+    Serial.println(__VA_ARGS__); \
+  }
 #else
-  #define DBG(...)
+#define DBG(...)
 #endif
 
-typedef enum {
+typedef enum
+{
   eMotor1_2,
   eMotor3_4,
   eServo0_1,
   eServo2_5,
-}ePeriod_t;
+} ePeriod_t;
 
-typedef enum {
+typedef enum
+{
   eServo0,
   eServo1,
   eServo2,
   eServo3,
   eServo4,
   eServo5,
-}eServoNumber_t;
+} eServoNumber_t;
 
-typedef enum {
+typedef enum
+{
   eMotor1_A,
   eMotor1_B,
   eMotor2_A,
@@ -45,87 +56,94 @@ typedef enum {
   eMotor3_B,
   eMotor4_A,
   eMotor4_B,
-}eMotorNumber_t;
+} eMotorNumber_t;
 
-typedef enum {
+typedef enum
+{
   eADC,
   eDHT11,
   eDHT22,
   eDS18B20,
   eWriteGpio,
   eReadGpio,
-}eIOType_t;
+} eIOType_t;
 
-typedef enum {
+typedef enum
+{
   eC0,
   eC1,
   eC2,
   eC3,
   eC4,
   eC5,
-}eIONumber_t;
+} eIONumber_t;
 
-typedef enum {
+typedef enum
+{
   eForward,
   eBackward,
   eStop,
-}eServo360Direction_t;
+} eServo360Direction_t;
 
-typedef enum {
+typedef enum
+{
   eLOW,
   eHIGH,
-}eGpioState_t;
+} eGpioState_t;
 
-typedef enum {
+typedef enum
+{
   eTypeDHT11,
   eTypeDHT22,
-}eDhtType_t;
+} eDhtType_t;
 
-typedef struct{
+typedef struct
+{
   float temperature;
   float humidity;
   uint8_t state;
-}sDhtData_t;
+} sDhtData_t;
 
-#define I2C_MOTOR12_PERIOD_H  0X00 
-#define I2C_MOTOR34_PERIOD_H  0x02
-#define I2C_MOTOR1_Z_DUTY_H   0X04
-#define I2C_MOTOR1_F_DUTY_H   0X06
-#define I2C_MOTOR2_Z_DUTY_H   0X08
-#define I2C_MOTOR2_F_DUTY_H   0X0a
-#define I2C_MOTOR3_Z_DUTY_H   0x0c
-#define I2C_MOTOR3_F_DUTY_H   0x0E
-#define I2C_MOTOR4_Z_DUTY_H   0x10
-#define I2C_MOTOR4_F_DUTY_H   0x12
-#define I2C_SERVO01_PERIOD_H  0x14
-#define I2C_SERVO25_PERIOD_H  0x16
-#define I2C_SERVO0_DUTY_H     0x18
-#define I2C_SERVO1_DUTY_H     0x1a
-#define I2C_SERVO2_DUTY_H     0x1c
-#define I2C_SERVO3_DUTY_H     0x1e
-#define I2C_SERVO4_DUTY_H     0x20
-#define I2C_SERVO5_DUTY_H     0x22
-#define I2C_IR_S_STATE 				0x24
-#define I2C_SR04_STATE 				0x29
-	#define SR04_COLLECT  	    0x01
-	#define SR04_COMPLETE 	    0x02
-#define I2C_IO_MODE_C0		    0x2c
-#define I2C_W_C0		          0x39
-#define I2C_R_C0 			        0x3f
-#define I2C_ADC_C0_S				  0x45
-#define I2C_DHT_C0_S				  0x57
-#define I2C_18B20_C0_S			  0x75
-#define I2C_BATTERY					  0x87
-#define I2C_IR_R_STATE 			  0x88
-#define I2C_WS2812_STATE			0x90
-#define I2C_RESET_SENSOR 			0xa0
-  #define DATA_ENABLE         0x01     ///> enable
-  #define DATA_DISABLE        0x00     ///> disable
-  #define MODE_ERROR          0x02
-  #define RETRY_COUNT         10
-  #define TEMP_LEN            32
+#define I2C_MOTOR12_PERIOD_H 0X00
+#define I2C_MOTOR34_PERIOD_H 0x02
+#define I2C_MOTOR1_Z_DUTY_H 0X04
+#define I2C_MOTOR1_F_DUTY_H 0X06
+#define I2C_MOTOR2_Z_DUTY_H 0X08
+#define I2C_MOTOR2_F_DUTY_H 0X0a
+#define I2C_MOTOR3_Z_DUTY_H 0x0c
+#define I2C_MOTOR3_F_DUTY_H 0x0E
+#define I2C_MOTOR4_Z_DUTY_H 0x10
+#define I2C_MOTOR4_F_DUTY_H 0x12
+#define I2C_SERVO01_PERIOD_H 0x14
+#define I2C_SERVO25_PERIOD_H 0x16
+#define I2C_SERVO0_DUTY_H 0x18
+#define I2C_SERVO1_DUTY_H 0x1a
+#define I2C_SERVO2_DUTY_H 0x1c
+#define I2C_SERVO3_DUTY_H 0x1e
+#define I2C_SERVO4_DUTY_H 0x20
+#define I2C_SERVO5_DUTY_H 0x22
+#define I2C_IR_S_STATE 0x24
+#define I2C_SR04_STATE 0x29
+#define SR04_COLLECT 0x01
+#define SR04_COMPLETE 0x02
+#define I2C_IO_MODE_C0 0x2c
+#define I2C_W_C0 0x39
+#define I2C_R_C0 0x3f
+#define I2C_ADC_C0_S 0x45
+#define I2C_DHT_C0_S 0x57
+#define I2C_18B20_C0_S 0x75
+#define I2C_BATTERY 0x87
+#define I2C_IR_R_STATE 0x88
+#define I2C_WS2812_STATE 0x90
+#define I2C_RESET_SENSOR 0xa0
+#define DATA_ENABLE 0x01  ///> enable
+#define DATA_DISABLE 0x00 ///> disable
+#define MODE_ERROR 0x02
+#define RETRY_COUNT 10
+#define TEMP_LEN 32
 
-class DFRobot_UnihikerExpansion{
+class DFRobot_UnihikerExpansion
+{
 public:
   DFRobot_UnihikerExpansion();
   ~DFRobot_UnihikerExpansion();
@@ -161,9 +179,9 @@ public:
    * @return: uint8_t result
    * @retval: 0x00 is success
    * @retval: 0xff is failure
-   */  
+   */
   uint8_t setWS2812(uint32_t *data, uint8_t bright);
-  
+
   /**
    * @fn: setMode
    * @brief: set io port mode
@@ -172,7 +190,6 @@ public:
    * @retval: 0xff is failure
    */
   uint8_t setMode(eIONumber_t number, eIOType_t mode);
-
 
   /**
    * @fn: setGpioState
@@ -189,7 +206,7 @@ public:
    * @fn: getGpioState
    * @brief: Get the io state
    * @param number: io number
-   * @return: uint8_t Pin level 
+   * @return: uint8_t Pin level
    */
   uint8_t getGpioState(eIONumber_t number);
 
@@ -226,7 +243,7 @@ public:
    * @param motorPeriod: motor period
    * @return: NULL
    */
-  void setMotorPeriod(ePeriod_t number ,uint16_t motorPeriod);
+  void setMotorPeriod(ePeriod_t number, uint16_t motorPeriod);
 
   /**
    * @fn: setMotorDuty
@@ -250,12 +267,11 @@ public:
    * @fn: setServo360
    * @brief Set the Servo360
    * @param number: servo number
-   * @param direction 
+   * @param direction
    * @param speed (0-100)
    * @return: NULL
    */
   void setServo360(eServoNumber_t number, eServo360Direction_t direction, uint8_t speed);
-  
 
   /**
    * @fn: getSr04Distance
@@ -267,18 +283,22 @@ public:
    * @retval: -3 is no to scale
    */
   int16_t getSr04Distance(void);
+
 private:
   virtual uint8_t writeReg(uint8_t reg, uint8_t *data, uint8_t len) = 0;
   virtual int16_t readReg(uint8_t reg, uint8_t *data, uint8_t len) = 0;
 };
 
-class DFRobot_UnihikerExpansion_I2C:public DFRobot_UnihikerExpansion{
+class DFRobot_UnihikerExpansion_I2C : public DFRobot_UnihikerExpansion
+{
 public:
-  DFRobot_UnihikerExpansion_I2C(TwoWire *pWire=&Wire, uint8_t addr = 0x33);
+  DFRobot_UnihikerExpansion_I2C(TwoWire *pWire = &Wire, uint8_t addr = 0x33);
   bool begin(void);
+
 protected:
   virtual uint8_t writeReg(uint8_t reg, uint8_t *data, uint8_t len);
   virtual int16_t readReg(uint8_t reg, uint8_t *data, uint8_t len);
+
 private:
   TwoWire *__pWire;
   uint8_t __I2C_addr;

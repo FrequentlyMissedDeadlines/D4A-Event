@@ -10,28 +10,19 @@
 
 #include "utb2026.h"
 #include <TFT_eSPI.h>
-
+#include "services/ServoService.h"
 #include <stdio.h>
 #include <string.h>
 #include <vector>
 
-#define MAX_IP_LEN 15
-#define MAX_NETWORK_LEN 24   // adjust as needed
-#define OUTPUT_LEN 40
-
-
-#define LINE_HEIGHT 10
-#define CHAR_WIDTH 6
+constexpr int MAX_IP_LEN = 15;
+constexpr int MAX_NETWORK_LEN = 24;   // adjust as needed
+constexpr int OUTPUT_LEN = 40;
+constexpr int LINE_HEIGHT = 10;
+constexpr int CHAR_WIDTH = 6;
 extern TFT_eSPI tft;
 
-class ServoInfo
-{
-public:
-    ConnectionStatus connectionStatus;
-    int value;
-    ServoInfo(ConnectionStatus connectionStatus, int val) : value(val), connectionStatus(connectionStatus) {}
-    void setValue(int newval) { value = newval; }
-};
+
 
 ServoInfo servos[5] = {
     ServoInfo(NOT_CONNECTED, 0),
@@ -163,7 +154,7 @@ std::string UTB2026::get_info(std::string key, std::string default_value)
 {
     if (infos.find(key) == infos.end())
     {
-        return default_value.c_str();
+        return default_value;
     }
     return infos[key];
 };

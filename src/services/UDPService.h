@@ -5,44 +5,44 @@
 #include <WebServer.h>
 #include <set>
 #include <string>
+#include <vector>
 #include <Arduino.h>
-#include "HasRoutesInterface.h"
+#include "IsOpenAPIInterface.h"
 #include "IsServiceInterface.h"
 /**
  * @file UDPService.h
  * @brief Header for UDP server module.
- * @details Provides methods to receive UDP messages and maintain statistics.   
+ * @details Provides methods to receive UDP messages and maintain statistics.
  * Inherits from withRoutes to register HTTP routes with a WebServer instance.
- * 
+ *
  */
-class UDPService : public HasRoutesInterface, public    IsServiceInterface
+class UDPService : public IsOpenAPIInterface, public IsServiceInterface
 {
 public:
+    bool registerRoutes() override;
+    std::string getPath(const std::string& finalpathstring) override;
+    bool initializeService() override;
+    bool startService() override;
+    bool stopService() override;
+    std::string getName() override;
+    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
 
-/**
-    // Initialize UDP server on given port; returns true if successful
-    */
-    bool begin(AsyncUDP *udp, int port);
-    /**
-    Try to copy the latest message for display; returns true if copied
-    */
+    bool begin(AsyncUDP *udpInstance = nullptr, int listenPort = 0);
+    int getPort() const { return port; }
 
-    bool registerRoutes(WebServer *server, std::string basePath) override;
-
-    bool init() override;
-    bool start() override;
-    bool stop() override; 
-
-private:
+protected:
     AsyncUDP *udp = nullptr;
-    int port = 0;
-    
+    AsyncUDP *udpHandle = nullptr;
+    bool udpOwned = false;
+    int port = 24642;
+    std::string baseServicePath;  // Cached for optimization
+
     /**
     Build a JSON message containing all infos.
 
     */
     std::string buildJson();
-
+    std::vector<OpenAPIRoute> routes = {};
     // Get the number of dropped packets (thread-safe)
     unsigned long getDroppedPackets();
     // Get the number of handled packets (thread-safe)

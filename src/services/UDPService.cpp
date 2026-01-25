@@ -4,21 +4,40 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <WebServer.h>
+#include <ArduinoJson.h>
 
 // Mirror of previous globals, but scoped to this module
 static const int MAX_MESSAGES = 20;
 static const int MAX_MESSAGE_LEN = 256;
- char messages[MAX_MESSAGES][MAX_MESSAGE_LEN];
- int messageCount = 0;
- int messageIndex = 0;
- unsigned long totalMessages = 0;
- unsigned long lastMessageTime = 0;
- char lastMessage[MAX_MESSAGE_LEN] = "";
- SemaphoreHandle_t messageMutex = NULL;
- AsyncUDP *udpInstance = nullptr;
- unsigned long packetsDropped = 0; // Add this
+char messages[MAX_MESSAGES][MAX_MESSAGE_LEN];
+int messageCount = 0;
+int messageIndex = 0;
+unsigned long totalMessages = 0;
+unsigned long lastMessageTime = 0;
+char lastMessage[MAX_MESSAGE_LEN] = "";
+SemaphoreHandle_t messageMutex = NULL;
+unsigned long packetsDropped = 0; // Add this
 
- std::set <std::string> routes = {};
+bool UDPService::begin(AsyncUDP *u, int p)
+{
+  if (u == nullptr)
+  {
+    udp = nullptr;
+    udpHandle = nullptr;
+    udpOwned = false;
+  }
+  else
+  {
+    udp = u;
+    udpHandle = u;
+    udpOwned = false;
+  }
+
+  if (p > 0)
+    port = p;
+
+  return true;
+}
 
 void handleUDPPacket(AsyncUDPPacket packet)
 {
@@ -62,15 +81,27 @@ void handleUDPPacket(AsyncUDPPacket packet)
   }
 }
 
-bool UDPService::begin(AsyncUDP *udpPtr, int portNum)
-{
-  this->udp = udpPtr;
-  this->port = portNum;
-  return true;
-}
 
-bool UDPService::init()
+
+bool UDPService::initializeService()
 {
+  if (!udp)
+  {
+    // Create our own AsyncUDP instance when none provided via begin()
+    udpHandle = new AsyncUDP();
+    if (!udpHandle)
+    {
+      logger->error("Failed to allocate AsyncUDP instance");
+      return false;
+    }
+    udpOwned = true;
+  }
+  else
+  {
+    // Use the provided AsyncUDP instance
+    udpHandle = udp;
+    udpOwned = false;
+  }
   if (!messageMutex)
   {
     messageMutex = xSemaphoreCreateMutex();
@@ -78,115 +109,89 @@ bool UDPService::init()
   return true;
 }
 
-bool UDPService::stop()
+bool UDPService::startService()
 {
-  if (udpInstance)
+  if (!udpHandle || port <= 0)
   {
-    udpInstance->close();
-    udpInstance = nullptr;
+    logger->error("Missing UDP handle or invalid port " + std::to_string(port));
+    return false;
+  }
+  
+  if (udpHandle->listen(port))
+  {
+    udpHandle->onPacket(handleUDPPacket);
+    return true;
+  }
+  logger->error("Failed to start UDP on port " + std::to_string(port));
+  return false;
+}
+
+bool UDPService::stopService()
+{
+  if (udpHandle)
+  {
+    udpHandle->close();
+    if (udpOwned)
+    {
+      delete udpHandle;
+    }
+    udpHandle = nullptr;
+    udp = nullptr;
+    udpOwned = false;
   }
   if (messageMutex)
   {
     vSemaphoreDelete(messageMutex);
     messageMutex = nullptr;
   }
-  return true;    
+  return true;
 }
-bool UDPService::start()
-{
-  if (!udp || port == 0)
-    return false;
-
-  udpInstance = udp;
-  if (udpInstance->listen(port))
-  {
-    udpInstance->onPacket(handleUDPPacket);
-    return true;
-  }
-  return false;
-}
-
 std::string UDPService::buildJson()
 {
+  JsonDocument doc;
 
   if (!messageMutex)
-    return "{\"total\": 0, \"dropped\": 0, \"buffer\": 0, \"messages\": []}";
-
-  std::string json;
+  { doc["port"]=port;
+    doc["total"] = 0;
+    doc["dropped"] = 0;
+    doc["buffer"] = "0/0";
+    doc["messages"] = serialized("[]");
+    String output;
+    serializeJson(doc, output);
+    return std::string(output.c_str());
+  }
 
   if (xSemaphoreTake(messageMutex, 100 / portTICK_PERIOD_MS))
   {
+    doc["total"] = totalMessages;
+    doc["dropped"] = packetsDropped;
 
-    json += "{\"total\":" + std::to_string(totalMessages) + ", ";
-    json += "\"dropped\": " + std::to_string(packetsDropped) + ",";
-    json += "\"buffer\": \"" + std::to_string(messageCount) + "/" + std::to_string(MAX_MESSAGES) + "\", ";
-    json += "\"messages\": [";
+    char bufferStr[16];
+    snprintf(bufferStr, sizeof(bufferStr), "%d/%d", messageCount, MAX_MESSAGES);
+    doc["buffer"] = bufferStr;
+
+    JsonArray messagesArray = doc["messages"].to<JsonArray>();
     int count = (messageCount < MAX_MESSAGES) ? messageCount : MAX_MESSAGES;
     for (int i = 0; i < count; i++)
     {
       int idx = (messageIndex - 1 - i + MAX_MESSAGES) % MAX_MESSAGES;
       if (messages[idx][0] != '\0')
-      {
-        // Escape the message string for JSON
-        std::string escaped = std::string(messages[idx]);
-        size_t pos = 0;
-        while ((pos = escaped.find('\\', pos)) != std::string::npos) {
-          escaped.replace(pos, 1, "\\\\");
-          pos += 2;
-        }
-        pos = 0;
-        while ((pos = escaped.find('"', pos)) != std::string::npos) {
-          escaped.replace(pos, 1, "\\\"");
-          pos += 2;
-        }
-        pos = 0;
-        while ((pos = escaped.find('\n', pos)) != std::string::npos) {
-          escaped.replace(pos, 1, "\\n");
-          pos += 2;
-        }
-        pos = 0;
-        while ((pos = escaped.find('\r', pos)) != std::string::npos) {
-          escaped.replace(pos, 1, "\\r");
-          pos += 2;
-        }
-        json += "\"" + escaped + "\"";
-      }
+        messagesArray.add(messages[idx]);
       else
-      {
-        json += "\"\"";
-      }
-      if (i < count - 1)
-      {
-        json += ",";
-      }
+        messagesArray.add("");
     }
 
-    json += "]}";
     xSemaphoreGive(messageMutex);
   }
   else
   {
-    json = "{\"error\": \"I'm busy (buffer locked), retry later.\"}";
+    doc["error"] = "I'm busy (buffer locked), retry later.";
   }
 
-  return json;
+  String output;
+  serializeJson(doc, output);
+  return std::string(output.c_str());
 }
-
-// bool UDPService::tryCopyDisplay(char *outBuf, int bufLen, int &outTotalMessages)
-// {
-//   if (!messageMutex)
-//     return false;
-//   bool ok = false;
-//   if (xSemaphoreTake(messageMutex, 10 / portTICK_PERIOD_MS))
-//   {
-//     strncpy(outBuf, lastMessage, bufLen - 1);
-//     outBuf[bufLen - 1] = '\0';
-//     outTotalMessages = (int)totalMessages;
-//     xSemaphoreGive(messageMutex);
-//     ok = true;
-//   }
-//   return ok;
-// }
 
 unsigned long UDPService::getDroppedPackets()
 {
@@ -194,11 +199,10 @@ unsigned long UDPService::getDroppedPackets()
   if (messageMutex && xSemaphoreTake(messageMutex, 10 / portTICK_PERIOD_MS))
   {
     dropped = packetsDropped;
-    xSemaphoreGive(messageMutex);    
+    xSemaphoreGive(messageMutex);
   }
   return dropped;
 }
-
 
 unsigned long UDPService::getHandledPackets()
 {
@@ -212,16 +216,47 @@ unsigned long UDPService::getHandledPackets()
 }
 
 
-bool UDPService::registerRoutes(WebServer *server, std::string basePath)
+bool UDPService::registerRoutes()
 {
-  if (!server)
-    return false;
-  std::string path = "/api/" + basePath; 
-  server->on(path.c_str(), HTTP_GET, [server, this]()
+  std::string path = std::string(RoutesConsts::kPathAPI) + getName();
+#ifdef DEBUG
+  logger->debug("Registering " + path);
+#endif
+  
+  // Define response schemas
+  std::vector<OpenAPIResponse> responses;
+  OpenAPIResponse successResponse(200, "UDP server statistics retrieved successfully");
+  successResponse.schema = "{\"type\":\"object\",\"properties\":{\"port\":{\"type\":\"integer\",\"description\":\"UDP listening port\"},\"total\":{\"type\":\"integer\",\"description\":\"Total messages received since start\"},\"dropped\":{\"type\":\"integer\",\"description\":\"Number of packets dropped due to buffer lock\"},\"buffer\":{\"type\":\"string\",\"description\":\"Current buffer usage (used/max)\"},\"messages\":{\"type\":\"array\",\"description\":\"Recent messages with timestamps\",\"items\":{\"type\":\"string\"}},\"error\":{\"type\":\"string\",\"description\":\"Error message if buffer is locked\"}}}";
+  successResponse.example = "{\"port\":12345,\"total\":1523,\"dropped\":5,\"buffer\":\"15/20\",\"messages\":[\"[125 ms] Hello\",\"[230 ms] World\"]}";
+  responses.push_back(successResponse);
+  
+  registerOpenAPIRoute(OpenAPIRoute(path.c_str(), "GET", 
+                                     "Get UDP server statistics including total messages received, dropped packets, buffer usage, and recent message history with inter-arrival times",
+                                     "UDP", false, {}, responses));
+  
+  webserver.on(path.c_str(), HTTP_GET, [this]()
              {
     std::string json = this->buildJson();
-    server->send(200, "application/json", json.c_str()); });
+    webserver.send(200, RoutesConsts::kMimeJSON, json.c_str()); });
 
-  routes.insert(path);
   return true;
+}
+
+std::string UDPService::getName()
+{
+  return "udp/v1";
+}
+
+std::string UDPService::getPath(const std::string& finalpathstring)
+{
+  if (baseServicePath.empty()) {
+    // Cache base path on first call
+    std::string serviceName = getName();
+    size_t slashPos = serviceName.find('/');
+    if (slashPos != std::string::npos) {
+      serviceName = serviceName.substr(0, slashPos);
+    }
+    baseServicePath = std::string(RoutesConsts::kPathAPI) + serviceName + "/";
+  }
+  return baseServicePath + finalpathstring;
 }

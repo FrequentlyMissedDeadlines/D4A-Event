@@ -1,11 +1,11 @@
 /**
- * @file LoggerService.h
+ * @file RollingLogger.h
  * @brief Logger utility for the K10 UDP Receiver project.
  * Provides logging functionalities with different log levels and write logs to screen
  * logs to screen.
- * 
+ *
  */
-
+#pragma once
 #ifndef LOGGER_H
 #define LOGGER_H
 
@@ -13,46 +13,46 @@
 #include <vector>
 /**
  * @class Logger
- * @brief Simple logging utility with log levels and screen output. 
+ * @brief Simple logging utility with log levels and screen output.
  * @todo: Split the log handling and screen rendering into separate classes.
  */
-class LoggerService {
+class RollingLogger
+{
 public:
-    enum LogLevel {
-        DEBUG=3,
-        INFO=2,
-        WARNING=1,
-        ERROR=0
+    enum LogLevel
+    {
+        TRACE = 4,
+        DEBUG = 3,
+        INFO = 2,
+        WARNING = 1,
+        ERROR = 0
     };
-    
-    LoggerService();
-    
+
+    RollingLogger();
+
     void log(const std::string message, const LogLevel level);
+    void trace(const std::string message) { log(message, TRACE); };
     void debug(const std::string message) { log(message, DEBUG); };
     void info(const std::string message) { log(message, INFO); };
     void warning(const std::string message) { log(message, WARNING); };
     void error(const std::string message) { log(message, ERROR); };
-    
+
     void set_log_level(const LogLevel level);
     LogLevel get_log_level();
     void set_max_rows(int rows);
     int get_max_rows();
     void set_logger_viewport(int x, int y, int width, int height);
     void set_logger_text_color(uint16_t color, uint16_t bg_color);
-    
-
 
 private:
     void renderLogs();
-    
-    LogLevel current_log_level;
+
+    LogLevel current_log_level = DEBUG;
     int max_rows;
     int vp_x, vp_y, viewport_width, viewport_height;
     uint16_t text_color;
     uint16_t background_color;
     std::vector<std::pair<LogLevel, std::string>> log_rows;
-
 };
-
 
 #endif

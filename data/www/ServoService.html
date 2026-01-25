@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>om src/sensor/sensor_handler.cpp:1:
+    <title>Servo Control Panel</title>
+      <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>🤖 Servo Control Panel</h1>
+    <p>Control up to 8 servos (channels 0-7)</p>
+    
+    <div class="channel">
+        <h3>Set Servo Angle</h3>
+        <label>Channel (0-7): <input type="number" id="angle_ch" min="0" max="7" value="0"></label>
+        <label>Angle (0-180): <input type="number" id="angle_val" min="0" max="180" value="90"></label>
+        <button onclick="setAngle()">Set Angle</button>
+        <div id="angle_result"></div>
+    </div>
+    
+    <div class="channel">
+        <h3>Set Servo Speed (Continuous Rotation)</h3>
+        <label>Channel (0-7): <input type="number" id="speed_ch" min="0" max="7" value="0"></label>
+        <label>Speed (-100 to 100): <input type="number" id="speed_val" min="-100" max="100" value="50"></label>
+        <button onclick="setSpeed()">Set Speed</button>
+        <div id="speed_result"></div>
+    </div>
+    
+    <div class="channel">
+        <h3>Quick Actions</h3>
+        <button onclick="centerAll()">Center All Servos</button>
+        <button onclick="stopAll()">Stop All Servos</button>
+        <div id="action_result"></div>
+    </div>
+    
+    <div class="status-link">
+        <p><a href="/servo/statuom src/sensor/sensor_handler.cpp:1:s">View Servo Status</a></p>
+    </div>
+    
+    <script>
+    </script>
+</body>
+</html>

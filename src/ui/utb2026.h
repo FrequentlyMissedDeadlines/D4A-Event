@@ -4,18 +4,10 @@
  */
 #include <Arduino.h>
 #include <map>
+#include "services/ServoService.h"
+#pragma once
 
-    
-// ConnectionStatus enum definition
-enum ConnectionStatus
-{
-    NOT_CONNECTED,
-    ROTATIONAL,
-    ANGULAR180,
-    ANGULAR270
-};
 
-class ServoInfo;
 
 class UTB2026
 {
@@ -33,7 +25,7 @@ public:
     void draw_network_info();
 
     const std::string KEY_UDP_STATE = "udp_status";
-    const std::string  KEY_UDP_PORT = "udp_port";
+    const std::string KEY_UDP_PORT = "udp_port";
     const std::string KEY_UDP_IN = "udp_in";
     const std::string KEY_UDP_OUT = "udp_out";
     const std::string KEY_UDP_DROP = "udp_drop";

@@ -6,467 +6,513 @@
 #include <freertos/task.h>
 #include <unihiker_k10.h>
 #include <pgmspace.h>
-#include "../camera/K10Webcam.h"
-#include "../services/LoggerService.h"
-
-
+#include <LittleFS.h>
+#include <FS.h>
+#include <ArduinoJson.h>
+#include <esp_partition.h>
+#include <sstream>
+#include "RollingLogger.h"
+#include "IsOpenAPIInterface.h"
 // Forward declarations for external variables from main.cpp
 std::string master_IP;
 std::string master_TOKEN;
 
 extern UNIHIKER_K10 unihiker;
 
-// JSON Key Constants
-static const std::string JSON_STATUS = "status";
-static const std::string JSON_ERROR = "error";
-static const std::string JSON_OK = "ok";
-static const std::string JSON_REGISTERED = "registered";
-static const std::string JSON_UPTIME_MS = "uptime_ms";
-static const std::string JSON_MASTER_IP = "master_ip";
-static const std::string JSON_MASTER_TOKEN = "master_token";
-static const std::string JSON_HEAP_TOTAL = "heapTotal";
-static const std::string JSON_HEAP_USED = "heapUsed";
-static const std::string JSON_HEAP_FREE = "heapFree";
-static const std::string JSON_HEAP_USAGE_PERCENT = "heapUsagePercent";
-static const std::string JSON_UPTIME_SEC = "uptimeSec";
-static const std::string JSON_UPTIME_MIN = "uptimeMin";
-static const std::string JSON_UPTIME_HOUR = "uptimeHour";
-static const std::string JSON_MAC_ADDRESS = "macAddress";
-static const std::string JSON_WIFI_RSSI = "wifiRssi";
-static const std::string JSON_FREE_STACK_BYTES = "freeStackBytes";
-
-// Pending master registration (when there's a conflict and waiting for user decision)
-static std::string pendingMasterIP = "";
-static std::string pendingMasterToken = "";
-static volatile bool masterConflictPending = false;
-static volatile bool masterConflictAccepted = false;
-static unsigned long conflictStartTime = 0;
-static const unsigned long CONFLICT_TIMEOUT_MS = 15000; // 15 second timeout
-
-static const char WEB_ROOT_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
-<html>
-<head>
-  <title>K10 UDP Receiver</title>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #1e1e1e;
-      color: #e0e0e0;
-      margin: 20px;
-      padding: 20px;
-    }
-    h1 {
-      color: #00d4ff;
-      text-align: center;
-    }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background-color: #2d2d2d;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    }
-    .stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin: 20px 0;
-    }
-    .stat-box {
-      background-color: #3d3d3d;
-      padding: 15px;
-      border-left: 4px solid #00d4ff;
-      border-radius: 4px;
-    }
-    .stat-label {
-      font-size: 12px;
-      color: #888;
-      text-transform: uppercase;
-    }
-    .stat-value {
-      font-size: 28px;
-      font-weight: bold;
-      color: #00ff00;
-    }
-    .messages {
-      background-color: #3d3d3d;
-      padding: 15px;
-      border-radius: 4px;
-      margin-top: 20px;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    .message {
-      background-color: #d0d0d0;
-      padding: 10px;
-      margin: 8px 0;
-      border-left: 3px solid #00ff00;
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      word-break: break-all;
-    }
-    .message-time {
-      color: #888;
-      font-size: 10px;
-      margin-bottom: 4px;
-    }
-    .refresh-info {
-      text-align: center;
-      color: #666;
-      font-size: 12px;
-      margin-top: 20px;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>📡 UDP Receiver</h1>
-    
-    <div class="stats">
-      <div class="stat-box">
-        <div class="stat-label">Total Messages</div>
-        <div class="stat-value" id="total">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Dropped Messages</div>
-        <div class="stat-value" id="dropped">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Buffer Status</div>
-        <div class="stat-value" id="buffer">0/20</div>
-      </div>
-    </div>
-    
-    <div class="messages" id="messagesContainer">
-      <div class="message">Waiting for messages...</div>
-    </div>
-    
-
-  </div>
-  
-  <div class="container">
-    <h1>🧰 Board Status</h1>
-    <div class="stats">
-      <div class="stat-box">
-        <div class="stat-label">Heap Total</div>
-        <div class="stat-value" id="heapTotal">0</div>
-      </div>
-
-      <div class="stat-box">
-        <div class="stat-label">Heap Free</div>
-        <div class="stat-value" id="heapFree">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Uptime (ms)</div>
-        <div class="stat-value" id="uptimeMs">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Free Stack (bytes)</div>
-        <div class="stat-value" id="freeStackBytes">0</div>
-      </div>
-
-    </div>
-  </div>
-  
-  <div class="container">
-    <h1>⚙️ Controls</h1>
-    <button onclick="fetchStats()">Refresh Stats</button>
-    <button onclick="fetchUdpMessages()">Refresh Messages</button>
-  </div>
-  
-  <script>
-    async function fetchStats() {
-      try {
-        const response = await fetch('/api/board');
-        const data = await response.json();
-
-          document.getElementById('heapTotal').textContent = data.heapTotal;
-          document.getElemeclass HTTPService : public HasLoggerInterfacentById('heapFree').textContent = data.heapFree;
-          document.getElementById('uptimeMs').textContent = data.uptimeMs;
-          document.getElementById('freeStackBytes').textContent = data.freeStackBytes;
-      } catch (error) {
-        console.error('Failed to fetch stats:', error);
-      }
-    }
-
-    async function fetchUdpMessages() {
-      try {
-        const response = await fetch('/api/messages');
-        const data = await response.json();
-        const container = document.getElementById('messagesContainer');
-        container.innerHTML = '';
-        data.messages.forEach(msg => {
-          const div = document.createElement('div');
-          div.className = 'message';
-          div.innerHTML = `<div class="message">${msg}</div>`;
-          container.appendChild(div);
-        });
-        document.getElementById('total').textContent = data.total;
-        document.getElementById('dropped').textContent = data.dropped;
-        document.getElementById('buffer').textContent = `${data.buffer}`;
-      } catch (error) {
-        console.error('Failed to fetch UDP messages:', error);
-      }
-    }
-
-    fetchStats();
-    fetchUdpMessages();
-    setInterval(fetchStats, 5000);
-    setInterval(fetchUdpMessages, 3000);
-  </script>
-</body>
-</html>)rawliteral";
 
 
-
-
-
-bool HTTPService::init() {return true; }
-bool HTTPService::start() {return true; }
-bool HTTPService::stop() {return true; }
-
-bool HTTPService::begin(WebServer *server)
+bool HTTPService::initializeService()
 {
-  if (!server)
-  {
 
-    return false;
-  }
-
-
-
-  // Root route - serve embedded index.html
-  server->on("/", HTTP_GET, [server]()
-             {
-
-    server->send_P(200, "text/html", WEB_ROOT_HTML); });
-
-  // Simple status endpoint
-  server->on("/status", HTTP_GET, [server]() {
-
-    std::string status = "{\"" + JSON_STATUS + "\": \"" + JSON_OK + "\", \"" + JSON_UPTIME_MS + "\": " + std::to_string(millis()) + "}";
-    server->send(200, "application/json", status.c_str()); });
-
-  // API endpoint for ESP32 system metrics
-  server->on("/api/system", HTTP_GET, [server]()
-             {
-
-    // Get ESP32 chip information
-    uint32_t freeHeap = ESP.getFreeHeap();
-    uint32_t totalHeap = ESP.getHeapSize();
-    uint32_t usedHeap = totalHeap - freeHeap;
-    float heapUsagePercent = (float)usedHeap / totalHeap * 100.0;
-    
-    // Get uptime
-    uint32_t uptimeMs = millis();
-    uint32_t uptimeSec = uptimeMs / 1000;
-    uint32_t uptimeMin = uptimeSec / 60;
-    uint32_t uptimeHour = uptimeMin / 60;
-    
-    // Get WiFi information
-    uint8_t macAddr[6];
-    WiFi.macAddress(macAddr);
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-             macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
-    
-    // Get task information
-    uint32_t freeStackCore0 = uxTaskGetStackHighWaterMark(NULL);
-    
-    // Build JSON response
-    std::string json = "{";
-    json += "\"" + JSON_HEAP_TOTAL + "\":" + std::to_string(totalHeap) + ",";
-    json += "\"" + JSON_HEAP_USED + "\":" + std::to_string(usedHeap) + ",";
-    json += "\"" + JSON_HEAP_FREE + "\":" + std::to_string(freeHeap) + ",";
-    json += "\"" + JSON_HEAP_USAGE_PERCENT + "\":" + std::to_string(heapUsagePercent) + ",";
-    json += "\"" + JSON_UPTIME_MS + "\":" + std::to_string(uptimeMs) + ",";
-    json += "\"" + JSON_UPTIME_SEC + "\":" + std::to_string(uptimeSec) + ",";
-    json += "\"" + JSON_UPTIME_MIN + "\":" + std::to_string(uptimeMin) + ",";
-    json += "\"" + JSON_UPTIME_HOUR + "\":" + std::to_string(uptimeHour) + ",";
-    json += "\"" + JSON_MAC_ADDRESS + "\":\"" + std::string(macStr) + "\",";
-    json += "\"" + JSON_WIFI_RSSI + "\":" + std::to_string(WiFi.RSSI()) + ",";
-    json += "\"" + JSON_FREE_STACK_BYTES + "\":" + std::to_string(freeStackCore0);
-    json += "}";
-    
-    server->send(200, "application/json", json.c_str()); });
-
-  // API endpoint for JSON data - returns all UDP messages and statistics
-  
-
-  // API endpoint for master registration - PUT to set master IP and generate token
-  server->on("/api/master", HTTP_PUT, [server]()
-             {
-
-    
-    // Check if master_IP is already set
-    if (master_IP.length() > 0) {
-      // Master already registered - show conflict dialog on display
-
-      
-      // Get the client IP address from the request
-      IPAddress clientIP = server->client().remoteIP();
-      pendingMasterIP = clientIP.toString().c_str();
-      
-      // Generate token for the pending master
-      uint8_t macAddr[6];
-      WiFi.macAddress(macAddr);
-      uint32_t randomValue = random(1000000, 9999999);
-      uint32_t timestamp = millis();
-      
-      char tokenBuffer[64];
-      snprintf(tokenBuffer, sizeof(tokenBuffer), 
-               "%02x%02x%02x%02x-%lu-%lu",
-               macAddr[3], macAddr[4], macAddr[5], 
-               (randomValue >> 8) & 0xFF,
-               randomValue, timestamp);
-      
-      pendingMasterToken = tokenBuffer;
-      masterConflictPending = true;
-      masterConflictAccepted = false;
-      conflictStartTime = millis();
-      
-      // Keep the connection open and wait for conflict resolution
-      // Timeout after 2 seconds with default (deny) response
-      while (masterConflictPending && (millis() - conflictStartTime < CONFLICT_TIMEOUT_MS)) {
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-      }
-      
-      // Timeout occurred - ensure masterConflictPending is cleared
-      if (masterConflictPending) {
-        masterConflictPending = false;
-        masterConflictAccepted = false;
-      }
-      
-      // Check if user accepted or timeout occurred
-      if (masterConflictAccepted) {
-        // Accept new master
-        master_IP = pendingMasterIP;
-        master_TOKEN = pendingMasterToken;
-        masterConflictPending = false;
-        
-        std::string json = "{\"" + JSON_STATUS + "\": \"" + JSON_REGISTERED + "\", \"" + JSON_MASTER_IP + "\": \"" + master_IP + "\", \"" + JSON_MASTER_TOKEN + "\": \"" + master_TOKEN + "\"}";
-          server->send(200, "application/json", json.c_str());  
-      } else {
-        
-        masterConflictPending = false;
-        
-        // Deny new master
-        std::string json = "{\"" + JSON_ERROR + "\": \"New master registration denied\", \"" + JSON_MASTER_IP + "\": \"" + master_IP + "\", \"" + JSON_MASTER_TOKEN + "\": \"\"}";
-        server->send(403, "application/json", json.c_str());
-      }
-      return;
-    }
-    
-    // No conflict - register the new master
-    IPAddress clientIP = server->client().remoteIP();
-    master_IP = clientIP.toString().c_str() ;
-    
-    // Generate a new master token - using MAC address + random value + timestamp
-    uint8_t macAddr[6];
-    WiFi.macAddress(macAddr);
-    uint32_t randomValue = random(1000000, 9999999);
-    uint32_t timestamp = millis();
-    
-    char tokenBuffer[64];
-    snprintf(tokenBuffer, sizeof(tokenBuffer), 
-             "%02x%02x%02x%02x-%lu-%lu",
-             macAddr[3], macAddr[4], macAddr[5], 
-             (randomValue >> 8) & 0xFF,
-             randomValue, timestamp);
-    
-    master_TOKEN = tokenBuffer;
-    
-    Serial.printf("Master registered - IP: %s, Token: %s\n", master_IP.c_str(), master_TOKEN.c_str());
-    
-    // Return the token and master IP
-    std::string json = "{\"" + JSON_STATUS + "\": \"" + JSON_REGISTERED + "\", \"" + JSON_MASTER_IP + "\": \"" + master_IP + "\", \"" + JSON_MASTER_TOKEN + "\": \"" + master_TOKEN + "\"}";
-    server->send(200, "application/json", json.c_str()); });
-
-
-  // 404 handler
-  server->onNotFound([server]()
-                     {
-    Serial.printf("404 Not Found: %s\n", server->uri().c_str());
-    server->send(404, "text/plain", "Not Found"); });
-
-
-  server->begin();
   return true;
 }
 
-void HTTPService::handleClient(WebServer *server)
+bool HTTPService::startService()
 {
-  if (server)
+  if (logger)
+    logger->info("Starting HTTP service...");
+
+  // Register base routes but don't start server yet (services need to register first)
+  webserver.begin();
+  serverRunning = true;
+  if (logger)
+    logger->info("WebServer started");
+
+  return true;
+}
+
+bool HTTPService::stopService()
+{
+  try
   {
-    server->handleClient();
+    if (serverRunning)
+    {
+      webserver.stop();
+      serverRunning = false;
+    }
+    return true;
+  }
+  catch (const std::exception &e)
+  {
+    logger->error(std::string(e.what()));
+  }
+  return false;
+}
+
+void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
+{
+  if (service)
+  {
+    openAPIServices.push_back(service);
+#ifdef DEBUG
+    if (logger)
+      logger->debug("Registered services #" + std::to_string(openAPIServices.size()) + ": " + std::to_string(service->getOpenAPIRoutes().size()));
+#endif
   }
 }
 
-// Static callback wrappers for button callbacks
-static void acceptMasterConflictCallback(void)
-{
-  if (masterConflictPending)
-  {
 
-    masterConflictAccepted = true;
-    masterConflictPending = false;
+/**
+ * Handle home page request with route listing  
+ */
+void HTTPService::handleHomeClient(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
   }
+
+  // Use stringstream for efficient string building (avoids O(n²) concatenation)
+  std::stringstream ss;
+  ss << "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>K10 Bot</title></head><body><h1>Routes</h1><h2>List</h2><ul>\n";
+
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    for (const auto &route : routes)
+    {
+      ss << "<li><b>" << route.method << "</b> <a href=\"" << route.path
+         << "\">" << route.path << "</a>:<br>" << route.description << "</li>\n";
+    }
+  }
+  ss << "</ul><h2>Test</h2><a href=\"/test\">Dynamic Test Interface</a></body></html>";
+
+  std::string allroutes = ss.str();
+  webserver->send_P(200, "text/html; charset=utf-8", allroutes.c_str());
 }
 
-static void denyMasterConflictCallback(void)
+/**
+ * Handle test page request with interactive forms for all routes
+ */
+void HTTPService::handleTestClient(WebServer *webserver)
 {
-  if (masterConflictPending)
+  if (!webserver)
   {
-
-    masterConflictAccepted = false;
-    masterConflictPending = false;
-  }
-}
-
-// Handle master registration conflict - called by display task
-void HTTPService::handleMasterConflict(void)
-{
-  if (!masterConflictPending)
-  {
-    return; // No conflict to handle
+    return;
   }
 
-  unsigned long elapsedMs = millis() - conflictStartTime;
-
-  // Display conflict dialog on K10 screen
+  std::stringstream ss;
   
-  logger->info("Current Master IP: " + master_IP);
-  unihiker.buttonA->setPressedCallback(acceptMasterConflictCallback);
-  unihiker.buttonB->setPressedCallback(denyMasterConflictCallback);
+  // HTML header with styles and JavaScript
+  ss << R"(<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>K10 Bot API Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+    h1 { color: #333; }
+    .route-container { background: white; margin: 15px 0; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .route-header { margin-bottom: 10px; }
+    .method { display: inline-block; padding: 4px 8px; border-radius: 3px; font-weight: bold; color: white; margin-right: 10px; }
+    .method-GET { background: #61affe; }
+    .method-POST { background: #49cc90; }
+    .method-PUT { background: #fca130; }
+    .method-DELETE { background: #f93e3e; }
+    .path { font-family: monospace; font-size: 14px; }
+    .description { color: #666; margin: 5px 0; }
+    .param-group { margin: 10px 0; }
+    .param-label { display: block; margin: 5px 0 3px; font-weight: bold; font-size: 13px; }
+    .param-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box; }
+    .btn { padding: 10px 20px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; margin-right: 10px; }
+    .btn-primary { background: #4CAF50; color: white; }
+    .btn-primary:hover { background: #45a049; }
+    .response-area { margin-top: 15px; display: none; }
+    .response-content { background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; padding: 10px; max-height: 300px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+    .error { color: #f93e3e; }
+    .success { color: #49cc90; }
+  </style>
+</head>
+<body>
+  <h1>K10 Bot API Test Interface</h1>
+  <div id="routes-container">
+)";
 
-  logger->info("New Master: " + pendingMasterIP + " ? (A=accept  B=deny)");
+  // Generate forms for each route
+  int formId = 0;
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    for (const auto &route : routes)
+    {
+      ss << "    <div class=\"route-container\">\n";
+      ss << "      <div class=\"route-header\">\n";
+      ss << "        <span class=\"method method-" << route.method << "\">" << route.method << "</span>\n";
+      ss << "        <span class=\"path\">" << route.path << "</span>\n";
+      ss << "      </div>\n";
+      ss << "      <div class=\"description\">" << route.description << "</div>\n";
+      ss << "      <form id=\"form" << formId << "\" onsubmit=\"return testRoute(" << formId << ", '" 
+         << route.method << "', '" << route.path << "')\">\n";
+      
+      // Add input fields for parameters
+      for (const auto &param : route.parameters)
+      {
+        ss << "        <div class=\"param-group\">\n";
+        ss << "          <label class=\"param-label\">" << param.name;
+        if (param.required)
+          ss << " <span style=\"color:red;\">*</span>";
+        ss << " (" << param.in << ", " << param.type << ")</label>\n";
+        ss << "          <input type=\"text\" class=\"param-input\" name=\"" << param.name 
+           << "\" placeholder=\"" << param.description;
+        if (!param.example.empty())
+          ss << " (e.g., " << param.example << ")";
+        ss << "\"";
+        if (!param.defaultValue.empty())
+          ss << " value=\"" << param.defaultValue << "\"";
+        if (param.required)
+          ss << " required";
+        ss << ">\n";
+        ss << "        </div>\n";
+      }
+      
+      ss << "        <button type=\"submit\" class=\"btn btn-primary\">Send " << route.method << " Request</button>\n";
+      ss << "      </form>\n";
+      ss << "      <div class=\"response-area\" id=\"response" << formId << "\">\n";
+      ss << "        <h4>Response:</h4>\n";
+      ss << "        <div class=\"response-content\" id=\"responseContent" << formId << "\"></div>\n";
+      ss << "      </div>\n";
+      ss << "    </div>\n";
+      
+      formId++;
+    }
+  }
 
+  // JavaScript for handling form submissions
+  ss << R"(  </div>
+  <script>
+    function testRoute(formId, method, path) {
+      const form = document.getElementById('form' + formId);
+      const formData = new FormData(form);
+      const responseArea = document.getElementById('response' + formId);
+      const responseContent = document.getElementById('responseContent' + formId);
+      
+      // Build URL with parameters
+      let url = path;
+      const params = new URLSearchParams();
+      
+      for (let [key, value] of formData.entries()) {
+        if (value) {
+          // Check if parameter is in path
+          if (path.includes('{' + key + '}')) {
+            url = url.replace('{' + key + '}', encodeURIComponent(value));
+          } else {
+            params.append(key, value);
+          }
+        }
+      }
+      
+      // Add query parameters for GET or append to URL
+      if (method === 'GET' && params.toString()) {
+        url += '?' + params.toString();
+      }
+      
+      responseContent.innerHTML = 'Loading...';
+      responseArea.style.display = 'block';
+      
+      const fetchOptions = {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      };
+      
+      // For POST/PUT, add body
+      if (method !== 'GET' && params.toString()) {
+        const body = {};
+        for (let [key, value] of params.entries()) {
+          body[key] = value;
+        }
+        fetchOptions.body = JSON.stringify(body);
+      }
+      
+      fetch(url, fetchOptions)
+        .then(response => {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            return response.json().then(data => ({
+              status: response.status,
+              data: JSON.stringify(data, null, 2),
+              ok: response.ok
+            }));
+          } else {
+            return response.text().then(text => ({
+              status: response.status,
+              data: text,
+              ok: response.ok
+            }));
+          }
+        })
+        .then(result => {
+          const className = result.ok ? 'success' : 'error';
+          responseContent.innerHTML = '<span class="' + className + '">Status: ' + result.status + '</span>\n\n' + result.data;
+        })
+        .catch(error => {
+          responseContent.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+        });
+      
+      return false;
+    }
+  </script>
+</body>
+</html>
+)";
 
-
-
-  // Show timeout countdown
-  unsigned long remainingMs = (elapsedMs < CONFLICT_TIMEOUT_MS) ? (CONFLICT_TIMEOUT_MS - elapsedMs) : 0;
-  unsigned long remainingSec = remainingMs / 1000;
-
-
-  // Check for button presses - the K10 should send key events
-  // This will be handled by the main task or key handler
-  // For now, we rely on external code to call:
-  // WebServerModule_acceptMasterConflict() for button A
-  // WebServerModule_denyMasterConflict() for button
+  std::string htmlContent = ss.str();
+  webserver->send_P(200, "text/html; charset=utf-8", htmlContent.c_str());
 }
 
-// Call this when button A is pressed to accept new master
-void HTTPService::acceptMasterConflict(void)
+/**
+ * Handle OpenAPI spec request
+ */
+void HTTPService::handleOpenAPIRequest(WebServer *webserver)
 {
-  acceptMasterConflictCallback();
+  if (!webserver)
+  {
+    return;
+  }
+
+  JsonDocument doc;
+
+  // OpenAPI 3.0.0 header
+  doc["openapi"] = "3.0.0";
+  doc["info"]["title"] = "K10 Bot API";
+  doc["info"]["version"] = "1.0.0";
+  doc["info"]["description"] = "REST API for K10 Bot services";
+
+  JsonObject paths = doc["paths"].to<JsonObject>();
+#ifdef DEBUG
+  logger->debug("Generating OpenAPI services: " + std::to_string(openAPIServices.size()));
+#endif
+  // Aggregate all routes from registered OpenAPI services
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+#ifdef DEBUG
+    logger->debug("Generating OpenAPI routes:  " + std::to_string(routes.size()));
+#endif
+    for (const auto &route : routes)
+    {
+      // Create path object if it doesn't exist
+      JsonObject pathObj = paths[route.path.c_str()].to<JsonObject>();
+
+      // Create method object
+      std::string methodLower = route.method;
+      // Convert to lowercase for OpenAPI spec
+      for (char &c : methodLower)
+        c = tolower(c);
+
+      JsonObject methodObj = pathObj[methodLower.c_str()].to<JsonObject>();
+      methodObj["summary"] = route.summary.empty() ? route.description.c_str() : route.summary.c_str();
+      methodObj["description"] = route.description.c_str();
+
+      // Add tags if available
+      if (!route.tags.empty())
+      {
+        JsonArray tagsArr = methodObj["tags"].to<JsonArray>();
+        for (const auto &tag : route.tags)
+        {
+          tagsArr.add(tag.c_str());
+        }
+      }
+
+      // Add deprecated flag if set
+      if (route.deprecated)
+      {
+        methodObj["deprecated"] = true;
+      }
+
+      // Add parameters
+      if (!route.parameters.empty())
+      {
+        JsonArray paramsArr = methodObj["parameters"].to<JsonArray>();
+        for (const auto &param : route.parameters)
+        {
+          JsonObject paramObj = paramsArr.add<JsonObject>();
+          paramObj["name"] = param.name.c_str();
+          paramObj["in"] = param.in.c_str();
+          paramObj["description"] = param.description.c_str();
+          paramObj["required"] = param.required;
+          
+          JsonObject schemaObj = paramObj["schema"].to<JsonObject>();
+          schemaObj["type"] = param.type.c_str();
+          
+          if (!param.defaultValue.empty())
+          {
+            schemaObj["default"] = param.defaultValue.c_str();
+          }
+          if (!param.example.empty())
+          {
+            paramObj["example"] = param.example.c_str();
+          }
+        }
+      }
+
+      // Add request body if present
+      if (!route.requestBody.schema.empty())
+      {
+        JsonObject reqBodyObj = methodObj["requestBody"].to<JsonObject>();
+        reqBodyObj["description"] = route.requestBody.description.c_str();
+        reqBodyObj["required"] = route.requestBody.required;
+        
+        JsonObject contentObj = reqBodyObj["content"].to<JsonObject>();
+        JsonObject mediaTypeObj = contentObj[route.requestBody.contentType.c_str()].to<JsonObject>();
+        
+        // Parse and add schema if it's a JSON string
+        if (!route.requestBody.schema.empty())
+        {
+          mediaTypeObj["schema"] = serialized(route.requestBody.schema.c_str());
+        }
+        
+        if (!route.requestBody.example.empty())
+        {
+          mediaTypeObj["example"] = serialized(route.requestBody.example.c_str());
+        }
+      }
+
+      // Add responses
+      JsonObject responses = methodObj["responses"].to<JsonObject>();
+      if (!route.responses.empty())
+      {
+        for (const auto &resp : route.responses)
+        {
+          char statusCodeStr[4];
+          snprintf(statusCodeStr, sizeof(statusCodeStr), "%d", resp.statusCode);
+          
+          JsonObject respObj = responses[statusCodeStr].to<JsonObject>();
+          respObj["description"] = resp.description.c_str();
+          
+          if (!resp.schema.empty())
+          {
+            JsonObject contentObj = respObj["content"].to<JsonObject>();
+            JsonObject mediaTypeObj = contentObj[resp.contentType.c_str()].to<JsonObject>();
+            mediaTypeObj["schema"] = serialized(resp.schema.c_str());
+            
+            if (!resp.example.empty())
+            {
+              mediaTypeObj["example"] = serialized(resp.example.c_str());
+            }
+          }
+        }
+      }
+      else
+      {
+        // Fallback to basic response
+        JsonObject response200 = responses["200"].to<JsonObject>();
+        response200["description"] = "Successful response";
+      }
+
+      if (route.requiresAuth)
+      {
+        JsonArray securityArr = methodObj["security"].to<JsonArray>();
+        JsonObject secObj = securityArr.add<JsonObject>();
+        secObj["bearerAuth"] = JsonArray();
+      }
+    }
+  }
+
+  // Add security schemes if any service requires auth
+  bool hasAuthServices = false;
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    for (const auto &route : routes)
+    {
+      if (route.requiresAuth)
+      {
+        hasAuthServices = true;
+        break;
+      }
+    }
+    if (hasAuthServices)
+      break;
+  }
+
+  if (hasAuthServices)
+  {
+    JsonObject components = doc["components"].to<JsonObject>();
+    JsonObject secSchemes = components["securitySchemes"].to<JsonObject>();
+    JsonObject bearerAuth = secSchemes["bearerAuth"].to<JsonObject>();
+    bearerAuth["type"] = "http";
+    bearerAuth["scheme"] = "bearer";
+    bearerAuth["bearerFormat"] = "token";
+  }
+
+  String output;
+  serializeJson(doc, output);
+  webserver->send(200, RoutesConsts::kMimeJSON, output.c_str());
 }
 
-// Call this when button B is pressed to deny new master
-void HTTPService::denyMasterConflict(void)
+void HTTPService::handleClient(WebServer *webserver)
 {
-  denyMasterConflictCallback();
+  if (webserver)
+  {
+    webserver->handleClient();
+  }
+}
+
+
+bool HTTPService::registerRoutes()
+{
+  // Register OpenAPI routes for HTTPService
+  std::vector<OpenAPIResponse> openApiResponses;
+  OpenAPIResponse openApiOk(200, "OpenAPI specification retrieved successfully");
+  openApiOk.schema = "{\"type\":\"object\",\"properties\":{\"openapi\":{\"type\":\"string\"},\"info\":{\"type\":\"object\"},\"paths\":{\"type\":\"object\"}}}";
+  openApiOk.example = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"K10 Bot API\",\"version\":\"1.0.0\"},\"paths\":{}}";
+  openApiResponses.push_back(openApiOk);
+
+  std::string path="/api/openapi.json";
+  registerOpenAPIRoute(OpenAPIRoute(
+      path.c_str(),
+      "GET",
+      "Get OpenAPI 3.0.0 specification for all registered services including paths, parameters, request bodies, and response schemas",
+      "OpenAPI",
+      false, {}, openApiResponses));
+
+  
+  webserver.on("/", HTTP_GET, [this]()
+                { this->handleHomeClient(&webserver); });
+
+  // Test interface endpoint
+  webserver.on("/test", HTTP_GET, [this]()
+                { this->handleTestClient(&webserver); });
+
+  // OpenAPI specification endpoint
+  webserver.on(path.c_str(), HTTP_GET, [this]()
+                { this->handleOpenAPIRequest(&webserver); });
+
+  
+  return true;
+}
+
+std::string HTTPService::getPath(const std::string& finalpathstring)
+{
+  if (baseServicePath.empty()) {
+    baseServicePath = std::string(RoutesConsts::kPathAPI) + getName() + "/";
+  }
+  return baseServicePath + finalpathstring;
+}
+
+std::string HTTPService::getName()
+{
+  return "http/v1";
 }

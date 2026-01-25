@@ -2,35 +2,115 @@
 /**
  * @file ServoService.h
  * @brief Header for servo controller integration with the main application
- * @details Handles servo initialization, control, and HTTP route registration.
+ * @details
+ * - Provides servo initialization, control, and HTTP route registration.
+ * - `registerRoutes()` no longer accepts a `WebServer*` argument; services use
+ *   the global `WebServer webserver` instance that is created in `main.cpp`.
+ *   An `extern WebServer webserver` declaration is provided in
+ *   `IsOpenAPIInterface.h` to make the global accessible to services.
  */
 #pragma once
 
-#include "../services/HasRoutesInterface.h"
 #include "../services/IsServiceInterface.h"
-#include "../services/HasLoggerInterface.h"
+#include "../services/IsOpenAPIInterface.h"
 // Global servo controller instance
+enum ServoModel
+{
+    CONTINUOUS = 0,  // Continuous rotation servo (360° with speed control)
+    ANGULAR_180 = 1, // Standard angular servo (0-180° or 0-270°)
+    ANGULAR_270 = 2  // Standard angular servo (0-180° or 0-270°)
 
-class ServoService : public HasRoutesInterface, public IsServiceInterface, public HasLoggerInterface
+};
+
+enum ConnectionStatus
+{
+    NOT_CONNECTED,
+    ROTATIONAL,
+    ANGULAR180,
+    ANGULAR270
+};
+
+class ServoInfo 
 {
 public:
-    bool init() override;
-    bool start() override;
-    bool stop() override; 
+    ConnectionStatus connectionStatus;
+    int value;
+    ServoInfo(ConnectionStatus connectionStatus, int val) : value(val), connectionStatus(connectionStatus) {}
+    void setValue(int newval) { value = newval; }
+};
 
-    // Set servo angle (wrapper for easier integration)
-     bool setAngle(uint8_t channel, uint16_t angle);
+class ServoService : public IsServiceInterface, public IsOpenAPIInterface
+{
+public:
+    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+    /**
+     * @brief Attach a servo model to a channel.
+     * @param channel Servo channel (0-7 or 5)
+     * @param model ServoModel enum value
+     * @return true if successful, false otherwise
+     */
+    bool attachServo(uint8_t channel, ServoModel model);
 
-    // Set servo speed for continuous rotation
-     bool setSpeed(uint8_t channel, int8_t speed);
+    /**
+     * @brief Set servo angle
+     * @param channel Servo channel (0-7 or 5)
+     * @param angle Angle in degrees (0-180 or 0-270 depending on servo)
+     * @return true if successful, false otherwise
+     */
+    bool setServoAngle(uint8_t channel, uint16_t angle);
+    /**
+     * @brief Set servo speed for continuous rotation
+     * @param channel Servo channel (0-7 or 5)
+     * @param speed Speed value (-100 to +100)
+     * @return true if successful, false otherwise
+     */
+    bool setServoSpeed(uint8_t channel, int8_t speed);
 
-    // Stop servo
-     bool stopServo(uint8_t channel);
+    /**
+     * @brief Set all attached continuous servos to the same speed
+     * @param speed Speed value (-100 to +100) 
+     * @return true if successful, false otherwise
+     */
+    bool setAllServoSpeed(int8_t speed);
 
+    /**
+     * 
+     * @brief Set all attachedangular servos to middle position
+     * @return true if successful, false otherwise
+     */
+    bool setAllServoAngle(u_int16_t angle);
+    
     // Get servo status
-     std::string getStatus(uint8_t channel);
+    /**
+     * @brief Get the status of a servo channel
+     * @param channel Servo channel (0-7 or 5)
+     * @return Json string 
+     */
+    std::string getAttachedServo(uint8_t channel);
+    /**
+     * @brief Get the status of all servo channels
+     * @return Json string
+     */
+    std::string getAllAttachedServos();
 
+    /**
+     * @brief Register HTTP routes for servo control.
+     *
+     * Notes:
+     * - Uses the global `webserver` instance (see `IsOpenAPIInterface.h`).
+     * - Lambdas registered with `webserver.on()` should capture only `this`.
+     *
+     * @return true if registration was successful, false otherwise.
+     */
+    bool registerRoutes() override;
+    std::string getPath(const std::string& finalpathstring) override;
 
+    // Service lifecycle methods (implemented in the .cpp file)
+    bool initializeService() override;
+    bool startService() override;
+    bool stopService() override;
+    std::string getName() override;
 
-    bool registerRoutes(WebServer *server, std::string basePath) override;
+private:
+    std::string baseServicePath;  // Cached for optimization
 };

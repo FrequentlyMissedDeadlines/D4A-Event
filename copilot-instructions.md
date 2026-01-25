@@ -3,7 +3,7 @@
 ## Project context
 - PlatformIO project targeting UniHiker K10 hardware.
 - Real-time constraints; uses FreeRTOS.
-- PlatformIO is installed with `source venv/bin/activate`, and named `pio`.
+- PlatformIO is installed with `source venv/bin/activate`, and named k`pio`.
 
 ## Coding conventions
 - always use GNU C coding style.

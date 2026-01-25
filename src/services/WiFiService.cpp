@@ -151,7 +151,7 @@ bool WifiService::startService()
     WiFi.setHostname(hostname.c_str());
     logger->info("Hostname: " + hostname);
     if (logger) logger->info("Starting WiFi service...");
-    // test with hardcoded credentials for now (you can't reuse this)
+    // test with hardcoded credentials for now (you can't reuse this :)
     bool result = connect_and_fallback("", ""); 
     if (logger) logger->info(result ? "WiFi started successfully" : "WiFi start failed");
         // Set unique hostname based on MAC address

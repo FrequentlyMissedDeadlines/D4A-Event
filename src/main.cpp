@@ -8,11 +8,12 @@
 #include <AsyncUDP.h>
 #include <unihiker_k10.h>
 
-#include "board/BoardInfoService.h"
+#include "services/BoardInfoService.h"
 #include "services/WebcamService.h"
 #include "services/ServoService.h"
 #include "services/UDPService.h"
 #include "services/HTTPService.h"
+#include "services/SettingsService.h"
 #include "sensor/K10sensorsService.h"
 #include "ui/utb2026.h"
 #include "services/RollingLogger.h"
@@ -52,6 +53,7 @@ WifiService wifiService = WifiService();
 WebServer webserver(kWebPort);
 UDPService udpService = UDPService();
 HTTPService httpService = HTTPService();
+SettingsService settingsService = SettingsService();
 K10SensorsService k10sensorsService = K10SensorsService();
 BoardInfoService boardInfo = BoardInfoService();
 ServoService servoService = ServoService();
@@ -128,23 +130,27 @@ namespace
     // If the service supports logging, attach the global debug logger.
     unihiker.rgb->write(0, 32, 0, 0); // pixel0 = red
     service.setLogger(&debugLogger);
-    debugLogger.debug("Service " + service.getName());
+#ifdef DEBUG
+    debugLogger.debug("Service " + service.getServiceName());
+#endif
     if (service.initializeService())
     {
       unihiker.rgb->write(0, 32, 32, 0); // pixel0 = red
       if (!service.startService())
       {
-        appInfoLogger.error(service.getName() + " start failed.");
+        appInfoLogger.error(service.getServiceName() + " start failed.");
       }
       else
       {
         unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
-        appInfoLogger.debug(service.getName() + " started.");
+#ifdef DEBUG
+        appInfoLogger.debug(service.getServiceName() + " started.");
+#endif
       }
     }
     else
     {
-      appInfoLogger.error(service.getName() + " initialize failed.");
+      appInfoLogger.error(service.getServiceName() + " initialize failed.");
     }
 
     // // Register OpenAPI routes if the service implements IsOpenAPIInterface
@@ -154,21 +160,24 @@ namespace
       openapi->registerRoutes();
       try
       {
+#ifdef DEBUG
+        debugLogger.info("OpenAPI registered " + service.getServiceName());
+#endif
         httpService.registerOpenAPIService(openapi);
-        debugLogger.info("OpenAPI registered " + service.getName());
-        debugLogger.debug(std::to_string(openapi->getOpenAPIRoutes().size()));
       }
       catch (const std::exception &e)
       {
-        debugLogger.error("registerOpenAPIService failed for " + service.getName());
+        debugLogger.error("registerOpenAPIService failed for " + service.getServiceName());
       }
     }
     else
     {
-      debugLogger.debug("No OpenAPI service " + service.getName());
+#ifdef DEBUG
+      debugLogger.debug("No OpenAPI for " + service.getServiceName());
+#endif
     }
     unihiker.rgb->write(0, 0, 0, 0); // pixel0 = red
-    sleep(1);
+
     return true;
   }
 
@@ -178,6 +187,7 @@ void setup()
 {
   // Small delay to ensure system stabilizes
   delay(500);
+#ifdef DEBUG
   // Initialize Serial for debugging
   Serial.begin(kSerialBaud);
   delay(1000); // Wait for Serial to initialize
@@ -187,12 +197,15 @@ void setup()
   Serial.flush();
 
   Serial.println("[INIT] Initializing UNIHIKER...");
+#endif
   unihiker.begin();
   unihiker.initScreen(2, 30);
   unihiker.creatCanvas();
   unihiker.setScreenBackground(TFT_DARKGREY);
   unihiker.canvas->canvasClear();
+#ifdef DEBUG
   Serial.println("[INIT] Display initialized");
+#endif
 
   unihiker.rgb->write(0, 0, 0, 0);
   unihiker.rgb->write(1, 0, 0, 0);
@@ -200,9 +213,9 @@ void setup()
   // Initialize the display once via the helper
 
   appInfoLogger.set_logger_viewport(0, 120, 240, 320);
-  appInfoLogger.set_logger_text_color(TFT_WHITE, TFT_DARKCYAN);
+  appInfoLogger.set_logger_text_color(TFT_DARKCYAN, TFT_DARKCYAN);
   appInfoLogger.set_max_rows(8);
-  appInfoLogger.set_log_level(RollingLogger::DEBUG);
+  appInfoLogger.set_log_level(RollingLogger::INFO);
 
   debugLogger.set_logger_text_color(TFT_BLACK, TFT_BLACK);
   debugLogger.set_logger_viewport(0, 40, 240, 200);
@@ -216,15 +229,13 @@ void setup()
     appInfoLogger.error("Fix code.");
     return;
   }
-
   // Register 404 handler before starting services
   webserver.onNotFound([]()
-                       { webserver.send(404, "text/plain", "404 Not Found"); });
+                       { webserver.send(404, RoutesConsts::MimePlainText, "404 Not Found"); });
 
   // Start services and register routes BEFORE webserver.begin()
+  start_service(settingsService);
   start_service(k10sensorsService);
-  debugLogger.info("OK");
-
   start_service(boardInfo);
   start_service(servoService);
   // //start_service(webcamService);
@@ -255,12 +266,10 @@ void setup()
   unihiker.rgb->write(1, 0, 0, 0);
   unihiker.rgb->write(2, 0, 0, 0);
 
-  appInfoLogger.info("SSID:" + wifiService.getSSID());
-  appInfoLogger.info("IP:" + wifiService.getIP());
-  appInfoLogger.info("HostName:" + wifiService.getHostname());
+  appInfoLogger.info("Bot "+wifiService.getHostname()+" started.");
+  appInfoLogger.info(wifiService.getIP() + " " + wifiService.getSSID());
   appInfoLogger.info("UDP port:" + std::to_string(udpService.getPort()));
-  appInfoLogger.info("HTTP port:" + std::to_string(kWebPort));
-
+  
   xTaskCreatePinnedToCore(displayTask, "Display_Task", 4096, nullptr, 1, nullptr, 1);
 }
 

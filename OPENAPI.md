@@ -209,6 +209,14 @@ Set continuous servo speed for rotational servos.
 - `456` - Operation failed
 - `503` - Servo controller not initialized
 
+**Response Schema (200):**
+```json
+{
+  "result": "ok",
+  "message": "setServoSpeed"
+}
+```
+
 ### POST /api/servos/v1/stopAll
 Stop all servos by setting speed to 0.
 
@@ -220,6 +228,14 @@ Stop all servos by setting speed to 0.
 - `422` - Missing or invalid parameters
 - `456` - Operation failed
 - `503` - Servo controller not initialized
+
+**Response Schema (200):**
+```json
+{
+  "result": "ok",
+  "message": "stopAll"
+}
+```
 
 ### GET /api/servos/v1/getStatus
 Get servo type and connection status for a specific channel.
@@ -238,7 +254,7 @@ Get servo type and connection status for a specific channel.
 ```json
 {
   "channel": 0,
-  "status": "ANGULAR180"
+  "connection": "Angular 180"
 }
 ```
 
@@ -254,9 +270,9 @@ Get connection status and type for all 8 servo channels.
 **Response Schema (200):**
 ```json
 {
-  "servos": [
-    {"channel": 0, "status": "ANGULAR180"},
-    {"channel": 1, "status": "NOT_CONNECTED"}
+  "attached_servos": [
+    {"channel": 0, "connection": "Angular 180"},
+    {"channel": 1, "connection": "Not Connected"}
   ]
 }
 ```
@@ -283,6 +299,14 @@ Set all attached angular servos to the same angle simultaneously.
 - `456` - Operation failed
 - `503` - Servo controller not initialized
 
+**Response Schema (200):**
+```json
+{
+  "result": "ok",
+  "message": "setAllServoAngle"
+}
+```
+
 ### POST /api/servos/v1/setAllServoSpeed
 Set all attached continuous rotation servos to the same speed simultaneously.
 
@@ -305,6 +329,14 @@ Set all attached continuous rotation servos to the same speed simultaneously.
 - `456` - Operation failed
 - `503` - Servo controller not initialized
 
+**Response Schema (200):**
+```json
+{
+  "result": "ok",
+  "message": "setAllServoSpeed"
+}
+```
+
 ### POST /api/servos/v1/attachServo
 Register a servo type to a channel before use.
 
@@ -313,13 +345,13 @@ Register a servo type to a channel before use.
 
 **Parameters:**
 - `channel` (integer, required) - Servo channel (0-7)
-- `model` (integer, required) - Servo model type (0=180°, 1=270°, 2=continuous)
+- `connection` (integer, required) - Servo connection type (0=None, 1=continuous, 2=angular 180°, 3=angular 270°)
 
 **Request Body:**
 ```json
 {
   "channel": 0,
-  "model": 0
+  "connection": 2
 }
 ```
 
@@ -328,6 +360,14 @@ Register a servo type to a channel before use.
 - `422` - Missing or invalid parameters
 - `456` - Operation failed
 - `503` - Servo controller not initialized
+
+**Response Schema (200):**
+```json
+{
+  "result": "ok",
+  "message": "attachServo"
+}
+```
 
 ---
 

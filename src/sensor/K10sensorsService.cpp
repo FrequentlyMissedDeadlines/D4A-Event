@@ -9,14 +9,23 @@ extern UNIHIKER_K10 unihiker;
 
 bool K10SensorsService::initializeService()
 {
+  #ifdef DEBUG
+  logger->debug(getServiceName() + " initialize done");
+  #endif
   return true;
 }
 bool K10SensorsService::startService()
 {
+  #ifdef DEBUG  
+  logger->debug(getServiceName() + " start done");
+  #endif
   return true;
 }
 bool K10SensorsService::stopService()
 {
+  #ifdef DEBUG
+  logger->debug(getServiceName() + " stop done");
+  #endif
   return true;
 }
 bool K10SensorsService::sensorReady()
@@ -53,7 +62,7 @@ bool K10SensorsService::registerRoutes()
   static constexpr char kResponseOk[] PROGMEM = "Sensor data retrieved successfully";
   static constexpr char kResponseErr[] PROGMEM = "Sensor initialization or reading failed";
 
-  std::string path = std::string(RoutesConsts::kPathAPI) + getName();
+  std::string path = std::string(RoutesConsts::PathAPI) + getServiceName();
   
 #ifdef DEBUG
   if (logger)
@@ -70,7 +79,7 @@ bool K10SensorsService::registerRoutes()
   errorResponse.schema = R"({"type":"object","properties":{"result":{"type":"string"},"message":{"type":"string"}}})";
   responses.push_back(errorResponse);
 
-  OpenAPIRoute route(path.c_str(), "GET", kRouteDesc, "Sensors", false, {}, responses);
+  OpenAPIRoute route(path.c_str(), RoutesConsts::MethodGET, kRouteDesc, "Sensors", false, {}, responses);
   registerOpenAPIRoute(route);
 
   // Try to initialize AHT20 sensor
@@ -82,7 +91,7 @@ bool K10SensorsService::registerRoutes()
     
     webserver.on(path.c_str(), HTTP_GET, [this]()
     {
-      webserver.send(503, RoutesConsts::kMimeJSON, this->getResultJsonString(RoutesConsts::kResultErr, "Failed to initialize AHT20 sensor").c_str());
+      webserver.send(503, RoutesConsts::MimeJSON, this->getResultJsonString(RoutesConsts::ResultErr, "Failed to initialize AHT20 sensor").c_str());
     });
     return true; // Return true to not block other services
   }
@@ -94,7 +103,7 @@ bool K10SensorsService::registerRoutes()
       
     webserver.on(path.c_str(), HTTP_GET, [this]()
     {
-      webserver.send(503, RoutesConsts::kMimeJSON, this->getResultJsonString(RoutesConsts::kResultErr, "AHT20 sensor measurement not ready during initialization").c_str());
+      webserver.send(503, RoutesConsts::MimeJSON, this->getResultJsonString(RoutesConsts::ResultErr, "AHT20 sensor measurement not ready during initialization").c_str());
     });
     return true; // Return true to not block other services
   }
@@ -106,30 +115,41 @@ bool K10SensorsService::registerRoutes()
   {
     try{
     std::string json = this->getSensorJson();
-    webserver.send(200, RoutesConsts::kMimeJSON, json.c_str());
+    webserver.send(200, RoutesConsts::MimeJSON, json.c_str());
     } catch (...) {
-      webserver.send(500, RoutesConsts::kMimeJSON, this->getResultJsonString(RoutesConsts::kResultErr, "getSensorJson() failed").c_str());
+      webserver.send(503, RoutesConsts::MimeJSON, this->getResultJsonString(RoutesConsts::ResultErr, "getSensorJson() failed").c_str());
     }
   });
+
+  registerSettingsRoutes("Sensors", this);
 
   return true;
 }
 
-std::string K10SensorsService::getName()
+std::string K10SensorsService::getServiceName()
 {
-  return "sensors/v1";
+  return "K10 Sensors Service";
 }
-
+std::string K10SensorsService::getServiceSubPath()
+{
+    return "sensors/v1";
+}
 std::string K10SensorsService::getPath(const std::string& finalpathstring)
 {
   if (baseServicePath.empty()) {
-    // Cache base path on first call
-    std::string serviceName = getName();
-    size_t slashPos = serviceName.find('/');
-    if (slashPos != std::string::npos) {
-      serviceName = serviceName.substr(0, slashPos);
-    }
-    baseServicePath = std::string(RoutesConsts::kPathAPI) + serviceName + "/";
+    baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/";
   }
   return baseServicePath + finalpathstring;
+}
+
+bool K10SensorsService::saveSettings()
+{
+    // To be implemented if needed
+    return true;
+}
+
+bool K10SensorsService::loadSettings()
+{
+    // To be implemented if needed
+    return true;
 }

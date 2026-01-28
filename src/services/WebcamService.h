@@ -52,7 +52,7 @@ public:
      * @brief Get service name
      * @return Service name as string
      */
-    std::string getName() override;
+    std::string getServiceName() override;
 
     /**
      * @brief Get path for route
@@ -60,6 +60,15 @@ public:
      * @return Full API path
      */
     std::string getPath(const std::string& finalpathstring) override;
+
+    /**
+     * @brief Get service subpath component
+     * @return Service subpath
+     */
+    std::string getServiceSubPath() override;
+
+    bool saveSettings() override;
+    bool loadSettings() override;
 
 private:
     bool initialized_;

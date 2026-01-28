@@ -6,9 +6,24 @@
 #include <freertos/task.h>
 #include <ArduinoJson.h>
 
-bool BoardInfoService::initializeService() { return true; }
-bool BoardInfoService::startService() { return true; }
-bool BoardInfoService::stopService() { return true; }
+bool BoardInfoService::initializeService() { 
+    #ifdef DEBUG
+    logger->debug(getServiceName() + " initialize done");
+    #endif
+    return true; 
+}
+bool BoardInfoService::startService() { 
+    #ifdef DEBUG
+    logger->debug(getServiceName() + " start done");
+    #endif
+    return true; 
+}
+bool BoardInfoService::stopService() { 
+    #ifdef DEBUG
+    logger->debug(getServiceName() + " stop done");
+    #endif  
+    return true; 
+}
 
 bool BoardInfoService::registerRoutes()
 {
@@ -19,7 +34,7 @@ bool BoardInfoService::registerRoutes()
   static constexpr char kRouteDesc[] PROGMEM = "Retrieves comprehensive board information including system metrics, memory usage, chip details, and firmware version";
   static constexpr char kResponseDesc[] PROGMEM = "Board information retrieved successfully";
 
-  std::string path = std::string(RoutesConsts::kPathAPI) + getName();
+  std::string path = std::string(RoutesConsts::PathAPI) + getServiceName();
 #ifdef DEBUG
   logger->debug("Registering " + path);
 #endif
@@ -30,7 +45,7 @@ bool BoardInfoService::registerRoutes()
   successResponse.example = kExampleJson;
   responses.push_back(successResponse);
 
-  OpenAPIRoute route(path.c_str(), "GET", kRouteDesc, "Board Info", false, {}, responses);
+  OpenAPIRoute route(path.c_str(), RoutesConsts::MethodGET, kRouteDesc, "Board Info", false, {}, responses);
   registerOpenAPIRoute(route);
   
   webserver.on(path.c_str(), HTTP_GET, []()
@@ -53,26 +68,38 @@ bool BoardInfoService::registerRoutes()
 
                String output;
                serializeJson (doc, output);
-               webserver.send (200, RoutesConsts::kMimeJSON, output.c_str ()); });
+               webserver.send (200, RoutesConsts::MimeJSON, output.c_str ()); });
+
+  registerSettingsRoutes("Board Info", this);
+
   return true;
   // Add board-related routes here
 }
 
-std::string BoardInfoService::getName()
+std::string BoardInfoService::getServiceName()
 {
-  return "board/v1";
+  return "Board info Service";
 }
-
+std::string BoardInfoService::getServiceSubPath()
+{
+    return "board/v1";
+}
 std::string BoardInfoService::getPath(const std::string& finalpathstring)
 {
   if (baseServicePath.empty()) {
-    // Cache base path on first call
-    std::string serviceName = getName();
-    size_t slashPos = serviceName.find('/');
-    if (slashPos != std::string::npos) {
-      serviceName = serviceName.substr(0, slashPos);
-    }
-    baseServicePath = std::string(RoutesConsts::kPathAPI) + serviceName + "/";
+    baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/";
   }
   return baseServicePath + finalpathstring;
+}
+
+bool BoardInfoService::saveSettings()
+{
+    // To be implemented if needed
+    return true;
+}
+
+bool BoardInfoService::loadSettings()
+{
+    // To be implemented if needed
+    return true;
 }

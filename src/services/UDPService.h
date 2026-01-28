@@ -21,11 +21,15 @@ class UDPService : public IsOpenAPIInterface, public IsServiceInterface
 public:
     bool registerRoutes() override;
     std::string getPath(const std::string& finalpathstring) override;
+    std::string getServiceSubPath() override;
     bool initializeService() override;
     bool startService() override;
     bool stopService() override;
-    std::string getName() override;
+    std::string getServiceName() override;
     IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+
+    bool saveSettings() override;
+    bool loadSettings() override;
 
     bool begin(AsyncUDP *udpInstance = nullptr, int listenPort = 0);
     int getPort() const { return port; }

@@ -396,7 +396,7 @@ std::string TemperatureAlertService::getPath(const std::string& finalpathstring)
         if (slashPos != std::string::npos) {
             serviceName = serviceName.substr(0, slashPos);
         }
-        baseServicePath = std::string(RoutesConsts::kPathAPI) + serviceName + "/";
+        baseServicePath = std::string(RoutesConsts::PathAPI) + serviceName + "/";
     }
     return baseServicePath + finalpathstring;
 }
@@ -436,10 +436,10 @@ bool TemperatureAlertService::registerRoutes()
         success.schema = R"({"type":"object","properties":{"result":{"type":"string"},"threshold":{"type":"number"}}})";
         responses.push_back(success);
         
-        OpenAPIResponse error(400, "Invalid threshold value");
+        OpenAPIResponse error(422, "Invalid threshold value");
         responses.push_back(error);
         
-        OpenAPIRoute route(path.c_str(), "POST",
+        OpenAPIRoute route(path.c_str(), RoutesConsts::MethodPOST,
                           "Set the temperature alert threshold",
                           "Temperature Alerts", false, params, responses);
         registerOpenAPIRoute(route);
@@ -461,7 +461,7 @@ bool TemperatureAlertService::registerRoutes()
         OpenAPIResponse success(200, "Alert state updated");
         responses.push_back(success);
         
-        OpenAPIRoute route(path.c_str(), "POST",
+        OpenAPIRoute route(path.c_str(), RoutesConsts::MethodPOST,
                           "Enable or disable temperature alerts",
                           "Temperature Alerts", false, params, responses);
         registerOpenAPIRoute(route);
@@ -496,7 +496,7 @@ void TemperatureAlertService::handleGetStatus()
 void TemperatureAlertService::handleSetThreshold()
 {
     if (!webserver.hasArg("threshold")) {
-        webserver.send(400, "application/json", 
+        webserver.send(422, "application/json", 
                       R"({"result":"error","message":"Missing threshold parameter"})");
         return;
     }
@@ -504,7 +504,7 @@ void TemperatureAlertService::handleSetThreshold()
     float newThreshold = webserver.arg("threshold").toFloat();
     
     if (newThreshold < -40.0 || newThreshold > 85.0) {
-        webserver.send(400, "application/json",
+        webserver.send(422, "application/json",
                       R"({"result":"error","message":"Threshold out of range (-40 to 85)"})");
         return;
     }
@@ -526,7 +526,7 @@ void TemperatureAlertService::handleSetThreshold()
 void TemperatureAlertService::handleEnableAlert()
 {
     if (!webserver.hasArg("enabled")) {
-        webserver.send(400, "application/json",
+        webserver.send(422, "application/json",
                       R"({"result":"error","message":"Missing enabled parameter"})");
         return;
     }

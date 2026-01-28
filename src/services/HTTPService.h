@@ -67,6 +67,12 @@ public:
     std::string getPath(const std::string& finalpathstring) override;
 
     /**
+     * Get service subpath component
+     * @return Service subpath
+     */
+    std::string getServiceSubPath() override;
+
+    /**
      * Register an OpenAPI-enabled service
      * @param service Pointer to service implementing IsOpenAPIInterface
      */
@@ -87,8 +93,10 @@ public:
     virtual bool initializeService() override;
     virtual bool startService() override;
     virtual bool stopService() override;
-    std::string getName() override;
+    std::string getServiceName() override;
 
+    bool saveSettings() override;
+    bool loadSettings() override;
 
 protected:
     std::vector<IsOpenAPIInterface *> openAPIServices;

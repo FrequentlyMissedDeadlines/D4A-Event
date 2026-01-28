@@ -1,10 +1,16 @@
-#TODO for UTB 2026
-* dynamic  setup : 
-  * persist wifi settings to survive reboot
-* add call to NTP for current time
-* move HTML pages info ROM FS
-* test servo control code
-* test camera code
-  * snapshot
-  * stream
-* update openapi with arguments and examples?
+# TODO
+
+1. Services dynamic setup 
+   1. Persist wifi settings to survive reboot
+1. Enable ESP FS
+   1. Move all in code  html / js /css info FS
+   1. Fallback not found to FS serve
+1. Review camera code
+   1. snapshot
+   1. stream
+1. Add tests !!!
+1. Upgrade RollingLogger
+   1. Move display related code out of RollingLogger
+   1. add openapi routes to set log level and get lines 
+1. Add call to NTP for current time  (?)
+

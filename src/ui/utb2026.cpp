@@ -136,7 +136,7 @@ void UTB2026::inc_counter(const std::string &name, long increment)
     }
 };
 
-void UTB2026::update_servo(const char &number, int &value, ConnectionStatus &status)
+void UTB2026::update_servo(const char &number, int &value, ServoConnection &status)
 {
     if (number < 1 || number > 5)
     { return;
@@ -188,10 +188,10 @@ void UTB2026::draw_servos() {
             case ROTATIONAL:
                 statusStrings.push_back("R360");
                 break;
-            case ANGULAR180:
+            case ANGULAR_180:
                 statusStrings.push_back("A180");
                 break;
-            case ANGULAR270:
+            case ANGULAR_270:
                 statusStrings.push_back("A270");
                 break;
             default:

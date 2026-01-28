@@ -7,11 +7,11 @@ struct IsServiceInterface
 {
 public:
     /**
-     * @fn: getName
+     * @fn: getSericeName
      * @brief: Get the name of the service.
      * @return: Service name as a string.
      */
-    virtual std::string getName() = 0;
+    virtual std::string getServiceName() = 0;
     /**
    * @fn: initializeService
    * @brief: Initialize the service.
@@ -36,6 +36,18 @@ public:
      * @return: Pointer to IsOpenAPIInterface if supported, nullptr otherwise.
      */
     virtual class IsOpenAPIInterface* asOpenAPIInterface() { return nullptr; }
+    /**
+     * @fn: saveSettings
+     * @brief: Save service settings.
+     * @return: true if settings were saved successfully, false otherwise.
+     */
+    virtual bool saveSettings() { return true; }
+    /**
+     * @fn: loadSettings
+     * @brief: Load service settings.
+     * @return: true if settings were loaded successfully, false otherwise.
+     */
+    virtual bool loadSettings() { return true; }
 
     bool setLogger(RollingLogger *rollingLogger)
     {

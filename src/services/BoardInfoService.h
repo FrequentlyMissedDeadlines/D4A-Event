@@ -14,11 +14,14 @@ class BoardInfoService : public IsOpenAPIInterface, public IsServiceInterface
 public:
     bool registerRoutes() override;
     std::string getPath(const std::string& finalpathstring) override;
+    std::string getServiceSubPath() override;
     bool initializeService() override ;
     bool startService() override ;
     bool stopService() override ;
-    std::string getName() override;
+    std::string getServiceName() override;
     IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+    bool saveSettings() override;
+    bool loadSettings() override;
 
 private:
     std::string baseServicePath;  // Cached for optimization

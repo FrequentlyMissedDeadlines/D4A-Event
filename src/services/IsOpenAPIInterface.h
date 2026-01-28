@@ -5,6 +5,7 @@
 #include <set>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include "IsServiceInterface.h"
 
 /**
  * @file IsOpenAPIInterface.h
@@ -12,6 +13,51 @@
  * @details Classes implementing this interface can contribute to the aggregated OpenAPI spec
  *          and register their HTTP routes with a WebServer instance.
  */
+
+// Common constants for OpenAPI routes (stored in PROGMEM to save RAM)
+namespace RoutesConsts
+{
+    constexpr const char Result[] PROGMEM = "result";
+    constexpr const char ResultOk[] PROGMEM = "ok";
+    constexpr const char ResultErr[] PROGMEM = "err";
+    constexpr const char PathAPI[] PROGMEM = "/api/";
+    constexpr const char PathOpenAPI[] PROGMEM = "/api/openapi.json";
+    constexpr const char Message[] PROGMEM = "message";
+    constexpr const char MimeJSON[] PROGMEM = "application/json";
+    constexpr const char MimePlainText[] PROGMEM = "text/plain";
+    constexpr const char MsgInvalidParams[] PROGMEM = "Invalid or missing parameter(s).";
+    constexpr const char MsgInvalidValues[] PROGMEM = "Invalid parameter(s) values.";
+    constexpr const char ParamDomain[] PROGMEM = "domain";
+    constexpr const char ParamKey[] PROGMEM = "key";
+    constexpr const char ParamValue[] PROGMEM = "value";
+    constexpr const char FieldError[] PROGMEM = "error";
+    constexpr const char FieldStatus[] PROGMEM = "status";
+    constexpr const char StatusReady[] PROGMEM = "ready";
+    constexpr const char StatusNotInitialized[] PROGMEM = "not_initialized";
+    constexpr const char StatusSensorError[] PROGMEM = "sensor_error";
+    constexpr const char MethodGET[] PROGMEM = "GET";
+    constexpr const char MethodPOST[] PROGMEM = "POST";
+    constexpr const char MethodPUT[] PROGMEM = "PUT";
+    constexpr const char MethodDELETE[] PROGMEM = "DELETE";
+    
+    // OpenAPI type and location strings
+    constexpr const char TypeString[] PROGMEM = "string";
+    constexpr const char TypeInteger[] PROGMEM = "integer";
+    constexpr const char TypeNumber[] PROGMEM = "number";
+    constexpr const char TypeBoolean[] PROGMEM = "boolean";
+    constexpr const char TypeArray[] PROGMEM = "array";
+    constexpr const char TypeObject[] PROGMEM = "object";
+    constexpr const char InQuery[] PROGMEM = "query";
+    constexpr const char InPath[] PROGMEM = "path";
+    constexpr const char InHeader[] PROGMEM = "header";
+    constexpr const char InBody[] PROGMEM = "body";
+    constexpr const char RespMissingParams[] PROGMEM = "Missing or invalid parameters";
+    constexpr const char RespNotInitialized[] PROGMEM = "Service not initialized";
+    constexpr const char RespOperationSuccess[] PROGMEM = "Operation successful";
+    constexpr const char RespOperationFailed[] PROGMEM = "Operation failed";
+    // Common JSON schemas stored in PROGMEM
+    constexpr const char JsonObjectResult[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}}}";
+}
 
 /**
  * @struct OpenAPIParameter
@@ -44,8 +90,8 @@ struct OpenAPIResponse
     std::string schema;       // JSON schema or description of response structure
     std::string example;      // Example response (optional)
     
-    OpenAPIResponse() : statusCode(200), description(""), contentType("application/json"), schema(""), example("") {}
-    OpenAPIResponse(int code, const char* desc, const char* ctype = "application/json")
+    OpenAPIResponse() : statusCode(200), description(""), contentType(RoutesConsts::MimeJSON), schema(""), example("") {}
+    OpenAPIResponse(int code, const char* desc, const char* ctype = RoutesConsts::MimeJSON)
         : statusCode(code), description(desc), contentType(ctype), schema(""), example("") {}
 };
 
@@ -61,9 +107,9 @@ struct OpenAPIRequestBody
     bool required;            // Whether request body is required
     std::string example;      // Example request body (optional)
     
-    OpenAPIRequestBody() : contentType("application/json"), description(""), schema(""), required(false), example("") {}
+    OpenAPIRequestBody() : contentType(RoutesConsts::MimeJSON), description(""), schema(""), required(false), example("") {}
     OpenAPIRequestBody(const char* desc, const char* sch, bool req = true)
-        : contentType("application/json"), description(desc), schema(sch), required(req), example("") {}
+        : contentType(RoutesConsts::MimeJSON), description(desc), schema(sch), required(req), example("") {}
 };
 
 /**
@@ -122,11 +168,18 @@ public:
     virtual bool registerRoutes() = 0;
     
     /**
+     * @fn: getServiceSubPath
+     * @brief: Get the service's subpath component used in API routes
+     * @return: Service subpath (e.g., "servos/v1", "sensors/v1")
+     */
+    virtual std::string getServiceSubPath() = 0;
+    
+    /**
      * @fn: getPath
      * @brief: Construct full API path from service name and final path segment
      * @param finalpathstring: The final path segment to append
      * @return: Full path in format /api/<servicename>/<finalpathstring>
-     * @note: Requires implementing class to also implement IsServiceInterface for getName()
+     * @note: Requires implementing class to also implement IsServiceInterface for getSericeName()
      */
     virtual std::string getPath(const std::string& finalpathstring) = 0;
     
@@ -149,26 +202,82 @@ protected:
         openAPIRoutes.push_back(route);
         return true;
     }
+    
+    /**
+     * @brief Create a standard error response with code 422 for missing/invalid parameters
+     */
+    static OpenAPIResponse createMissingParamsResponse()
+    {
+        return OpenAPIResponse(422, RoutesConsts::RespMissingParams);
+    }
+    
+    /**
+     * @brief Create a standard error response with code 503 for uninitialized service
+     */
+    static OpenAPIResponse createNotInitializedResponse()
+    {
+        return OpenAPIResponse(503, RoutesConsts::RespNotInitialized);
+    }
+    
+    /**
+     * @brief Create a standard success response with code 200 and custom description
+     */
+    static OpenAPIResponse createSuccessResponse(const char* description)
+    {
+        OpenAPIResponse resp(200, description);
+        resp.schema = RoutesConsts::JsonObjectResult;
+        return resp;
+    }
+    
+    /**
+     * @brief Create a standard error response with code 456 for operation failure
+     */
+    static OpenAPIResponse createOperationFailedResponse()
+    {
+        return OpenAPIResponse(456, RoutesConsts::RespOperationFailed);
+    }
 
     std::string getResultJsonString(std::string result, std::string message)
     {
         JsonDocument doc = JsonDocument();
-        doc["result"] = result;
-        doc["message"] = message;
+        doc[RoutesConsts::Result] = result;
+        doc[RoutesConsts::Message] = message;
         String output;
         serializeJson(doc, output);
         return std::string(output.c_str());
     }
-};
 
-namespace RoutesConsts
-{
-    constexpr const char kResult[] = "result";
-    constexpr const char kResultOk[] = "ok";
-    constexpr const char kResultErr[] = "err";
-    constexpr const char kPathAPI[] = "/api/";
-    constexpr const char kMessage[] = "message";
-    constexpr const char kMimeJSON[] = "application/json";
-    constexpr const char kMsgInvalidParams[] = "Invalid or missing parameter(s).";
-    constexpr const char kMsgInvalidValues[] = "Invalid parameter(s) values.";
-}
+    /**
+     * @brief Register standard save/load settings routes for a service
+     * @param serviceName Service name for OpenAPI grouping
+     * @param serviceInstance Pointer to IsServiceInterface instance
+     */
+    void registerSettingsRoutes(const char* serviceName, IsServiceInterface* serviceInstance)
+    {
+        // Save settings route
+        std::string savePath = getPath("saveSettings");
+        std::vector<OpenAPIResponse> saveResponses;
+        saveResponses.push_back(OpenAPIResponse(200, "Settings saved successfully"));
+        registerOpenAPIRoute(OpenAPIRoute(savePath.c_str(), RoutesConsts::MethodGET, "Save own service settings (if exists).", serviceName, false, {}, saveResponses));
+        webserver.on(savePath.c_str(), HTTP_GET, [this, serviceInstance]() {
+            bool success = serviceInstance->saveSettings();
+            std::string response = this->getResultJsonString(
+                success ? RoutesConsts::ResultOk : RoutesConsts::ResultErr,
+                "saveSettings");
+            webserver.send(success ? 200 : 500, RoutesConsts::MimeJSON, response.c_str());
+        });
+
+        // Load settings route
+        std::string loadPath = getPath("loadSettings");
+        std::vector<OpenAPIResponse> loadResponses;
+        loadResponses.push_back(OpenAPIResponse(200, "Settings loaded successfully"));
+        registerOpenAPIRoute(OpenAPIRoute(loadPath.c_str(), RoutesConsts::MethodGET, "Load own service settings (if exists).", serviceName, false, {}, loadResponses));
+        webserver.on(loadPath.c_str(), HTTP_GET, [this, serviceInstance]() {
+            bool success = serviceInstance->loadSettings();
+            std::string response = this->getResultJsonString(
+                success ? RoutesConsts::ResultOk : RoutesConsts::ResultErr,
+                "loadSettings");
+            webserver.send(success ? 200 : 500, RoutesConsts::MimeJSON, response.c_str());
+        });
+    }
+};

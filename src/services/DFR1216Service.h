@@ -23,11 +23,11 @@ public:
     IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
 
     /**
-     * @fn: getName
+     * @fn: getServiceName
      * @brief: Get the name of the service.
      * @return: Service name as a string.
      */
-    std::string getName() override { return "DFR1216/v1"; }
+    std::string getServiceName() override { return "DFR1216 Service"; }
 
     /**
      * @fn: getPath
@@ -38,16 +38,17 @@ public:
     std::string getPath(const std::string& finalpathstring) override
     {
         if (baseServicePath.empty()) {
-            // Cache base path on first call
-            std::string serviceName = getName();
-            size_t slashPos = serviceName.find('/');
-            if (slashPos != std::string::npos) {
-                serviceName = serviceName.substr(0, slashPos);
-            }
-            baseServicePath = std::string(RoutesConsts::kPathAPI) + serviceName + "/";
+            baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceName() + "/";
         }
         return baseServicePath + finalpathstring;
     }
+
+    /**
+     * @fn: getServiceSubPath
+     * @brief: Get the service's subpath component
+     * @return: Service subpath (e.g., "DFR1216/v1")
+     */
+    std::string getServiceSubPath() override { return "DFR1216/v1"; }
 
     /**
      * @fn: initializeService
@@ -99,6 +100,9 @@ public:
      * @return JSON string with status information
      */
     std::string getStatus();
+
+    bool saveSettings() override;
+    bool loadSettings() override;
 
 private:
     bool initialized = false;

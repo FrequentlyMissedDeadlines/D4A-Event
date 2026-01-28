@@ -70,7 +70,10 @@ bool WebcamService::initializeService()
     // Initialize camera
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
+#ifdef DEBUG
         Serial.printf("Camera init failed with error 0x%x\n", err);
+#endif
+        logger->error(getServiceName() + " initialize failed");
         return false;
     }
 
@@ -103,12 +106,23 @@ bool WebcamService::initializeService()
     }
 
     initialized_ = true;
-    Serial.println("Camera initialized successfully");
+#ifdef DEBUG
+
+    logger->debug(getName() + " initialize done");
+    #endif
+
     return true;
 }
 
 bool WebcamService::startService()
 {
+    if (initialized_) {
+    #ifdef DEBUG
+        logger->debug(getName() + " start done");
+    #endif
+    } else {
+        logger->error(getServiceName() + " start failed");
+    }
     return initialized_;
 }
 
@@ -117,8 +131,12 @@ bool WebcamService::stopService()
     if (initialized_) {
         esp_camera_deinit();
         initialized_ = false;
+        #ifdef DEBUG
+        logger->debug(getName() + " stop done");
+        #endif
         return true;
     }
+    logger->error(getServiceName() + " stop failed");
     return false;
 }
 
@@ -152,7 +170,9 @@ camera_fb_t* WebcamService::captureSnapshot()
 
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
+#ifdef DEBUG
         Serial.println("Camera capture failed");
+#endif
         return nullptr;
     }
 
@@ -166,13 +186,13 @@ void WebcamService::handleSnapshot()
     extern WebcamService webcamService;
 
     if (!webcamService.initialized_) {
-        webserver.send(503, "text/plain", kMsgNotInitialized);
+        webserver.send(503, RoutesConsts::MimePlainText, kMsgNotInitialized);
         return;
     }
 
     camera_fb_t *fb = webcamService.captureSnapshot();
     if (!fb) {
-        webserver.send(500, "text/plain", kMsgCaptureError);
+        webserver.send(503, RoutesConsts::MimePlainText, kMsgCaptureError);
         return;
     }
 
@@ -216,15 +236,15 @@ void WebcamService::handleStatus()
                 settings["framesize_name"] = frameSizes[fsIndex];
             }
         } else {
-            doc["status"] = "sensor_error";
+            doc[RoutesConsts::FieldStatus] = RoutesConsts::StatusSensorError;
         }
     } else {
-        doc["status"] = "not_initialized";
+        doc[RoutesConsts::FieldStatus] = RoutesConsts::StatusNotInitialized;
     }
 
     String response;
     serializeJson(doc, response);
-    webserver.send(200, "application/json", response);
+    webserver.send(200, RoutesConsts::MimeJSON, response);
 }
 
 bool WebcamService::registerRoutes()
@@ -240,10 +260,9 @@ bool WebcamService::registerRoutes()
     snapshotOk.contentType = "image/jpeg";
     snapshotOk.schema = "{\"type\":\"string\",\"format\":\"binary\",\"description\":\"JPEG image data\"}";
     snapshotResponses.push_back(snapshotOk);
-    snapshotResponses.push_back(OpenAPIResponse(500, "Failed to capture image"));
     snapshotResponses.push_back(OpenAPIResponse(503, "Camera not initialized"));
     
-    registerOpenAPIRoute(OpenAPIRoute(snapshotPath.c_str(), "GET", 
+    registerOpenAPIRoute(OpenAPIRoute(snapshotPath.c_str(), RoutesConsts::MethodGET, 
                                       "Capture and return a JPEG snapshot from the camera in real-time. Image format is SVGA (800x600) by default with quality setting of 12.",
                                       "Webcam", false, {}, snapshotResponses));
     webserver.on(snapshotPath.c_str(), HTTP_GET, handleSnapshot);
@@ -260,29 +279,46 @@ bool WebcamService::registerRoutes()
     statusOk.example = "{\"initialized\":true,\"status\":\"ready\",\"settings\":{\"framesize\":9,\"framesize_name\":\"SVGA\",\"quality\":12,\"brightness\":0,\"contrast\":0,\"saturation\":0}}";
     statusResponses.push_back(statusOk);
     
-    registerOpenAPIRoute(OpenAPIRoute(statusPath.c_str(), "GET", 
+    registerOpenAPIRoute(OpenAPIRoute(statusPath.c_str(), RoutesConsts::MethodGET, 
                                       "Get camera initialization status, current settings including frame size, quality, brightness, contrast, and saturation levels",
                                       "Webcam", false, {}, statusResponses));
     webserver.on(statusPath.c_str(), HTTP_GET, handleStatus);
 
+    registerSettingsRoutes("Webcam", this);
+
     return true;
 }
 
-std::string WebcamService::getName()
+std::string WebcamService::getServiceName()
+{
+    return "Webcam Service";
+}
+std::string WebcamService::getServiceSubPath()
 {
     return "webcam/v1";
 }
-
 std::string WebcamService::getPath(const std::string& finalpathstring)
 {
     if (baseServicePath_.empty()) {
         // Cache base path on first call
-        std::string serviceName = getName();
+        std::string serviceName = getServiceSubPath();
         size_t slashPos = serviceName.find('/');
         if (slashPos != std::string::npos) {
             serviceName = serviceName.substr(0, slashPos);
         }
-        baseServicePath_ = std::string(RoutesConsts::kPathAPI) + serviceName + "/";
+        baseServicePath_ = std::string(RoutesConsts::PathAPI) + serviceName + "/";
     }
     return baseServicePath_ + finalpathstring;
+}
+
+bool WebcamService::saveSettings()
+{
+    // To be implemented if needed
+    return true;
+}
+
+bool WebcamService::loadSettings()
+{
+    // To be implemented if needed
+    return true;
 }

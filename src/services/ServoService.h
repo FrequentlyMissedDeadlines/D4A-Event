@@ -13,29 +13,22 @@
 
 #include "../services/IsServiceInterface.h"
 #include "../services/IsOpenAPIInterface.h"
-// Global servo controller instance
-enum ServoModel
-{
-    CONTINUOUS = 0,  // Continuous rotation servo (360° with speed control)
-    ANGULAR_180 = 1, // Standard angular servo (0-180° or 0-270°)
-    ANGULAR_270 = 2  // Standard angular servo (0-180° or 0-270°)
 
-};
 
-enum ConnectionStatus
+enum ServoConnection
 {
-    NOT_CONNECTED,
-    ROTATIONAL,
-    ANGULAR180,
-    ANGULAR270
+    NOT_CONNECTED=0,
+    ROTATIONAL=1,
+    ANGULAR_180=2,
+    ANGULAR_270=3
 };
 
 class ServoInfo 
 {
 public:
-    ConnectionStatus connectionStatus;
+    ServoConnection connectionStatus;
     int value;
-    ServoInfo(ConnectionStatus connectionStatus, int val) : value(val), connectionStatus(connectionStatus) {}
+    ServoInfo(ServoConnection connectionStatus, int val) : value(val), connectionStatus(connectionStatus) {}
     void setValue(int newval) { value = newval; }
 };
 
@@ -46,10 +39,10 @@ public:
     /**
      * @brief Attach a servo model to a channel.
      * @param channel Servo channel (0-7 or 5)
-     * @param model ServoModel enum value
+     * @param connection ServoConnection enum value
      * @return true if successful, false otherwise
      */
-    bool attachServo(uint8_t channel, ServoModel model);
+    bool attachServo(uint8_t channel, ServoConnection connection);
 
     /**
      * @brief Set servo angle
@@ -104,12 +97,16 @@ public:
      */
     bool registerRoutes() override;
     std::string getPath(const std::string& finalpathstring) override;
+    std::string getServiceSubPath() override;
 
     // Service lifecycle methods (implemented in the .cpp file)
     bool initializeService() override;
     bool startService() override;
     bool stopService() override;
-    std::string getName() override;
+    std::string getServiceName() override;
+
+    bool saveSettings() override;
+    bool loadSettings() override;
 
 private:
     std::string baseServicePath;  // Cached for optimization

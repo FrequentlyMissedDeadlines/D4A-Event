@@ -29,8 +29,6 @@ static const char kMsgMissingParamsMotor[] PROGMEM = "Missing required parameter
 // JSON key constants in PROGMEM
 static const char JSON_SERVICE[] PROGMEM = "service";
 static const char JSON_INITIALIZED[] PROGMEM = "initialized";
-static const char JSON_STATUS[] PROGMEM = "status";
-static const char JSON_ERROR[] PROGMEM = "error";
 static const char JSON_SUCCESS[] PROGMEM = "success";
 static const char JSON_CHANNEL[] PROGMEM = "channel";
 static const char JSON_ANGLE[] PROGMEM = "angle";
@@ -45,6 +43,28 @@ static const char kJsonErrorSuffix[] PROGMEM = "\"}";
 static const char kRouteSetServoAngle[] = "/api/dfr1216/setServoAngle";
 static const char kRouteSetMotorSpeed[] = "/api/dfr1216/setMotorSpeed";
 static const char kRouteGetStatus[] = "/api/dfr1216/getStatus";
+
+// DFR1216-specific OpenAPI constants namespace
+namespace DFR1216Consts {
+    // Parameter names
+    static const char ParamChannel[] PROGMEM = "channel";
+    static const char ParamMotor[] PROGMEM = "motor";
+    static const char ParamAngle[] PROGMEM = "angle";
+    static const char ParamSpeed[] PROGMEM = "speed";
+    
+    // Schema definitions
+    static const char SchemaChannelAngle[] PROGMEM = "{\"type\":\"object\",\"required\":[\"channel\",\"angle\"],\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":5},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":180}}}";
+    static const char SchemaMotorSpeed[] PROGMEM = "{\"type\":\"object\",\"required\":[\"motor\",\"speed\"],\"properties\":{\"motor\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":4},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}}}";
+    static const char SchemaServiceStatus[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"service\":{\"type\":\"string\"},\"initialized\":{\"type\":\"boolean\"}}}";
+    
+    // Request body schemas
+    static const char ReqChannelAngle05[] PROGMEM = "{\"type\":\"object\",\"required\":[\"channel\",\"angle\"],\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":5},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":180}}}";
+    static const char ReqMotorSpeed[] PROGMEM = "{\"type\":\"object\",\"required\":[\"motor\",\"speed\"],\"properties\":{\"motor\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":4},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}}}";
+    
+    // Example values
+    static const char ExChannelAngle[] PROGMEM = "{\"channel\":0,\"angle\":90}";
+    static const char ExMotorSpeed[] PROGMEM = "{\"motor\":1,\"speed\":50}";
+}
 
 // Helper function to create JSON error response
 static inline String createJsonError(const __FlashStringHelper* msg)
@@ -171,7 +191,7 @@ std::string DFR1216Service::getStatus()
     JsonDocument doc;
     doc[FPSTR(JSON_SERVICE)] = "DFR1216Service";
     doc[FPSTR(JSON_INITIALIZED)] = initialized;
-    doc[FPSTR(JSON_STATUS)] = initialized ? "running" : "not initialized";
+    doc[RoutesConsts::FieldStatus] = initialized ? "running" : "not initialized";
 
     std::string output;
     serializeJson(doc, output);
@@ -182,55 +202,55 @@ bool DFR1216Service::registerRoutes()
 {
     // Define parameters for servo angle endpoint
     std::vector<OpenAPIParameter> servoParams;
-    servoParams.push_back(OpenAPIParameter("channel", "integer", "body", "Servo channel (0-5)", true));
-    servoParams.push_back(OpenAPIParameter("angle", "integer", "body", "Angle in degrees (0-180)", true));
+    servoParams.push_back(OpenAPIParameter(DFR1216Consts::ParamChannel, RoutesConsts::TypeInteger, RoutesConsts::InQuery, "Servo channel (0-5)", true));
+    servoParams.push_back(OpenAPIParameter(DFR1216Consts::ParamAngle, RoutesConsts::TypeInteger, RoutesConsts::InQuery, "Angle in degrees (0-180)", true));
     
     std::vector<OpenAPIResponse> servoResponses;
     OpenAPIResponse servoOk(200, "Servo angle set successfully");
-    servoOk.schema = "{\"type\":\"object\",\"properties\":{\"status\":{\"type\":\"string\"},\"channel\":{\"type\":\"integer\"},\"angle\":{\"type\":\"integer\"}}}";
+    servoOk.schema = DFR1216Consts::SchemaChannelAngle;
     servoOk.example = "{\"status\":\"success\",\"channel\":0,\"angle\":90}";
     servoResponses.push_back(servoOk);
-    servoResponses.push_back(OpenAPIResponse(422, "Missing or invalid parameters"));
-    servoResponses.push_back(OpenAPIResponse(503, "DFR1216 not initialized"));
+    servoResponses.push_back(createMissingParamsResponse());
+    servoResponses.push_back(createNotInitializedResponse());
 
-    OpenAPIRoute servoRoute(getPath(kRouteSetServoAngle).c_str(), "POST", 
+    OpenAPIRoute servoRoute(getPath(kRouteSetServoAngle).c_str(), RoutesConsts::MethodPOST, 
                             "Set the angle of a servo motor on the DFR1216 expansion board", 
                             "DFR1216", false, servoParams, servoResponses);
     servoRoute.requestBody = OpenAPIRequestBody("Servo control parameters", 
-        "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":5},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":180}},\"required\":[\"channel\",\"angle\"]}", true);
-    servoRoute.requestBody.example = "{\"channel\":0,\"angle\":90}";
+        DFR1216Consts::ReqChannelAngle05, true);
+    servoRoute.requestBody.example = DFR1216Consts::ExChannelAngle;
     openAPIRoutes.push_back(servoRoute);
 
     // Define parameters for motor speed endpoint
     std::vector<OpenAPIParameter> motorParams;
-    motorParams.push_back(OpenAPIParameter("motor", "integer", "body", "Motor number (1-4)", true));
-    motorParams.push_back(OpenAPIParameter("speed", "integer", "body", "Speed percentage (-100 to +100)", true));
+    motorParams.push_back(OpenAPIParameter(DFR1216Consts::ParamMotor, RoutesConsts::TypeInteger, RoutesConsts::InQuery, "Motor number (1-4)", true));
+    motorParams.push_back(OpenAPIParameter(DFR1216Consts::ParamSpeed, RoutesConsts::TypeInteger, RoutesConsts::InQuery, "Speed percentage (-100 to +100)", true));
     
     std::vector<OpenAPIResponse> motorResponses;
     OpenAPIResponse motorOk(200, "Motor speed set successfully");
-    motorOk.schema = "{\"type\":\"object\",\"properties\":{\"status\":{\"type\":\"string\"},\"motor\":{\"type\":\"integer\"},\"speed\":{\"type\":\"integer\"}}}";
+    motorOk.schema = DFR1216Consts::SchemaMotorSpeed;
     motorOk.example = "{\"status\":\"success\",\"motor\":1,\"speed\":75}";
     motorResponses.push_back(motorOk);
-    motorResponses.push_back(OpenAPIResponse(422, "Missing or invalid parameters"));
-    motorResponses.push_back(OpenAPIResponse(503, "DFR1216 not initialized"));
+    motorResponses.push_back(createMissingParamsResponse());
+    motorResponses.push_back(createNotInitializedResponse());
 
-    OpenAPIRoute motorRoute(getPath(kRouteSetMotorSpeed).c_str(), "POST",
+    OpenAPIRoute motorRoute(getPath(kRouteSetMotorSpeed).c_str(), RoutesConsts::MethodPOST,
                             "Set the speed and direction of a DC motor on the DFR1216 expansion board",
                             "DFR1216", false, motorParams, motorResponses);
     motorRoute.requestBody = OpenAPIRequestBody("Motor control parameters",
-        "{\"type\":\"object\",\"properties\":{\"motor\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":4},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}},\"required\":[\"motor\",\"speed\"]}", true);
-    motorRoute.requestBody.example = "{\"motor\":1,\"speed\":75}";
+        DFR1216Consts::ReqMotorSpeed, true);
+    motorRoute.requestBody.example = DFR1216Consts::ExMotorSpeed;
     openAPIRoutes.push_back(motorRoute);
 
     // Define status endpoint
     std::vector<OpenAPIResponse> statusResponses;
     OpenAPIResponse statusOk(200, "Status retrieved successfully");
-    statusOk.schema = "{\"type\":\"object\",\"properties\":{\"service\":{\"type\":\"string\"},\"initialized\":{\"type\":\"boolean\"},\"status\":{\"type\":\"string\"}}}";
+    statusOk.schema = DFR1216Consts::SchemaServiceStatus;
     statusOk.example = "{\"service\":\"DFR1216Service\",\"initialized\":true,\"status\":\"running\"}";
     statusResponses.push_back(statusOk);
 
     openAPIRoutes.push_back(
-        OpenAPIRoute(getPath(kRouteGetStatus).c_str(), "GET",
+        OpenAPIRoute(getPath(kRouteGetStatus).c_str(), RoutesConsts::MethodGET,
                      "Get initialization status and operational state of the DFR1216 expansion board",
                      "DFR1216", false, {}, statusResponses));
 
@@ -247,6 +267,8 @@ bool DFR1216Service::registerRoutes()
                  [this]()
                  { this->handleGetStatus(); });
 
+    registerSettingsRoutes("DFR1216", this);
+
     logger->info("DFR1216Service routes registered");
     return true;
 }
@@ -255,13 +277,13 @@ void DFR1216Service::handleSetServoAngle()
 {
     if (!initialized)
     {
-        webserver.send(503, RoutesConsts::kMimeJSON, createJsonError(FPSTR(kMsgNotInitialized)));
+        webserver.send(503, RoutesConsts::MimeJSON, createJsonError(FPSTR(kMsgNotInitialized)));
         return;
     }
 
     if (!webserver.hasArg(kParamChannel) || !webserver.hasArg(kParamAngle))
     {
-        webserver.send(422, RoutesConsts::kMimeJSON, createJsonError(FPSTR(kMsgMissingParamsServo)));
+        webserver.send(422, RoutesConsts::MimeJSON, createJsonError(FPSTR(kMsgMissingParamsServo)));
         return;
     }
 
@@ -271,17 +293,17 @@ void DFR1216Service::handleSetServoAngle()
     if (setServoAngle(channel, angle))
     {
         JsonDocument doc;
-        doc[FPSTR(JSON_STATUS)] = FPSTR(JSON_SUCCESS);
+        doc[RoutesConsts::FieldStatus] = FPSTR(JSON_SUCCESS);
         doc[FPSTR(JSON_CHANNEL)] = channel;
         doc[FPSTR(JSON_ANGLE)] = angle;
         
         std::string response;
         serializeJson(doc, response);
-        webserver.send(200, RoutesConsts::kMimeJSON, response.c_str());
+        webserver.send(200, RoutesConsts::MimeJSON, response.c_str());
     }
     else
     {
-        webserver.send(456, RoutesConsts::kMimeJSON, createJsonError(FPSTR(kMsgFailed)));
+        webserver.send(456, RoutesConsts::MimeJSON, createJsonError(FPSTR(kMsgFailed)));
     }
 }
 
@@ -289,13 +311,13 @@ void DFR1216Service::handleSetMotorSpeed()
 {
     if (!initialized)
     {
-        webserver.send(503, RoutesConsts::kMimeJSON, createJsonError(FPSTR(kMsgNotInitialized)));
+        webserver.send(503, RoutesConsts::MimeJSON, createJsonError(FPSTR(kMsgNotInitialized)));
         return;
     }
 
     if (!webserver.hasArg(kParamMotor) || !webserver.hasArg(kParamSpeed))
     {
-        webserver.send(422, RoutesConsts::kMimeJSON, createJsonError(FPSTR(kMsgMissingParamsMotor)));
+        webserver.send(422, RoutesConsts::MimeJSON, createJsonError(FPSTR(kMsgMissingParamsMotor)));
         return;
     }
 
@@ -305,22 +327,34 @@ void DFR1216Service::handleSetMotorSpeed()
     if (setMotorSpeed(motor, speed))
     {
         JsonDocument doc;
-        doc[FPSTR(JSON_STATUS)] = FPSTR(JSON_SUCCESS);
+        doc[RoutesConsts::FieldStatus] = FPSTR(JSON_SUCCESS);
         doc[FPSTR(JSON_MOTOR)] = motor;
         doc[FPSTR(JSON_SPEED)] = speed;
         
         std::string response;
         serializeJson(doc, response);
-        webserver.send(200, RoutesConsts::kMimeJSON, response.c_str());
+        webserver.send(200, RoutesConsts::MimeJSON, response.c_str());
     }
     else
     {
-        webserver.send(456, RoutesConsts::kMimeJSON, createJsonError(FPSTR(kMsgFailed)));
+        webserver.send(456, RoutesConsts::MimeJSON, createJsonError(FPSTR(kMsgFailed)));
     }
 }
 
 void DFR1216Service::handleGetStatus()
 {
     std::string status = getStatus();
-    webserver.send(200, RoutesConsts::kMimeJSON, status.c_str());
+    webserver.send(200, RoutesConsts::MimeJSON, status.c_str());
+}
+
+bool DFR1216Service::saveSettings()
+{
+    // To be implemented if needed
+    return true;
+}
+
+bool DFR1216Service::loadSettings()
+{
+    // To be implemented if needed
+    return true;
 }

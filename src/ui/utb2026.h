@@ -15,7 +15,7 @@ public:
     void init();
     void set_info(const std::string &key, const std::string &value);
     void inc_counter(const std::string &name, long increment = 1);
-    void update_servo(const char &number, int &value, ConnectionStatus &status);
+    void update_servo(const char &number, int &value, ServoConnection &status);
     std::map<std::string, std::string> get_infos();
     std::string get_info(std::string key, std::string default_value = "?");
     std::map<std::string, long> get_counters();

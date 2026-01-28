@@ -17,11 +17,15 @@ public:
     std::string getSSID();
     std::string getHostname();
     
-    std::string getName() override;
+    std::string getServiceName() override;
     
     bool initializeService() override;
     bool startService() override;
     bool stopService() override;
+
+    bool saveSettings() override;
+    bool loadSettings() override;
+
 protected:
     bool open_access_point();
     bool connect_to_wifi(std::string ssid, std::string password);

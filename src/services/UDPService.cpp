@@ -106,6 +106,9 @@ bool UDPService::initializeService()
   {
     messageMutex = xSemaphoreCreateMutex();
   }
+  #ifdef DEBUG
+  logger->debug(getName() + " initialize done");
+  #endif
   return true;
 }
 
@@ -120,9 +123,13 @@ bool UDPService::startService()
   if (udpHandle->listen(port))
   {
     udpHandle->onPacket(handleUDPPacket);
+  #ifdef DEBUG
+    logger->debug(getName() + " start done");
+  #endif
     return true;
   }
   logger->error("Failed to start UDP on port " + std::to_string(port));
+  logger->error(getServiceName() + " start failed");
   return false;
 }
 
@@ -144,6 +151,9 @@ bool UDPService::stopService()
     vSemaphoreDelete(messageMutex);
     messageMutex = nullptr;
   }
+  #ifdef DEBUG
+    logger->debug(getName() + " stop done");
+  #endif
   return true;
 }
 std::string UDPService::buildJson()
@@ -185,7 +195,7 @@ std::string UDPService::buildJson()
   }
   else
   {
-    doc["error"] = "I'm busy (buffer locked), retry later.";
+    doc[RoutesConsts::FieldError] = "I'm busy (buffer locked), retry later.";
   }
 
   String output;
@@ -218,7 +228,7 @@ unsigned long UDPService::getHandledPackets()
 
 bool UDPService::registerRoutes()
 {
-  std::string path = std::string(RoutesConsts::kPathAPI) + getName();
+  std::string path = std::string(RoutesConsts::PathAPI) + getServiceName();
 #ifdef DEBUG
   logger->debug("Registering " + path);
 #endif
@@ -230,33 +240,44 @@ bool UDPService::registerRoutes()
   successResponse.example = "{\"port\":12345,\"total\":1523,\"dropped\":5,\"buffer\":\"15/20\",\"messages\":[\"[125 ms] Hello\",\"[230 ms] World\"]}";
   responses.push_back(successResponse);
   
-  registerOpenAPIRoute(OpenAPIRoute(path.c_str(), "GET", 
+  registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::MethodGET,
                                      "Get UDP server statistics including total messages received, dropped packets, buffer usage, and recent message history with inter-arrival times",
                                      "UDP", false, {}, responses));
   
   webserver.on(path.c_str(), HTTP_GET, [this]()
              {
     std::string json = this->buildJson();
-    webserver.send(200, RoutesConsts::kMimeJSON, json.c_str()); });
+    webserver.send(200, RoutesConsts::MimeJSON, json.c_str()); });
+
+  registerSettingsRoutes("UDP", this);
 
   return true;
 }
 
-std::string UDPService::getName()
+std::string UDPService::getServiceName()
 {
-  return "udp/v1";
+  return "UDP Service";
 }
-
+std::string UDPService::getServiceSubPath()
+{
+    return "udp/v1";
+}
 std::string UDPService::getPath(const std::string& finalpathstring)
 {
   if (baseServicePath.empty()) {
-    // Cache base path on first call
-    std::string serviceName = getName();
-    size_t slashPos = serviceName.find('/');
-    if (slashPos != std::string::npos) {
-      serviceName = serviceName.substr(0, slashPos);
-    }
-    baseServicePath = std::string(RoutesConsts::kPathAPI) + serviceName + "/";
+    baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/";
   }
   return baseServicePath + finalpathstring;
+}
+
+bool UDPService::saveSettings()
+{
+    // To be implemented if needed
+    return true;
+}
+
+bool UDPService::loadSettings()
+{
+    // To be implemented if needed
+    return true;
 }

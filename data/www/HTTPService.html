@@ -1,0 +1,66 @@
+<html>
+<head>
+  <title>K10 UDP Receiver</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>📡 UDP Receiver</h1>
+    
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-label">Total Messages</div>
+        <div class="stat-value" id="total">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Dropped Messages</div>
+        <div class="stat-value" id="dropped">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Buffer Status</div>
+        <div class="stat-value" id="buffer">0/20</div>
+      </div>
+    </div>
+    
+    <div class="messages" id="messagesContainer">
+      <div class="message">Waiting for messages...</div>
+    </div>
+    
+
+  </div>
+  
+  <div class="container">
+    <h1>🧰 Board Status</h1>
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-label">Heap Total</div>
+        <div class="stat-value" id="heapTotal">0</div>
+      </div>
+
+      <div class="stat-box">
+        <div class="stat-label">Heap Free</div>
+        <div class="stat-value" id="heapFree">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Uptime (ms)</div>
+        <div class="stat-value" id="uptimeMs">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Free Stack (bytes)</div>
+        <div class="stat-value" id="freeStackBytes">0</div>
+      </div>
+
+    </div>
+  </div>
+  
+  <div class="container">
+    <h1>⚙️ Controls</h1>
+    <button onclick="fetchStats()">Refresh Stats</button>
+    <button onclick="fetchUdpMessages()">Refresh Messages</button>
+  </div>
+  
+  <script></script>
+</body>
+</html>

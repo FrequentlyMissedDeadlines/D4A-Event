@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>K10 Bot API Test</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="./favicon.ico">
+  <style>
+    .route-container { background: white; margin: 15px 0; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .route-header { margin-bottom: 10px; }
+    .param-group { margin: 10px 0; }
+    .param-label { display: block; margin: 5px 0 3px; font-weight: bold; font-size: 13px; }
+    .param-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box; }
+    .btn-primary { background: #4CAF50; color: white; }
+    .btn-primary:hover { background: #45a049; }
+    .response-area { margin-top: 15px; display: none; }
+    .response-content { background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; padding: 10px; max-height: 300px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+    .error { color: #f93e3e; }
+    .success { color: #49cc90; }
+  </style>
+</head>
+<body>
+  <h1>K10 Bot API Test Interface</h1>
+  <div id="routes-container">
+    <!-- Routes will be dynamically loaded -->
+  </div>
+
+  <script>
+    function testRoute(formId, method, path) {
+      const form = document.getElementById('form' + formId);
+      const inputs = form.querySelectorAll('input[name]');
+      const responseArea = document.getElementById('response' + formId);
+      const responseContent = document.getElementById('responseContent' + formId);
+      
+      // Build URL and separate parameters by type
+      let url = path;
+      const queryParams = new URLSearchParams();
+      const bodyParams = {};
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Process each input based on its parameter type
+      inputs.forEach(input => {
+        const name = input.name;
+        const value = input.value;
+        const paramIn = input.getAttribute('data-param-in');
+        
+        if (value) {
+          if (paramIn === 'path') {
+            // Replace path parameter
+            url = url.replace('{' + name + '}', encodeURIComponent(value));
+          } else if (paramIn === 'query') {
+            // Add to query string
+            queryParams.append(name, value);
+          } else if (paramIn === 'header') {
+            // Add to headers
+            headers[name] = value;
+          } else {
+            // Default: for GET use query, for POST/PUT use body
+            if (method === 'GET') {
+              queryParams.append(name, value);
+            } else {
+              bodyParams[name] = value;
+            }
+          }
+        }
+      });
+      
+      // Append query parameters to URL
+      if (queryParams.toString()) {
+        url += (url.includes('?') ? '&' : '?') + queryParams.toString();
+      }
+      
+      responseContent.innerHTML = 'Loading...';
+      responseArea.style.display = 'block';
+      
+      const fetchOptions = {
+        method: method,
+        headers: headers
+      };
+      
+      // Add body for POST/PUT/PATCH methods if there are body parameters
+      if (method !== 'GET' && Object.keys(bodyParams).length > 0) {
+        fetchOptions.body = JSON.stringify(bodyParams);
+      }
+      
+      fetch(url, fetchOptions)
+        .then(response => {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            return response.json().then(data => ({
+              status: response.status,
+              data: JSON.stringify(data, null, 2),
+              ok: response.ok
+            }));
+          } else {
+            return response.text().then(text => ({
+              status: response.status,
+              data: text,
+              ok: response.ok
+            }));
+          }
+        })
+        .then(result => {
+          const className = result.ok ? 'success' : 'error';
+          responseContent.innerHTML = '<span class="' + className + '">Status: ' + result.status + '</span>\n\n' + result.data;
+        })
+        .catch(error => {
+          responseContent.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+        });
+      
+      return false;
+    }
+
+    // Load routes from OpenAPI spec
+    fetch('/api/openapi.json')
+      .then(response => response.json())
+      .then(data => {
+        const container = document.getElementById('routes-container');
+        let formId = 0;
+        
+        for (const [path, methods] of Object.entries(data.paths || {})) {
+          for (const [method, details] of Object.entries(methods)) {
+            const route = {
+              method: method.toUpperCase(),
+              path: path,
+              description: details.summary || details.description || '',
+              parameters: details.parameters || []
+            };
+            
+            // Create route container
+            const div = document.createElement('div');
+            div.className = 'route-container';
+            
+            let html = `
+              <div class="route-header">
+                <span class="method method-${route.method}">${route.method}</span>
+                <span class="path">${route.path}</span>
+              </div>
+              <div class="description">${route.description}</div>
+              <form id="form${formId}" onsubmit="return testRoute(${formId}, '${route.method}', '${route.path}')">
+            `;
+            
+            // Add parameter inputs
+            route.parameters.forEach(param => {
+              const required = param.required ? '<span style="color:red;">*</span>' : '';
+              const type = param.schema?.type || param.type || 'string';
+              const example = param.example || '';
+              const defaultValue = param.default || '';
+              
+              html += `
+                <div class="param-group">
+                  <label class="param-label">${param.name}${required} (${param.in}, ${type})</label>
+                  <input type="text" class="param-input" name="${param.name}" 
+                         data-param-in="${param.in}" 
+                         placeholder="${param.description || ''}${example ? ' (e.g., ' + example + ')' : ''}"
+                         ${defaultValue ? 'value="' + defaultValue + '"' : ''}
+                         ${param.required ? 'required' : ''}>
+                </div>
+              `;
+            });
+            
+            html += `
+                <button type="submit" class="btn btn-primary">Send ${route.method} Request</button>
+              </form>
+              <div class="response-area" id="response${formId}">
+                <h4>Response:</h4>
+                <div class="response-content" id="responseContent${formId}"></div>
+              </div>
+            `;
+            
+            div.innerHTML = html;
+            container.appendChild(div);
+            formId++;
+          }
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load API spec:', err);
+        document.getElementById('routes-container').innerHTML = 
+          '<div class="error">Failed to load API routes. Please check if /api/openapi.json is available.</div>';
+      });
+  </script>
+</body>
+</html>

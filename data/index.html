@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>K10 Bot Control Panel</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="./favicon.svg">
+
+</head>
+<body>
+  <h1>🤖 K10 Bot Control Panel</h1>
+  
+  <div class="panel">
+    <h2>Service Interfaces</h2>
+    <div class="service-grid">
+      <a href="/ServoService.html" class="service-card">
+        <div class="service-title">🔧 Servo Control</div>
+        <div class="service-desc">Control servo motors (channels 0-7)</div>
+      </a>
+      <a href="/K10webcam.html" class="service-card">
+        <div class="service-title">📷 Webcam</div>
+        <div class="service-desc">View camera feed and capture images</div>
+      </a>
+      <a href="/HTTPService.html" class="service-card">
+        <div class="service-title">⚙️ HTTP Service</div>
+        <div class="service-desc">Configure HTTP service settings</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Developer Tools</h2>
+    <a href="/api/docs" class="btn">API Test Interface</a>
+    <a href="/api/openapi.json" class="btn">OpenAPI Spec</a>
+  </div>
+
+  <div class="panel">
+    <h2>API Routes</h2>
+    <ul class="route-list" id="routesList">
+      <!-- Routes will be dynamically loaded -->
+    </ul>
+  </div>
+
+  <script>
+    // Fetch and display routes dynamically
+    fetch('/api/openapi.json')
+      .then(response => response.json())
+      .then(data => {
+        const routesList = document.getElementById('routesList');
+        const routes = [];
+        
+        // Extract routes from OpenAPI spec
+        for (const [path, methods] of Object.entries(data.paths || {})) {
+          for (const [method, details] of Object.entries(methods)) {
+            routes.push({
+              method: method.toUpperCase(),
+              path: path,
+              description: details.summary || details.description || ''
+            });
+          }
+        }
+        
+        // Sort by path
+        routes.sort((a, b) => a.path.localeCompare(b.path));
+        
+        // Display routes
+        routes.forEach(route => {
+          const li = document.createElement('li');
+          li.innerHTML = `
+            <span class="method method-${route.method}">${route.method}</span>
+            <a href="${route.path}" class="path">${route.path}</a>
+            <div style="margin-left: 50px; color: #666; font-size: 13px;">${route.description}</div>
+          `;
+          routesList.appendChild(li);
+        });
+      })
+      .catch(err => {
+        console.error('Failed to load routes:', err);
+      });
+  </script>
+</body>
+</html>

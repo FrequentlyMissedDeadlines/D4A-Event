@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @brief Main application entry point for K10-Bot
+ * @details Initializes hardware, manages services, and handles FreeRTOS tasks
+ * for WiFi, UDP server, HTTP server, display, and sensor management.
+ */
+
 #include <stdio.h>
 #include <Arduino.h>
 #include <WiFi.h>
@@ -6,11 +13,17 @@
 #include "services/WiFiService.h"
 #include <WebServer.h>
 #include <AsyncUDP.h>
-#include <unihiker_k10.h>
+#include <LittleFS.h>
+#include <SPIFFS.h>
 
+extern RollingLogger debugLogger;
+
+#include <FFat.h>
+#include <unihiker_k10.h>
 #include "services/BoardInfoService.h"
 #include "services/WebcamService.h"
 #include "services/ServoService.h"
+
 #include "services/UDPService.h"
 #include "services/HTTPService.h"
 #include "services/SettingsService.h"
@@ -45,6 +58,7 @@ namespace
   std::string master_IP = "";
   std::string master_TOKEN = "";
 }
+
 TFT_eSPI tft;
 
 UNIHIKER_K10 unihiker;
@@ -58,6 +72,7 @@ K10SensorsService k10sensorsService = K10SensorsService();
 BoardInfoService boardInfo = BoardInfoService();
 ServoService servoService = ServoService();
 WebcamService webcamService = WebcamService();
+MicroTFService microTFService = MicroTFService();
 RollingLogger debugLogger = RollingLogger();
 RollingLogger appInfoLogger = RollingLogger();
 
@@ -121,7 +136,7 @@ namespace
 
   /**
    * @fn start_service
-   * @brief Initialize and start a service, attaching the debug logger. Uses LED 0 tp express state.
+   * @brief Initialize and start a service, attaching the debug logger. Uses LED 0 to express state.
    * @param service Reference to the ServiceInterface to start.
    * @return true if the service started successfully, false otherwise.
    */
@@ -183,6 +198,55 @@ namespace
 
 } // namespace
 
+// void listFilesInFS(fs::FS &fs, const char* fsName)
+// {
+//   debugLogger.info(std::string("=== ") + fsName + " File List ===");
+//   File root = fs.open("/");
+//   if (!root)
+//   {
+//     debugLogger.error("Failed to open root directory");
+//     return;
+//   }
+//   if (!root.isDirectory())
+//   {
+//     debugLogger.error("Root is not a directory");
+//     return;
+//   }
+//   int fileCount = 0;
+//   File file = root.openNextFile();
+//   while (file)
+//   {
+//     fileCount++;
+//     String filename = file.name();
+//     size_t filesize = file.size();
+//     debugLogger.info(std::string(filename.c_str()) + " (" + std::to_string(filesize) + " bytes)");
+//     file = root.openNextFile();
+//   }
+//   debugLogger.info("Total: " + std::to_string(fileCount) + " files");
+// }
+// void testAllPartFitions()
+// {
+//   const char* partitions[] = { "voice_data"};
+//   constexpr size_t num_partitions = 1;
+//   for (size_t i = 0; i < num_partitions; i++)
+//   {
+//     const char* partitionLabel = partitions[i];
+//     debugLogger.info(std::string("Checking FS '") + partitionLabel + "'");
+//     // Try LittleFS on partition
+//     if (LittleFS.begin(false, "/littlefs", 10, "voice_data")) 
+//     {
+//       appInfoLogger.info("SUCCESS: LittleFS " + std::string(partitionLabel) + " mounted");
+//       listFilesInFS(LittleFS, (std::string("LittleFS_") + partitionLabel).c_str());
+//       LittleFS.end();    
+//     }
+//     else
+//     {
+//       debugLogger.error(std::string("FAILED: LittleFS '") + partitionLabel + "'");
+//     }
+//     delay(500);
+//   }
+// }
+
 void setup()
 {
   // Small delay to ensure system stabilizes
@@ -213,7 +277,7 @@ void setup()
   // Initialize the display once via the helper
 
   appInfoLogger.set_logger_viewport(0, 120, 240, 320);
-  appInfoLogger.set_logger_text_color(TFT_DARKCYAN, TFT_DARKCYAN);
+  appInfoLogger.set_logger_text_color(TFT_GREEN, TFT_DARKCYAN);
   appInfoLogger.set_max_rows(8);
   appInfoLogger.set_log_level(RollingLogger::INFO);
 
@@ -222,6 +286,9 @@ void setup()
   debugLogger.set_max_rows(16);
   debugLogger.set_log_level(RollingLogger::DEBUG);
 
+// testAllPartFitions();
+// return;
+  
   debugLogger.info("Starting services...");
   if (!start_service(wifiService))
   {
@@ -229,15 +296,12 @@ void setup()
     appInfoLogger.error("Fix code.");
     return;
   }
-  // Register 404 handler before starting services
-  webserver.onNotFound([]()
-                       { webserver.send(404, RoutesConsts::MimePlainText, "404 Not Found"); });
-
   // Start services and register routes BEFORE webserver.begin()
   start_service(settingsService);
   start_service(k10sensorsService);
   start_service(boardInfo);
   start_service(servoService);
+  start_service(microTFService);
   // //start_service(webcamService);
   if (start_service(udpService))
   {

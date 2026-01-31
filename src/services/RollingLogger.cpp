@@ -101,6 +101,11 @@ void RollingLogger::log(std::string message, const LogLevel level)
     renderLogs(); // this is not good for performance but simple for now
 }
 
+void RollingLogger::log(const __FlashStringHelper* message, const LogLevel level)
+{
+    log(fpstr_to_string(message), level);
+}
+
 void RollingLogger::set_log_level(const LogLevel level)
 {
     current_log_level = level;

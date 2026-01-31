@@ -38,7 +38,7 @@ public:
     std::string getPath(const std::string& finalpathstring) override
     {
         if (baseServicePath.empty()) {
-            baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceName() + "/";
+            baseServicePath = std::string(RoutesConsts::path_api) + getServiceName() + "/";
         }
         return baseServicePath + finalpathstring;
     }
@@ -106,6 +106,9 @@ public:
 
 private:
     bool initialized = false;
+    enum ServiceStatus { INIT_FAILED, START_FAILED, STARTED, STOPPED, STOP_FAILED };
+    ServiceStatus service_status_ = STOP_FAILED;
+    unsigned long status_timestamp_ = 0;
     DFRobot_UnihikerExpansion_I2C controller;
     mutable std::string baseServicePath;  // Cached for optimization (mutable for const method)
 

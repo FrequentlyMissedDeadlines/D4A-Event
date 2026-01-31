@@ -1,10 +1,15 @@
-#pragma once
-#include <WebServer.h>
-#include "IsServiceInterface.h"
 /**
  * @file WiFiService.h
  * @brief Header for WiFi module integration with the main application
  * @details Provides methods to manage WiFi connections and access points.
+ */
+#pragma once
+#include <WebServer.h>
+#include "IsServiceInterface.h"
+
+/**
+ * @class WifiService
+ * @brief Service for managing WiFi connections and access point functionality
  */
 class WifiService : public IsServiceInterface
 {

@@ -8,10 +8,11 @@
 // WiFi Access Point credentials
 #define DEFAULT_AP_SSID "aMaker-"
 #define DEFAULT_AP_PASSWORD "amaker-club"
-#define DEFAULT_WIFI_SSID "missing local SSID here"
-#define DEFAULT_WIFI_PASSWORD "missing local password here"
+#define DEFAULT_WIFI_SSID "Freebox-A35871"
+#define DEFAULT_WIFI_PASSWORD "azerQSDF1234"
 #define DEFAULT_HOSTNAME "amaker-bot"
-
+#define WIFI_CONN_MAX_ATTEMPTS 8
+#define WIFI_CONN_SLEEP_MS 500
 // ref documentation:
 //  https://docs.espressif.com/projects/arduino-esp32/en/latest/tutorials/preferences.html
 
@@ -22,6 +23,32 @@ constexpr char SETTINGS_KEY_WIFI_PASSWORD[] = "WIFI_PASSWORD";
 constexpr char SETTINGS_KEY_AP_SSID[] = "AP_SSID";
 constexpr char SETTINGS_KEY_AP_PASSWORD[] = "AP_PASSWORD";
 constexpr char SETTINGS_KEY_HOSTNAME[] = "HOSTNAME";
+
+// WiFiService constants namespace
+namespace WiFiConsts
+{
+    constexpr const char msg_missing_ssid[] PROGMEM = "Missing SSID.";
+    constexpr const char msg_missing_password[] PROGMEM = "Missing password.";
+    constexpr const char msg_connecting_to[] PROGMEM = "Connecting to ";
+    constexpr const char msg_attempt[] PROGMEM = " Attempt #";
+    constexpr const char msg_wifi_connected[] PROGMEM = "WiFi: ";
+    constexpr const char msg_failed_to_connect[] PROGMEM = "Failed to connect to ";
+    constexpr const char msg_activation_of_wifi[] PROGMEM = "Activation of WiFi.";
+    constexpr const char msg_falling_back_to_ap[] PROGMEM = "Falling back to Access Point mode.";
+    constexpr const char msg_ap_ssid[] PROGMEM = "AP SSID: ";
+    constexpr const char msg_ap_password[] PROGMEM = "AP Password: ";
+    constexpr const char msg_hostname[] PROGMEM = "Hostname: ";
+    constexpr const char msg_failed_to_create_ap[] PROGMEM = "Failed to create AP ";
+    constexpr const char msg_wifi_ap[] PROGMEM = "WiFi: AP ";
+    constexpr const char msg_settings_loaded[] PROGMEM = "WiFi settings loaded:";
+    constexpr const char msg_wifi_ssid_prefix[] PROGMEM = "-WiFi SSID: ";
+    constexpr const char msg_wifi_pwd_prefix[] PROGMEM = "-WiFi PWD: ";
+    constexpr const char msg_ap_ssid_prefix[] PROGMEM = "-AP SSID: ";
+    constexpr const char msg_ap_pwd_prefix[] PROGMEM = "-AP PWD: ";
+    constexpr const char msg_hostname_prefix[] PROGMEM = "-Hostname: ";
+    constexpr const char msg_wifi_start_success[] PROGMEM = "WiFi started successfully";
+    constexpr const char msg_wifi_start_failed[] PROGMEM = "WiFi start failed";
+}
 std::string WIFI_SSID = DEFAULT_WIFI_SSID;
 std::string WIFI_PWD = DEFAULT_WIFI_PASSWORD;
 std::string AP_SSID = DEFAULT_AP_SSID;
@@ -51,9 +78,9 @@ std::string WifiService::getServiceName()
 bool WifiService::open_access_point()
 {
 
-    logger->info("AP SSID: " + AP_SSID + ESP_SUFFIX);
-    logger->info("AP Password: " + AP_PASSWORD);
-    logger->info("Hostname: " + HOSTNAME + ESP_SUFFIX);
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_ssid)) + AP_SSID + ESP_SUFFIX);
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_password)) + AP_PASSWORD);
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_hostname)) + HOSTNAME + ESP_SUFFIX);
     // Ensure WiFi is reset and set to AP mode before creating the SoftAP
     WiFi.disconnect(true);
     delay(100);
@@ -66,7 +93,7 @@ bool WifiService::open_access_point()
 
     if (!WiFi.softAP((AP_SSID + ESP_SUFFIX).c_str(), AP_PASSWORD.c_str()))
     {
-        logger->error("Failed to create AP " + AP_SSID);
+        logger->error(fpstr_to_string(FPSTR(WiFiConsts::msg_failed_to_create_ap)) + AP_SSID);
         return false;
     }
 
@@ -76,7 +103,7 @@ bool WifiService::open_access_point()
     CONNECTED_SSID = AP_SSID+ESP_SUFFIX;
     if (logger)
     {
-        logger->warning("WiFi: AP " + AP_SSID + ESP_SUFFIX + " " + IP);
+        logger->warning(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_ap)) + AP_SSID + ESP_SUFFIX + " " + IP);
     }
     return true;
 }
@@ -88,7 +115,7 @@ bool WifiService::connect_to_wifi(std::string ssid, std::string password)
     {
         if (logger)
         {
-            logger->warning("Missing SSID.");
+            logger->warning(FPSTR(WiFiConsts::msg_missing_ssid));
         }
         return false;
     }
@@ -96,7 +123,7 @@ bool WifiService::connect_to_wifi(std::string ssid, std::string password)
     {
         if (logger)
         {
-            logger->warning("Missing password.");
+            logger->warning(FPSTR(WiFiConsts::msg_missing_password));
         }
         return false;
     }
@@ -115,14 +142,11 @@ bool WifiService::connect_to_wifi(std::string ssid, std::string password)
 
     // Wait for connection with timeout (up to 10 seconds)
     int attempts = 0;
-    const int max_attempts = 20; // 20 * 500ms = 10 seconds
-    logger->info("Connecting to " + ssid);
+    const int max_attempts = WIFI_CONN_MAX_ATTEMPTS; // 20 * 500ms = 10 seconds
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_connecting_to)) + ssid);
     while (WiFi.status() != WL_CONNECTED && attempts < max_attempts)
-    {
-#ifdef DEBUG
-        logger->debug(" Attempt " + std::to_string(attempts + 1) + "/" + std::to_string(max_attempts));
-#endif
-        delay(1000);
+    {  logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_attempt)) + std::to_string(attempts + 1) + "/" + std::to_string(max_attempts));
+        delay(WIFI_CONN_SLEEP_MS);
         attempts++;
     }
 
@@ -130,14 +154,14 @@ bool WifiService::connect_to_wifi(std::string ssid, std::string password)
     if (WiFi.status() == WL_CONNECTED)
     {
         IP = std::string(WiFi.localIP().toString().c_str());
-        logger->info("WiFi: " + ssid + " " + IP);
+        logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_connected)) + ssid + " " + IP);
         
         CONNECTED_SSID = ssid;
         return true;
     }
     else
     {
-        logger->error("Failed to connect to " + ssid);
+        logger->error(fpstr_to_string(FPSTR(WiFiConsts::msg_failed_to_connect)) + ssid);
         return false;
     }
 }
@@ -149,7 +173,7 @@ bool WifiService::initializeService()
     ESP_SUFFIX = std::string(mac_hex);
     WiFi.setHostname((HOSTNAME+ESP_SUFFIX).c_str());
     // Initialization successful (preferences read). Return true so start_service proceeds.
-    logger->debug(getServiceName() + " initialize done");
+    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
     return true;
 }
 bool WifiService::startService()
@@ -163,18 +187,18 @@ bool WifiService::startService()
     // test with hardcoded credentials for now (you can't reuse this)
     bool result = connect_and_fallback(WIFI_SSID, WIFI_PWD);
     if (logger)
-        logger->info(result ? "WiFi started successfully" : "WiFi start failed");
+        logger->info(result ? FPSTR(WiFiConsts::msg_wifi_start_success) : FPSTR(WiFiConsts::msg_wifi_start_failed));
     // Set unique hostname based on MAC address
 
     if (result)
     {
 #ifdef DEBUG
-        logger->debug(getName() + " start done");
+        logger->debug(getName() + ServiceInterfaceConsts::msg_start_done);
 #endif
     }
     else
     {
-        logger->error(getServiceName() + " start failed");
+        logger->error(getServiceName() + ServiceInterfaceConsts::msg_start_failed);
     }
     return result;
 }
@@ -184,12 +208,12 @@ bool WifiService::stopService()
     if (result)
     {
 #ifdef DEBUG
-        logger->debug(getName() + " stop done");
+        logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done);
 #endif
     }
     else
     {
-        logger->error(getServiceName() + " stop failed");
+        logger->error(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_stop_failed));
     }
     return result;
 }
@@ -204,7 +228,7 @@ bool WifiService::connect_and_fallback(std::string ssid, std::string password)
 {
     if (logger)
     {
-        logger->info("Activation of WiFi.");
+        logger->info(FPSTR(WiFiConsts::msg_activation_of_wifi));
     }
 
     if (connect_to_wifi(ssid, password))
@@ -212,7 +236,7 @@ bool WifiService::connect_and_fallback(std::string ssid, std::string password)
         return true;
     }
 
-    logger->info("Falling back to Access Point mode.");
+    logger->info(FPSTR(WiFiConsts::msg_falling_back_to_ap));
     return open_access_point();
 }
 
@@ -235,11 +259,11 @@ bool WifiService::loadSettings()
     AP_SSID = settingsService.getSetting(getServiceName(), SETTINGS_KEY_AP_SSID, DEFAULT_AP_SSID);
     AP_PASSWORD = settingsService.getSetting(getServiceName(), SETTINGS_KEY_AP_PASSWORD, DEFAULT_AP_PASSWORD);
     HOSTNAME = settingsService.getSetting(getServiceName(), SETTINGS_KEY_HOSTNAME, DEFAULT_HOSTNAME);
-    logger->info("WiFi settings loaded:");
-    logger->info("-WiFi SSID: " + WIFI_SSID);
-    logger->info("-WiFi PWD: " + WIFI_PWD);
-    logger->info("-AP SSID: " + AP_SSID);
-    logger->info("-AP PWD: " + AP_PASSWORD);
-    logger->info("-Hostname: " + HOSTNAME);     
+    logger->info(FPSTR(WiFiConsts::msg_settings_loaded));
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_ssid_prefix)) + WIFI_SSID);
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_pwd_prefix)) + WIFI_PWD);
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_ssid_prefix)) + AP_SSID);
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_pwd_prefix)) + AP_PASSWORD);
+    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_hostname_prefix)) + HOSTNAME);     
     return true;
 }

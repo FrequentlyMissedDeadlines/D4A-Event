@@ -1,10 +1,37 @@
 #include "UDPService.h"
+/**
+ * @file UDPService.cpp
+ * @brief Implementation for UDP server integration
+ * @details Exposed routes:
+ *          - GET /api/udp/v1/ - Get UDP server statistics including total messages, dropped packets, buffer usage, and recent message history
+ * 
+ */
+
 #include <Arduino.h>
 #include <AsyncUDP.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+
+// UDPService constants namespace
+namespace UDPConsts
+{
+    constexpr const char msg_failed_alloc_udp[] PROGMEM = "Failed to allocate AsyncUDP instance";
+    constexpr const char msg_missing_udp_handle[] PROGMEM = "Missing UDP handle or invalid port ";
+    constexpr const char msg_failed_start_udp[] PROGMEM = "Failed to start UDP on port ";
+    constexpr const char msg_buffer_locked[] PROGMEM = "I'm busy (buffer locked), retry later.";
+    constexpr const char str_service_name[] PROGMEM = "UDP Service";
+    constexpr const char path_service[] PROGMEM = "udp/v1";
+    constexpr const char field_total[] PROGMEM = "total";
+    constexpr const char field_dropped[] PROGMEM = "dropped";
+    constexpr const char field_buffer[] PROGMEM = "buffer";
+    constexpr const char field_messages[] PROGMEM = "messages";
+    constexpr const char field_port[] PROGMEM = "port";
+    constexpr const char resp_ok[] PROGMEM = "UDP server statistics retrieved successfully";
+    constexpr const char desc_route[] PROGMEM = "Get UDP server statistics including total messages received, dropped packets, buffer usage, and recent message history with inter-arrival times";
+    constexpr const char tag_udp[] PROGMEM = "UDP";
+}
 
 // Mirror of previous globals, but scoped to this module
 static const int MAX_MESSAGES = 20;
@@ -91,7 +118,7 @@ bool UDPService::initializeService()
     udpHandle = new AsyncUDP();
     if (!udpHandle)
     {
-      logger->error("Failed to allocate AsyncUDP instance");
+      logger->error(std::string(UDPConsts::msg_failed_alloc_udp));
       return false;
     }
     udpOwned = true;
@@ -107,7 +134,7 @@ bool UDPService::initializeService()
     messageMutex = xSemaphoreCreateMutex();
   }
   #ifdef DEBUG
-  logger->debug(getName() + " initialize done");
+  logger->debug(getName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
   #endif
   return true;
 }
@@ -116,7 +143,7 @@ bool UDPService::startService()
 {
   if (!udpHandle || port <= 0)
   {
-    logger->error("Missing UDP handle or invalid port " + std::to_string(port));
+    logger->error(std::string(UDPConsts::msg_missing_udp_handle) + std::to_string(port));
     return false;
   }
   
@@ -124,12 +151,12 @@ bool UDPService::startService()
   {
     udpHandle->onPacket(handleUDPPacket);
   #ifdef DEBUG
-    logger->debug(getName() + " start done");
+    logger->debug(getName() + ServiceInterfaceConsts::msg_start_done);
   #endif
     return true;
   }
-  logger->error("Failed to start UDP on port " + std::to_string(port));
-  logger->error(getServiceName() + " start failed");
+  logger->error(std::string(UDPConsts::msg_failed_start_udp) + std::to_string(port));
+  logger->error(getServiceName() + ServiceInterfaceConsts::msg_start_failed);
   return false;
 }
 
@@ -152,7 +179,7 @@ bool UDPService::stopService()
     messageMutex = nullptr;
   }
   #ifdef DEBUG
-    logger->debug(getName() + " stop done");
+    logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done);
   #endif
   return true;
 }
@@ -161,11 +188,11 @@ std::string UDPService::buildJson()
   JsonDocument doc;
 
   if (!messageMutex)
-  { doc["port"]=port;
-    doc["total"] = 0;
-    doc["dropped"] = 0;
-    doc["buffer"] = "0/0";
-    doc["messages"] = serialized("[]");
+  { doc[FPSTR(UDPConsts::field_port)]=port;
+    doc[FPSTR(UDPConsts::field_total)] = 0;
+    doc[FPSTR(UDPConsts::field_dropped)] = 0;
+    doc[FPSTR(UDPConsts::field_buffer)] = "0/0";
+    doc[FPSTR(UDPConsts::field_messages)] = serialized("[]");
     String output;
     serializeJson(doc, output);
     return std::string(output.c_str());
@@ -173,14 +200,14 @@ std::string UDPService::buildJson()
 
   if (xSemaphoreTake(messageMutex, 100 / portTICK_PERIOD_MS))
   {
-    doc["total"] = totalMessages;
-    doc["dropped"] = packetsDropped;
+    doc[FPSTR(UDPConsts::field_total)] = totalMessages;
+    doc[FPSTR(UDPConsts::field_dropped)] = packetsDropped;
 
     char bufferStr[16];
     snprintf(bufferStr, sizeof(bufferStr), "%d/%d", messageCount, MAX_MESSAGES);
-    doc["buffer"] = bufferStr;
+    doc[FPSTR(UDPConsts::field_buffer)] = bufferStr;
 
-    JsonArray messagesArray = doc["messages"].to<JsonArray>();
+    JsonArray messagesArray = doc[FPSTR(UDPConsts::field_messages)].to<JsonArray>();
     int count = (messageCount < MAX_MESSAGES) ? messageCount : MAX_MESSAGES;
     for (int i = 0; i < count; i++)
     {
@@ -195,7 +222,7 @@ std::string UDPService::buildJson()
   }
   else
   {
-    doc[RoutesConsts::FieldError] = "I'm busy (buffer locked), retry later.";
+    doc[RoutesConsts::field_error] = FPSTR(UDPConsts::msg_buffer_locked);
   }
 
   String output;
@@ -228,26 +255,26 @@ unsigned long UDPService::getHandledPackets()
 
 bool UDPService::registerRoutes()
 {
-  std::string path = std::string(RoutesConsts::PathAPI) + getServiceName();
+  std::string path = getPath("");
 #ifdef DEBUG
   logger->debug("Registering " + path);
 #endif
   
   // Define response schemas
   std::vector<OpenAPIResponse> responses;
-  OpenAPIResponse successResponse(200, "UDP server statistics retrieved successfully");
+  OpenAPIResponse successResponse(200, UDPConsts::resp_ok);
   successResponse.schema = "{\"type\":\"object\",\"properties\":{\"port\":{\"type\":\"integer\",\"description\":\"UDP listening port\"},\"total\":{\"type\":\"integer\",\"description\":\"Total messages received since start\"},\"dropped\":{\"type\":\"integer\",\"description\":\"Number of packets dropped due to buffer lock\"},\"buffer\":{\"type\":\"string\",\"description\":\"Current buffer usage (used/max)\"},\"messages\":{\"type\":\"array\",\"description\":\"Recent messages with timestamps\",\"items\":{\"type\":\"string\"}},\"error\":{\"type\":\"string\",\"description\":\"Error message if buffer is locked\"}}}";
   successResponse.example = "{\"port\":12345,\"total\":1523,\"dropped\":5,\"buffer\":\"15/20\",\"messages\":[\"[125 ms] Hello\",\"[230 ms] World\"]}";
   responses.push_back(successResponse);
   
-  registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::MethodGET,
-                                     "Get UDP server statistics including total messages received, dropped packets, buffer usage, and recent message history with inter-arrival times",
-                                     "UDP", false, {}, responses));
+  registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get,
+                                     UDPConsts::desc_route,
+                                     UDPConsts::tag_udp, false, {}, responses));
   
   webserver.on(path.c_str(), HTTP_GET, [this]()
              {
     std::string json = this->buildJson();
-    webserver.send(200, RoutesConsts::MimeJSON, json.c_str()); });
+    webserver.send(200, RoutesConsts::mime_json, json.c_str()); });
 
   registerSettingsRoutes("UDP", this);
 
@@ -256,16 +283,16 @@ bool UDPService::registerRoutes()
 
 std::string UDPService::getServiceName()
 {
-  return "UDP Service";
+  return fpstr_to_string(FPSTR(UDPConsts::str_service_name));
 }
 std::string UDPService::getServiceSubPath()
 {
-    return "udp/v1";
+    return fpstr_to_string(FPSTR(UDPConsts::path_service));
 }
 std::string UDPService::getPath(const std::string& finalpathstring)
 {
   if (baseServicePath.empty()) {
-    baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/";
+    baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
   }
   return baseServicePath + finalpathstring;
 }

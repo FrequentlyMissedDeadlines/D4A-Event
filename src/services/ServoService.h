@@ -110,4 +110,7 @@ public:
 
 private:
     std::string baseServicePath;  // Cached for optimization
+    enum ServiceStatus { INIT_FAILED, START_FAILED, STARTED, STOPPED, STOP_FAILED };
+    ServiceStatus service_status_ = STOP_FAILED;
+    unsigned long status_timestamp_ = 0;
 };

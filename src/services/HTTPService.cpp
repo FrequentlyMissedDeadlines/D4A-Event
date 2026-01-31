@@ -1,4 +1,14 @@
 #include "HTTPService.h"
+/**
+ * @file HTTPService.cpp
+ * @brief Implementation for HTTP web server integration
+ * @details Exposed routes:
+ *          - GET / - Home page with service dashboard
+ *          - GET /api/docs - OpenAPI documentation page
+ *          - GET /docs/static_openapi.json - Static OpenAPI schema (serves as fallback)
+ * 
+ */
+
 #include <Arduino.h>
 #include <esp_system.h>
 #include <esp_camera.h>
@@ -6,107 +16,23 @@
 #include <freertos/task.h>
 #include <unihiker_k10.h>
 #include <pgmspace.h>
-#include <LittleFS.h>
 #include <FS.h>
+#include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <esp_partition.h>
 #include <sstream>
 #include <algorithm>
 #include "RollingLogger.h"
 #include "IsOpenAPIInterface.h"
+
 // Forward declarations for external variables from main.cpp
 std::string master_IP;
 std::string master_TOKEN;
 
 extern UNIHIKER_K10 unihiker;
 
-bool HTTPService::initializeService()
-{
-#ifdef DEBUG
-  logger->debug(getSericeName() + " initialize done");
-#endif
-  return true;
-}
-
-bool HTTPService::startService()
-{
-  if (logger)
-    logger->info("Starting HTTP service...");
-
-  // Register base routes but don't start server yet (services need to register first)
-  webserver.begin();
-  serverRunning = true;
-  if (logger)
-    logger->info("WebServer started");
-
-#ifdef DEBUG
-  logger->debug(getSericeName() + " start done");
-#endif
-  return true;
-}
-
-bool HTTPService::stopService()
-{
-  try
-  {
-    if (serverRunning)
-    {
-      webserver.stop();
-      serverRunning = false;
-    }
-#ifdef DEBUG
-    logger->debug(getSericeName() + " stop done");
-#endif
-    return true;
-  }
-  catch (const std::exception &e)
-  {
-    logger->error(std::string(e.what()));
-  }
-  logger->error(getServiceName() + " stop failed");
-  return false;
-}
-
-void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
-{
-  if (service)
-  {
-    openAPIServices.push_back(service);
-#ifdef DEBUG
-    if (logger)
-      logger->debug("Registered services #" + std::to_string(openAPIServices.size()) + ": " + std::to_string(service->getOpenAPIRoutes().size()));
-#endif
-  }
-}
-
-/**
- * Handle home page request with route listing
- */
-void HTTPService::handleHomeClient(WebServer *webserver)
-{
-  if (!webserver)
-  {
-    return;
-  }
-
-  // Collect all routes from all services
-  std::vector<OpenAPIRoute> allRoutes;
-  for (auto service : openAPIServices)
-  {
-    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
-    allRoutes.insert(allRoutes.end(), routes.begin(), routes.end());
-  }
-
-  // Sort routes by path
-  std::sort(allRoutes.begin(), allRoutes.end(),
-            [](const OpenAPIRoute &a, const OpenAPIRoute &b)
-            {
-              return a.path < b.path;
-            });
-
-  // Use stringstream for efficient string building (avoids O(n²) concatenation)
-  std::stringstream ss;
-  ss << R"(<!DOCTYPE html>
+// PROGMEM HTML/CSS constants for home page
+static const char HOME_HTML_HEAD[] PROGMEM = R"(<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -135,21 +61,21 @@ void HTTPService::handleHomeClient(WebServer *webserver)
   </style>
 </head>
 <body>
-  <h1>🤖 K10 Bot Control Panel</h1>
+  <h1>K10 Bot Control Panel</h1>
   
   <div class="panel">
     <h2>Service Interfaces</h2>
     <div class="service-grid">
       <a href="/ServoService.html" class="service-card">
-        <div class="service-title">🔧 Servo Control</div>
+        <div class="service-title">Servo Control</div>
         <div class="service-desc">Control servo motors (channels 0-7)</div>
       </a>
       <a href="/K10webcam.html" class="service-card">
-        <div class="service-title">📷 Webcam</div>
+        <div class="service-title">Webcam</div>
         <div class="service-desc">View camera feed and capture images</div>
       </a>
       <a href="/HTTPService.html" class="service-card">
-        <div class="service-title">⚙️ HTTP Service</div>
+        <div class="service-title">HTTP Service</div>
         <div class="service-desc">Configure HTTP service settings</div>
       </a>
     </div>
@@ -157,7 +83,7 @@ void HTTPService::handleHomeClient(WebServer *webserver)
 
   <div class="panel">
     <h2>Developer Tools</h2>
-    <a href="/test" class="btn">API Test Interface</a>
+    <a href="/api/docs" class="btn">API Test Interface</a>
     <a href="/api/openapi.json" class="btn">OpenAPI Spec</a>
   </div>
 
@@ -166,39 +92,12 @@ void HTTPService::handleHomeClient(WebServer *webserver)
     <ul class="route-list">
 )";
 
-  for (const auto &route : allRoutes)
-  {
-    ss << "      <li>\n";
-    ss << "        <span class=\"method method-" << route.method << "\">" << route.method << "</span>\n";
-    ss << "        <a href=\"" << route.path << "\" class=\"path\">" << route.path << "</a>\n";
-    ss << "        <div style=\"margin-left: 50px; color: #666; font-size: 13px;\">" << route.description << "</div>\n";
-    ss << "      </li>\n";
-  }
+static const char HOME_HTML_ROUTE_ITEM[] PROGMEM = "      <li>\n        <span class=\"method method-%s\">%s</span>\n        <a href=\"%s\" class=\"path\">%s</a>\n        <div style=\"margin-left: 50px; color: #666; font-size: 13px;\">%s</div>\n      </li>\n";
 
-  ss << R"(    </ul>
-  </div>
-</body>
-</html>
-)";
+static const char HOME_HTML_TAIL[] PROGMEM = "    </ul>\n  </div>\n</body>\n</html>\n";
 
-  std::string allroutes = ss.str();
-  webserver->send_P(200, "text/html; charset=utf-8", allroutes.c_str());
-}
-
-/**
- * Handle test page request with interactive forms for all routes
- */
-void HTTPService::handleTestClient(WebServer *webserver)
-{
-  if (!webserver)
-  {
-    return;
-  }
-
-  std::stringstream ss;
-
-  // HTML header with styles and JavaScript
-  ss << R"(<!DOCTYPE html>
+// PROGMEM HTML/CSS constants for test page
+static const char TEST_HTML_HEAD[] PROGMEM = R"(<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -232,57 +131,7 @@ void HTTPService::handleTestClient(WebServer *webserver)
   <div id="routes-container">
 )";
 
-  // Generate forms for each route
-  int formId = 0;
-  for (auto service : openAPIServices)
-  {
-    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
-    for (const auto &route : routes)
-    {
-      ss << "    <div class=\"route-container\">\n";
-      ss << "      <div class=\"route-header\">\n";
-      ss << "        <span class=\"method method-" << route.method << "\">" << route.method << "</span>\n";
-      ss << "        <span class=\"path\">" << route.path << "</span>\n";
-      ss << "      </div>\n";
-      ss << "      <div class=\"description\">" << route.description << "</div>\n";
-      ss << "      <form id=\"form" << formId << "\" onsubmit=\"return testRoute(" << formId << ", '"
-         << route.method << "', '" << route.path << "')\">\n";
-
-      // Add input fields for parameters
-      for (const auto &param : route.parameters)
-      {
-        ss << "        <div class=\"param-group\">\n";
-        ss << "          <label class=\"param-label\">" << param.name;
-        if (param.required)
-          ss << " <span style=\"color:red;\">*</span>";
-        ss << " (" << param.in << ", " << param.type << ")</label>\n";
-        ss << "          <input type=\"text\" class=\"param-input\" name=\"" << param.name
-           << "\" data-param-in=\"" << param.in << "\" placeholder=\"" << param.description;
-        if (!param.example.empty())
-          ss << " (e.g., " << param.example << ")";
-        ss << "\"";
-        if (!param.defaultValue.empty())
-          ss << " value=\"" << param.defaultValue << "\"";
-        if (param.required)
-          ss << " required";
-        ss << ">\n";
-        ss << "        </div>\n";
-      }
-
-      ss << "        <button type=\"submit\" class=\"btn btn-primary\">Send " << route.method << " Request</button>\n";
-      ss << "      </form>\n";
-      ss << "      <div class=\"response-area\" id=\"response" << formId << "\">\n";
-      ss << "        <h4>Response:</h4>\n";
-      ss << "        <div class=\"response-content\" id=\"responseContent" << formId << "\"></div>\n";
-      ss << "      </div>\n";
-      ss << "    </div>\n";
-
-      formId++;
-    }
-  }
-
-  // JavaScript for handling form submissions
-  ss << R"(  </div>
+static const char TEST_HTML_TAIL[] PROGMEM = R"(  </div>
   <script>
     function testRoute(formId, method, path) {
       const form = document.getElementById('form' + formId);
@@ -375,6 +224,199 @@ void HTTPService::handleTestClient(WebServer *webserver)
 </html>
 )";
 
+bool HTTPService::initializeService()
+{
+#ifdef DEBUG
+    logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_initialize_done)));
+#endif
+  return true;
+}
+
+bool HTTPService::startService()
+{
+  if (logger)
+    logger->info("Starting HTTP service...");
+
+  // Initialize LittleFS on partition 'model' (from large_spiffs_16MB.csv)
+  // The partition table defines: model, data, spiffs, 0x510000, 4563k
+  // PlatformIO uploadfs uploads to this partition when board_build.filesystem = littlefs
+  bool mounted = LittleFS.begin(false, "/littlefs", 10, "voice_data") ;
+  
+  if (!mounted)
+  {
+      if (logger) logger->error("Failed to mount LittleFS  'voice_data'");
+      return false;
+  }
+  
+  if (logger)
+  {
+    logger->info("LittleFS mounted successfully");
+    // Debug: List files in LittleFS
+    listFilesInFS(LittleFS, "/");
+  }
+
+  // Register base routes but don't start server yet (services need to register first)
+  webserver.begin();
+  serverRunning = true;
+  if (logger)
+    logger->info("WebServer started");
+  
+  
+#ifdef DEBUG
+  logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_start_done)));
+#endif
+  return true;
+}
+
+bool HTTPService::stopService()
+{
+  try
+  {
+    if (serverRunning)
+    {
+      webserver.stop();
+      serverRunning = false;
+    }
+    LittleFS.end();
+#ifdef DEBUG
+    logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_stop_done)));
+#endif
+    return true;
+  }
+  catch (const std::exception &e)
+  {
+    logger->error(std::string(e.what()));
+  }
+  logger->error(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_stop_failed)));
+  return false;
+}
+
+void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
+{
+  if (service)
+  {
+    openAPIServices.push_back(service);
+#ifdef DEBUG
+    if (logger)
+      logger->debug("Registered services #" + std::to_string(openAPIServices.size()) + ": " + std::to_string(service->getOpenAPIRoutes().size()));
+#endif
+  }
+}
+
+/**
+ * Handle home page request with route listing
+ */
+void HTTPService::handleHomeClient(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+
+  // Collect all routes from all services
+  std::vector<OpenAPIRoute> allRoutes;
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    allRoutes.insert(allRoutes.end(), routes.begin(), routes.end());
+  }
+
+  // Sort routes by path
+  std::sort(allRoutes.begin(), allRoutes.end(),
+            [](const OpenAPIRoute &a, const OpenAPIRoute &b)
+            {
+              return a.path < b.path;
+            });
+
+  // Use stringstream for efficient string building (avoids O(n²) concatenation)
+  std::stringstream ss;
+  ss << HOME_HTML_HEAD;
+
+  for (const auto &route : allRoutes)
+  {
+    char buffer[512];
+    snprintf_P(buffer, sizeof(buffer), HOME_HTML_ROUTE_ITEM,
+               route.method.c_str(), route.method.c_str(),
+               route.path.c_str(), route.path.c_str(),
+               route.description.c_str());
+    ss << buffer;
+  }
+
+  ss << HOME_HTML_TAIL;
+
+  std::string allroutes = ss.str();
+  webserver->send_P(200, "text/html; charset=utf-8", allroutes.c_str());
+}
+
+/**
+ * Handle test page request with interactive forms for all routes
+ */
+void HTTPService::handleTestClient(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+
+  std::stringstream ss;
+
+  // HTML header with styles and JavaScript
+  ss << TEST_HTML_HEAD;
+
+  // Generate forms for each route
+  int formId = 0;
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    for (const auto &route : routes)
+    {
+      ss << "    <div class=\"route-container\">\n";
+      ss << "      <div class=\"route-header\">\n";
+      ss << "        <span class=\"method method-" << route.method << "\">" << route.method << "</span>\n";
+      ss << "        <span class=\"path\">" << route.path << "</span>\n";
+      ss << "      </div>\n";
+      ss << "      <div class=\"description\">" << route.description << "</div>\n";
+      ss << "      <form id=\"form" << formId << "\" onsubmit=\"return testRoute(" << formId << ", '"
+         << route.method << "', '" << route.path << "')\">\n";
+
+      // Add input fields for parameters
+      for (const auto &param : route.parameters)
+      {
+        ss << "        <div class=\"param-group\">\n";
+        ss << "          <label class=\"param-label\">" << param.name;
+        if (param.required)
+          ss << " <span style=\"color:red;\">*</span>";
+        ss << " (" << param.in << ", " << param.type << ")</label>\n";
+        ss << "          <input type=\"text\" class=\"param-input\" name=\"" << param.name
+           << "\" data-param-in=\"" << param.in << "\" placeholder=\"" << param.description;
+        if (!param.example.empty())
+          ss << " (e.g., " << param.example << ")";
+        ss << "\"";
+        if (!param.defaultValue.empty())
+          ss << " value=\"" << param.defaultValue << "\"";
+        if (param.required)
+          ss << " required";
+        ss << ">\n";
+        ss << "        </div>\n";
+      }
+
+      ss << "        <button type=\"submit\" class=\"btn btn-primary\">Send " << route.method << " Request</button>\n";
+      ss << "      </form>\n";
+      ss << "      <div class=\"response-area\" id=\"response" << formId << "\">\n";
+      ss << "        <h4>Response:</h4>\n";
+      ss << "        <div class=\"response-content\" id=\"responseContent" << formId << "\"></div>\n";
+      ss << "      </div>\n";
+      ss << "    </div>\n";
+
+      formId++;
+    }
+  }
+
+  // JavaScript for handling form submissions
+  ss << TEST_HTML_TAIL;
+
   std::string htmlContent = ss.str();
   webserver->send_P(200, "text/html; charset=utf-8", htmlContent.c_str());
 }
@@ -388,6 +430,7 @@ void HTTPService::handleOpenAPIRequest(WebServer *webserver)
   {
     return;
   }
+  logRequest(webserver);
 
   JsonDocument doc;
 
@@ -396,6 +439,10 @@ void HTTPService::handleOpenAPIRequest(WebServer *webserver)
   doc["info"]["title"] = "K10 Bot API";
   doc["info"]["version"] = "1.0.0";
   doc["info"]["description"] = "REST API for K10 Bot services";
+  doc["info"]["contact"]["name"] = "aMaker club";
+  doc["info"]["contact"]["url"] = "https://amadeus.atlassian.net/wiki/spaces/aMaker";
+  doc["info"]["contact"]["email"] = "";
+  doc["info"]["contact"]["description"] = "For support, contact Thierry.";
 
   JsonObject paths = doc["paths"].to<JsonObject>();
 #ifdef DEBUG
@@ -557,7 +604,50 @@ void HTTPService::handleOpenAPIRequest(WebServer *webserver)
 
   String output;
   serializeJson(doc, output);
-  webserver->send(200, RoutesConsts::MimeJSON, output.c_str());
+  webserver->send(200, RoutesConsts::mime_json, output.c_str());
+}
+
+/**LittleFS
+ * @brief Handle requests without a registered route
+ * @param webserver Pointer to WebServer instance
+ */
+void HTTPService::handleNotFoundClient(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+  String path = webserver->uri();
+  const int queryIndex = path.indexOf('?');
+  if (tryServeLittleFS(webserver))
+  {
+    return;
+  }
+  
+   
+  logger->warning( std::string(path.c_str())+" 404 ");
+  webserver->send(404, RoutesConsts::mime_plain_text, (path + ": Not Found").c_str());
+}
+
+/**
+ * @brief Convert HTTPMethod enum to string representation
+ * @param method HTTP method enum value
+ * @return Method name as C-string
+ */
+static const char *http_method_to_string(HTTPMethod method)
+{
+  switch (method)
+  {
+    case HTTP_GET:     return "GET";
+    case HTTP_POST:    return "POST";
+    case HTTP_PUT:     return "PUT";
+    case HTTP_DELETE:  return "DELETE";
+    case HTTP_PATCH:   return "PATCH";
+    case HTTP_HEAD:    return "HEAD";
+    case HTTP_OPTIONS: return "OPTIONS";
+    default:           return "UNKNOWN";
+  }
 }
 
 void HTTPService::handleClient(WebServer *webserver)
@@ -565,6 +655,20 @@ void HTTPService::handleClient(WebServer *webserver)
   if (webserver)
   {
     webserver->handleClient();
+  }
+}
+
+/**
+ * @brief Log incoming HTTP request method and URI
+ * @param webserver Pointer to WebServer instance
+ */
+void HTTPService::logRequest(WebServer *webserver)
+{
+  if (webserver && logger)
+  {
+    std::string log_msg = std::string(http_method_to_string(webserver->method())) +
+                          " " + webserver->uri().c_str();
+    logger->info(log_msg);
   }
 }
 
@@ -577,10 +681,10 @@ bool HTTPService::registerRoutes()
   openApiOk.example = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"K10 Bot API\",\"version\":\"1.0.0\"},\"paths\":{}}";
   openApiResponses.push_back(openApiOk);
 
-  std::string path = RoutesConsts::PathOpenAPI;
+  std::string path = RoutesConsts::path_openapi;
   registerOpenAPIRoute(OpenAPIRoute(
       path.c_str(),
-      RoutesConsts::MethodGET,
+      RoutesConsts::method_get,
       "Get OpenAPI 3.0.0 specification for all registered services including paths, parameters, request bodies, and response schemas",
       "OpenAPI",
       false, {}, openApiResponses));
@@ -589,23 +693,186 @@ bool HTTPService::registerRoutes()
                { this->handleHomeClient(&webserver); });
 
   // Test interface endpoint
-  webserver.on("/test", HTTP_GET, [this]()
+  webserver.on("/api/docs", HTTP_GET, [this]()
                { this->handleTestClient(&webserver); });
 
   // OpenAPI specification endpoint
   webserver.on(path.c_str(), HTTP_GET, [this]()
                { this->handleOpenAPIRequest(&webserver); });
 
+  webserver.onNotFound([this]()
+                       { this->handleNotFoundClient(&webserver); });
+
   registerSettingsRoutes("OpenAPI", this);
 
   return true;
+}
+
+/**
+ * @brief Attempt to serve a file from LittleFS for the current request
+ * @param webserver Pointer to WebServer instance
+ * @return true if a file was found and sent
+ */
+bool HTTPService::tryServeLittleFS(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return false;
+  }
+
+  String path = webserver->uri();
+  #ifdef DEBUG
+    
+  logger->debug(std::string("read ") + path.c_str() );
+  #endif
+  
+  // Strip query parameters
+  const int queryIndex = path.indexOf('?');
+  if (queryIndex >= 0)
+  {
+    path = path.substring(0, queryIndex);
+  }
+
+  // Handle directory requests
+  if (path.endsWith("/"))
+  {
+    path += "index.html";
+  }
+
+  // Ensure path starts with /
+  if (!path.startsWith("/"))
+  {
+    path = "/" + path;
+  }
+
+  // Security: block path traversal
+  if (path.indexOf("..") >= 0)
+  {
+    if (logger)
+    {
+      logger->warning("Traversal path blocked!" );
+    }
+    return false;
+  }
+
+  // Check if file exists in LittleFS
+  if (!LittleFS.exists(path))
+  {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " not found.");
+    }
+    return false;
+  }
+
+  // Open and validate file
+  File file = LittleFS.open(path, "r");
+  if (!file || file.isDirectory())
+  {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " not readable.");
+    }
+    if (file)
+      file.close();
+    return false;
+  }
+
+  size_t fileSize = file.size();
+  if (fileSize == 0)
+  {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " is empty.");
+    }
+    file.close();
+    return false;
+  }
+
+  // Get content type and set response headers
+  const String contentType = getContentTypeForPath(path);
+  webserver->setContentLength(fileSize);
+  webserver->send(200, contentType.c_str(), "");
+
+  // Stream file in chunks
+  constexpr size_t kStreamChunkSize = 2048;
+  uint8_t buffer[kStreamChunkSize];
+  size_t bytesRead = 0;
+  
+  while (file.available() && bytesRead < fileSize)
+  {
+    size_t toRead = (fileSize - bytesRead > kStreamChunkSize) ? kStreamChunkSize : (fileSize - bytesRead);
+    size_t readBytes = file.read(buffer, toRead);
+    
+    if (readBytes == 0)
+    {
+      break;
+    }
+    
+    webserver->sendContent(reinterpret_cast<const char *>(buffer), readBytes);
+    bytesRead += readBytes;
+    delay(0); // Feed watchdog
+  }
+
+  file.close();
+  #ifdef DEBUG
+  if (logger)
+  {
+    logger->debug(std::string(path.c_str()) + " sent.");
+  }
+  #endif
+
+  return true;
+}
+
+/**
+ * @brief Resolve MIME type based on file extension
+ * @param path Request path
+ * @return MIME type string
+ */
+String HTTPService::getContentTypeForPath(const String &path)
+{
+  struct MimeMap
+  {
+    const char *extension;
+    const char *mimeType;
+  };
+
+  static constexpr MimeMap mime_types[] PROGMEM = {
+      {".html", "text/html"},
+      {".htm", "text/html"},
+      {".css", "text/css"},
+      {".js", "application/javascript"},
+      {".json", "application/json"},
+      {".png", "image/png"},
+      {".jpg", "image/jpeg"},
+      {".jpeg", "image/jpeg"},
+      {".svg", "image/svg+xml"},
+      {".ico", "image/x-icon"},
+      {".txt", "text/plain"},
+      {".map", "application/json"},
+      {".woff", "font/woff"},
+      {".woff2", "font/woff2"},
+      {".ttf", "font/ttf"},
+      {".otf", "font/otf"},
+      {".wasm", "application/wasm"}};
+
+  for (const auto &entry : mime_types)
+  {
+    if (path.endsWith(entry.extension))
+    {
+      return String(entry.mimeType);
+    }
+  }
+
+  return String("application/octet-stream");
 }
 
 std::string HTTPService::getPath(const std::string &finalpathstring)
 {
   if (baseServicePath.empty())
   {
-    baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/";
+    baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
   }
   return baseServicePath + finalpathstring;
 }
@@ -630,4 +897,47 @@ bool HTTPService::loadSettings()
 {
   // To be implemented if needed
   return true;
+}
+
+/**
+ * @brief List all files in LittleFS recursively (for debugging)
+ * @param fs Filesystem to list
+ * @param dirname Directory to start from
+ * @param level Current recursion level
+ */
+void HTTPService::listFilesInFS(fs::FS &fs, const char *dirname, uint8_t levels, uint8_t currentLevel)
+{
+  if (!logger)
+    return;
+  if (currentLevel > levels)
+    return;
+
+  File root = fs.open(dirname);
+  if (!root || !root.isDirectory())
+  {
+    logger->warning("Failed to open directory: " + std::string(dirname));
+    return;
+  }
+
+  File file = root.openNextFile();
+  while (file)
+  {
+    std::string indent = "";
+    for (uint8_t i = 0; i < currentLevel; i++)
+      indent += " ";
+
+    if (file.isDirectory())
+    {
+      logger->info(indent +  std::string(file.name())+"/");
+      if (levels > 0)
+      {
+        listFilesInFS(fs, file.path(), levels , currentLevel + 1);
+      }
+    }
+    else
+    {
+      logger->info(indent + "" + std::string(file.name()) + " (" + std::to_string(file.size()) + "B)");
+    }
+    file = root.openNextFile();
+  }
 }

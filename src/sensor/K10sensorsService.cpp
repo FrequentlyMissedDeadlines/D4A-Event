@@ -4,6 +4,20 @@
 #include <cstdio>
 #include <cstdint>
 
+// K10SensorsService constants namespace
+namespace K10SensorsConsts
+{
+    constexpr const char str_service_name[] PROGMEM = "K10 Sensors Service";
+    constexpr const char path_service[] PROGMEM = "sensors/v1";
+    constexpr const char msg_aht20_init_failed[] PROGMEM = "AHT20 sensor init failed: ";
+    constexpr const char msg_failed_init_aht20[] PROGMEM = "Failed to initialize AHT20 sensor";
+    constexpr const char msg_aht20_not_ready[] PROGMEM = "AHT20 sensor not ready yet";
+    constexpr const char msg_aht20_not_ready_init[] PROGMEM = "AHT20 sensor measurement not ready during initialization";
+    constexpr const char msg_aht20_init_success[] PROGMEM = "AHT20 sensor initialized successfully";
+    constexpr const char msg_get_sensor_failed[] PROGMEM = "getSensorJson() failed";
+    constexpr const char tag_sensors[] PROGMEM = "Sensors";
+}
+
 DFRobot_AHT20 aht20_sensor;
 extern UNIHIKER_K10 unihiker;
 
@@ -62,7 +76,7 @@ bool K10SensorsService::registerRoutes()
   static constexpr char kResponseOk[] PROGMEM = "Sensor data retrieved successfully";
   static constexpr char kResponseErr[] PROGMEM = "Sensor initialization or reading failed";
 
-  std::string path = std::string(RoutesConsts::PathAPI) + getServiceName();
+  std::string path = getPath("");
   
 #ifdef DEBUG
   if (logger)
@@ -79,7 +93,7 @@ bool K10SensorsService::registerRoutes()
   errorResponse.schema = R"({"type":"object","properties":{"result":{"type":"string"},"message":{"type":"string"}}})";
   responses.push_back(errorResponse);
 
-  OpenAPIRoute route(path.c_str(), RoutesConsts::MethodGET, kRouteDesc, "Sensors", false, {}, responses);
+  OpenAPIRoute route(path.c_str(), RoutesConsts::method_get, kRouteDesc, "Sensors", false, {}, responses);
   registerOpenAPIRoute(route);
 
   // Try to initialize AHT20 sensor
@@ -87,11 +101,11 @@ bool K10SensorsService::registerRoutes()
   if (initResult != 0)
   {
     if (logger)
-      logger->error("AHT20 sensor init failed: " + std::to_string(initResult));
+      logger->error(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_init_failed)) + std::to_string(initResult));
     
     webserver.on(path.c_str(), HTTP_GET, [this]()
     {
-      webserver.send(503, RoutesConsts::MimeJSON, this->getResultJsonString(RoutesConsts::ResultErr, "Failed to initialize AHT20 sensor").c_str());
+      webserver.send(503, RoutesConsts::mime_json, this->getResultJsonString(RoutesConsts::result_err, fpstr_to_string(FPSTR(K10SensorsConsts::msg_failed_init_aht20))).c_str());
     });
     return true; // Return true to not block other services
   }
@@ -99,25 +113,25 @@ bool K10SensorsService::registerRoutes()
   if (!sensorReady())
   {
     if (logger)
-      logger->warning("AHT20 sensor not ready yet");
+      logger->warning(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready)));
       
     webserver.on(path.c_str(), HTTP_GET, [this]()
     {
-      webserver.send(503, RoutesConsts::MimeJSON, this->getResultJsonString(RoutesConsts::ResultErr, "AHT20 sensor measurement not ready during initialization").c_str());
+      webserver.send(503, RoutesConsts::mime_json, this->getResultJsonString(RoutesConsts::result_err, fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready_init))).c_str());
     });
     return true; // Return true to not block other services
   }
 
   if (logger)
-    logger->info("AHT20 sensor initialized successfully");
+    logger->info(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_init_success)));
     
   webserver.on(path.c_str(), HTTP_GET, [this]()
   {
     try{
     std::string json = this->getSensorJson();
-    webserver.send(200, RoutesConsts::MimeJSON, json.c_str());
+    webserver.send(200, RoutesConsts::mime_json, json.c_str());
     } catch (...) {
-      webserver.send(503, RoutesConsts::MimeJSON, this->getResultJsonString(RoutesConsts::ResultErr, "getSensorJson() failed").c_str());
+      webserver.send(503, RoutesConsts::mime_json, this->getResultJsonString(RoutesConsts::result_err, fpstr_to_string(FPSTR(K10SensorsConsts::msg_get_sensor_failed))).c_str());
     }
   });
 
@@ -128,16 +142,16 @@ bool K10SensorsService::registerRoutes()
 
 std::string K10SensorsService::getServiceName()
 {
-  return "K10 Sensors Service";
+  return fpstr_to_string(FPSTR(K10SensorsConsts::str_service_name));
 }
 std::string K10SensorsService::getServiceSubPath()
 {
-    return "sensors/v1";
+    return fpstr_to_string(FPSTR(K10SensorsConsts::path_service));
 }
 std::string K10SensorsService::getPath(const std::string& finalpathstring)
 {
   if (baseServicePath.empty()) {
-    baseServicePath = std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/";
+    baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
   }
   return baseServicePath + finalpathstring;
 }

@@ -215,14 +215,14 @@ build_flags = -std=c++17         # Enable C++17 features
 
 # Embed web files into firmware
 board_build.embed_txtfiles =
-    data/www/HTTPService.html  
-    data/www/HTTPService.js  
-    data/www/index.html  
-    data/www/K10webcam.html  
-    data/www/K10webcam.js  
-    data/www/ServoService.html  
-    data/www/ServoService.js  
-    data/www/style.css
+    data/HTTPService.html  
+    data/HTTPService.js  
+    data/index.html  
+    data/K10webcam.html  
+    data/K10webcam.js  
+    data/ServoService.html  
+    data/ServoService.js  
+    data/style.css
 
 # External libraries
 lib_deps = 

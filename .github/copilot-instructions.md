@@ -13,6 +13,9 @@
 - prefer `PROGMEM` for static data.
 - Avoid malloc in ISR paths; reuse buffers when possible.
 - for openapi related code, use common constants defined in namespace RoutesConsts.
+- when you create a function, add a Doxygen comment header.
+- const should be in namespaces
+- const and variables names should have a meanful prefix and be in lower case with underscores e.g. `msg_initialize_done`.
 
 ## Architectural decisions
 - UDP server, Web server and UI should run in separate RTOS tasks.
@@ -22,6 +25,13 @@
 
 ## Task-specific guidance
 - Tests go under `test/` using Unity.
+- each time a OpenApiService implementation changed, update the registerRoutes() if needed.
+- each time a registerRoutes implementation changed, update the static /data/static_openapi.json file 
+- strings constants should be stored in PROGMEM to save RAM.
+- use `ServiceInterfaceConsts` for common service strings.
+- use `OpenApiInterfaceConsts` for common openapi strings.
+- 
+
 
 ## Forbidden/avoid
 - Don't introduce new RTOS tasks.

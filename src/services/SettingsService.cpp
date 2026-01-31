@@ -1,6 +1,10 @@
 /**
  * @file SettingsService.cpp
  * @brief Implementation of settings service using ESP32 Preferences library
+ * @details Exposed routes:
+ *          - GET /api/settings/v1/get - Retrieve settings from a domain (all or specific key)
+ *          - POST /api/settings/v1/set - Store settings to a domain (single or multiple key-value pairs)
+ * 
  */
 
 #include "SettingsService.h"
@@ -73,10 +77,10 @@ bool SettingsService::startService()
 {
     if (initialized_) {
         #ifdef DEBUG
-        logger->debug(getName() + " start done");
+        logger->debug(getName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
         #endif  
     } else {
-        logger->error(getServiceName() + " start failed");
+        logger->error(getServiceName() + " " + std::string(ServiceInterfaceConsts::msg_start_failed));
     }
     return initialized_;
 }
@@ -88,7 +92,7 @@ bool SettingsService::stopService()
         initialized_ = false;
     }
     #ifdef DEBUG
-    logger->debug(getName() + " stop done");
+    logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done );
     #endif
     return true;
 }
@@ -106,7 +110,7 @@ std::string SettingsService::getServiceSubPath()
 std::string SettingsService::getPath(const std::string& finalpathstring)
 {
     if (baseServicePath_.empty()) {
-        baseServicePath_ = std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/";
+        baseServicePath_ = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
     }
     return baseServicePath_ + finalpathstring;
 }
@@ -258,7 +262,7 @@ std::string SettingsService::buildSettingsJson(const std::vector<Setting>& setti
 {
     JsonDocument doc;
     
-    doc[RoutesConsts::ParamDomain] = settings.empty() ? "" : settings[0].domain;
+    doc[RoutesConsts::param_domain] = settings.empty() ? "" : settings[0].domain;
     
     JsonObject settingsObj = doc[FPSTR(JSON_SETTINGS)].to<JsonObject>();
     
@@ -274,32 +278,32 @@ std::string SettingsService::buildSettingsJson(const std::vector<Setting>& setti
 void SettingsService::handleGetSettings()
 {
     if (!g_settingsServiceInstance || !g_settingsServiceInstance->initialized_) {
-        webserver.send(503, RoutesConsts::MimeJSON, 
+        webserver.send(503, RoutesConsts::mime_json, 
                       createJsonError(FPSTR(kMsgNotInitialized)));
         return;
     }
     
     // Check for required domain parameter
-    if (!webserver.hasArg(RoutesConsts::ParamDomain)) {
-        webserver.send(422, RoutesConsts::MimeJSON, 
+    if (!webserver.hasArg(RoutesConsts::param_domain)) {
+        webserver.send(422, RoutesConsts::mime_json, 
                       createJsonError(FPSTR(kMsgMissingDomain)));
         return;
     }
     
-    std::string domain = webserver.arg(RoutesConsts::ParamDomain).c_str();
+    std::string domain = webserver.arg(RoutesConsts::param_domain).c_str();
     
     if (!isValidDomain(domain)) {
-        webserver.send(422, RoutesConsts::MimeJSON, 
+        webserver.send(422, RoutesConsts::mime_json, 
                       createJsonError(FPSTR(kMsgInvalidDomain)));
         return;
     }
     
     // Check if specific key is requested
-    if (webserver.hasArg(RoutesConsts::ParamKey)) {
-        std::string key = webserver.arg(RoutesConsts::ParamKey).c_str();
+    if (webserver.hasArg(RoutesConsts::param_key)) {
+        std::string key = webserver.arg(RoutesConsts::param_key).c_str();
         
         if (!isValidKey(key)) {
-            webserver.send(422, RoutesConsts::MimeJSON, 
+            webserver.send(422, RoutesConsts::mime_json, 
                           createJsonError(FPSTR(kMsgInvalidKey)));
             return;
         }
@@ -307,53 +311,53 @@ void SettingsService::handleGetSettings()
         std::string value = g_settingsServiceInstance->getSetting(domain, key, "");
         
         // Return plain text for single value
-        webserver.send(200, RoutesConsts::MimePlainText, value.c_str());
+        webserver.send(200, RoutesConsts::mime_plain_text, value.c_str());
     } else {
         // Get all settings in domain (currently limited by ESP32 Preferences)
         std::vector<Setting> settings = g_settingsServiceInstance->getAllSettings(domain);
         
         // Return empty object with warning
         JsonDocument doc;
-        doc[RoutesConsts::ParamDomain] = domain;
-        doc[RoutesConsts::Message] = "ESP32 Preferences does not support key enumeration";
+        doc[RoutesConsts::param_domain] = domain;
+        doc[RoutesConsts::message] = "ESP32 Preferences does not support key enumeration";
         doc[FPSTR(JSON_SETTINGS)] = serialized("{}");
         
         String output;
         serializeJson(doc, output);
-        webserver.send(503, RoutesConsts::MimeJSON, output.c_str());
+        webserver.send(503, RoutesConsts::mime_json, output.c_str());
     }
 }
 
 void SettingsService::handlePostSettings()
 {
     if (!g_settingsServiceInstance || !g_settingsServiceInstance->initialized_) {
-        webserver.send(503, RoutesConsts::MimeJSON, 
+        webserver.send(503, RoutesConsts::mime_json , 
                       createJsonError(FPSTR(kMsgNotInitialized)));
         return;
     }
     
     // Check for required domain parameter
-    if (!webserver.hasArg(RoutesConsts::ParamDomain)) {
-        webserver.send(422, RoutesConsts::MimeJSON, 
+    if (!webserver.hasArg(RoutesConsts::param_domain)) {
+        webserver.send(422, RoutesConsts::mime_json, 
                       createJsonError(FPSTR(kMsgMissingDomain)));
         return;
     }
     
-    std::string domain = webserver.arg(RoutesConsts::ParamDomain).c_str();
+    std::string domain = webserver.arg(RoutesConsts::param_domain).c_str();
     
     if (!isValidDomain(domain)) {
-        webserver.send(422, RoutesConsts::MimeJSON, 
+        webserver.send(422, RoutesConsts::mime_json, 
                       createJsonError(FPSTR(kMsgInvalidDomain)));
         return;
     }
     
     // Check if single key/value update via query parameters
-    if (webserver.hasArg(RoutesConsts::ParamKey) && webserver.hasArg(RoutesConsts::ParamValue)) {
-        std::string key = webserver.arg(RoutesConsts::ParamKey).c_str();
-        std::string value = webserver.arg(RoutesConsts::ParamValue).c_str();
+    if (webserver.hasArg(RoutesConsts::param_key) && webserver.hasArg(RoutesConsts::param_value)) {
+        std::string key = webserver.arg(RoutesConsts::param_key).c_str();
+        std::string value = webserver.arg(RoutesConsts::param_value).c_str();
         
         if (!isValidKey(key)) {
-            webserver.send(422, RoutesConsts::MimeJSON, 
+            webserver.send(422, RoutesConsts::mime_json, 
                           createJsonError(FPSTR(kMsgInvalidKey)));
             return;
         }
@@ -363,13 +367,13 @@ void SettingsService::handlePostSettings()
         if (success) {
             JsonDocument doc;
             doc[FPSTR(JSON_SUCCESS)] = true;
-            doc[RoutesConsts::Message] = FPSTR(kMsgSuccess);
+            doc[RoutesConsts::message] = FPSTR(kMsgSuccess);
             
             String output;
             serializeJson(doc, output);
-            webserver.send(200, RoutesConsts::MimeJSON, output.c_str());
+            webserver.send(200, RoutesConsts::mime_json, output.c_str());
         } else {
-            webserver.send(503, RoutesConsts::MimeJSON, 
+            webserver.send(503, RoutesConsts::mime_json, 
                           createJsonError(FPSTR(kMsgOperationFailed)));
         }
     } else if (webserver.hasArg("plain")) {
@@ -378,7 +382,7 @@ void SettingsService::handlePostSettings()
         DeserializationError error = deserializeJson(doc, webserver.arg("plain"));
         
         if (error) {
-            webserver.send(422, RoutesConsts::MimeJSON, 
+            webserver.send(422, RoutesConsts::mime_json, 
                           "{\"error\":\"Invalid JSON in request body\"}");
             return;
         }
@@ -396,17 +400,17 @@ void SettingsService::handlePostSettings()
         if (success) {
             JsonDocument responseDoc;
             responseDoc[FPSTR(JSON_SUCCESS)] = true;
-            responseDoc[RoutesConsts::Message] = FPSTR(kMsgSuccess);
+            responseDoc[RoutesConsts::message] = FPSTR(kMsgSuccess);
             
             String output;
             serializeJson(responseDoc, output);
-            webserver.send(200, RoutesConsts::MimeJSON, output.c_str());
+            webserver.send(200, RoutesConsts::mime_json, output.c_str());
         } else {
-            webserver.send(503, RoutesConsts::MimeJSON, 
+            webserver.send(503, RoutesConsts::mime_json, 
                           createJsonError(FPSTR(kMsgOperationFailed)));
         }
     } else {
-        webserver.send(422, RoutesConsts::MimeJSON, 
+        webserver.send(422, RoutesConsts::mime_json, 
                       "{\"error\":\"Missing key/value parameters or JSON body\"}");
     }
 }
@@ -421,9 +425,9 @@ bool SettingsService::registerRoutes()
 #endif
     
     std::vector<OpenAPIParameter> getParams={};
-    getParams.push_back(OpenAPIParameter(RoutesConsts::ParamDomain, "string", "query", 
+    getParams.push_back(OpenAPIParameter(RoutesConsts::param_domain, "string", "query", 
         "Settings domain/namespace (max 15 chars, alphanumeric and underscore)", true));
-    getParams.push_back(OpenAPIParameter(RoutesConsts::ParamKey, "string", "query", 
+    getParams.push_back(OpenAPIParameter(RoutesConsts::param_key, "string", "query", 
         "Setting key (max 15 chars, alphanumeric and underscore)", false));
     
     std::vector<OpenAPIResponse> getResponses;
@@ -432,7 +436,7 @@ bool SettingsService::registerRoutes()
     getResponses.push_back(getResponse200);
     getResponses.push_back(OpenAPIResponse(422, "Invalid parameters"));
     
-    registerOpenAPIRoute(OpenAPIRoute(getPath.c_str(), RoutesConsts::MethodGET,
+    registerOpenAPIRoute(OpenAPIRoute(getPath.c_str(), RoutesConsts::method_get,
                                       "Retrieve a single setting value or all settings in a domain",
                                       "Settings", false, getParams, getResponses));
     
@@ -446,11 +450,11 @@ bool SettingsService::registerRoutes()
 #endif
     
     std::vector<OpenAPIParameter> postParams;
-    postParams.push_back(OpenAPIParameter(RoutesConsts::ParamDomain, "string", "query", 
+    postParams.push_back(OpenAPIParameter(RoutesConsts::param_domain, "string", "query", 
         "Settings domain/namespace (max 15 chars, alphanumeric and underscore)", true));
-    postParams.push_back(OpenAPIParameter(RoutesConsts::ParamKey, "string", "query", 
+    postParams.push_back(OpenAPIParameter(RoutesConsts::param_key, "string", "query", 
         "Setting key for single update (max 15 chars)", false));
-    postParams.push_back(OpenAPIParameter(RoutesConsts::ParamValue, "string", "query", 
+    postParams.push_back(OpenAPIParameter(RoutesConsts::param_value, "string", "query", 
         "Setting value for single update", false));
     
     std::vector<OpenAPIResponse> postResponses;
@@ -460,7 +464,7 @@ bool SettingsService::registerRoutes()
     postResponses.push_back(OpenAPIResponse(422, "Invalid parameters"));
     postResponses.push_back(OpenAPIResponse(503, "Operation failed"));
     
-    registerOpenAPIRoute(OpenAPIRoute(postPath.c_str(), RoutesConsts::MethodPOST,
+    registerOpenAPIRoute(OpenAPIRoute(postPath.c_str(), RoutesConsts::method_post,
                                       "Update or insert setting. Use query parameters.",
                                       "Settings", false, postParams, postResponses));
     

@@ -6,8 +6,6 @@
  *
  */
 #pragma once
-#ifndef LOGGER_H
-#define LOGGER_H
 
 #include <Arduino.h>
 #include <vector>
@@ -31,11 +29,17 @@ public:
     RollingLogger();
 
     void log(const std::string message, const LogLevel level);
+    void log(const __FlashStringHelper* message, const LogLevel level);
     void trace(const std::string message) { log(message, TRACE); };
+    void trace(const __FlashStringHelper* message) { log(message, TRACE); };
     void debug(const std::string message) { log(message, DEBUG); };
+    void debug(const __FlashStringHelper* message) { log(message, DEBUG); };
     void info(const std::string message) { log(message, INFO); };
+    void info(const __FlashStringHelper* message) { log(message, INFO); };
     void warning(const std::string message) { log(message, WARNING); };
+    void warning(const __FlashStringHelper* message) { log(message, WARNING); };
     void error(const std::string message) { log(message, ERROR); };
+    void error(const __FlashStringHelper* message) { log(message, ERROR); };
 
     void set_log_level(const LogLevel level);
     LogLevel get_log_level();
@@ -55,4 +59,21 @@ private:
     std::vector<std::pair<LogLevel, std::string>> log_rows;
 };
 
-#endif
+/**
+ * @brief Utility function to convert FPSTR (Flash String Helper) to std::string
+ * @param flashStr The flash string pointer from FPSTR()
+ * @return std::string copy of the flash string
+ */
+inline std::string fpstr_to_string(const __FlashStringHelper* flashStr) {
+    if (!flashStr) return std::string();
+    const char* str = reinterpret_cast<const char*>(flashStr);
+    return std::string(str);
+}
+
+inline std::string operator+(const std::string& lhs, const __FlashStringHelper* rhs) {
+    return lhs + fpstr_to_string(rhs);
+}
+
+inline std::string operator+(const __FlashStringHelper* lhs, const std::string& rhs) {
+    return fpstr_to_string(lhs) + rhs;
+}

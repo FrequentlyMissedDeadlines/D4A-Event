@@ -4,10 +4,9 @@
 #include "../services/IsServiceInterface.h"
 
 /**
- * @file board_info.h
- * @brief Header for board information module.
- * Provides system metrics and board details via HTTP routes.
- * @details Inherits from withRoutes to register HTTP routes with a WebServer instance.
+ * @file BoardInfoService.h
+ * @brief Header for board information service
+ * @details Provides system metrics and board details via HTTP routes.
  */
 class BoardInfoService : public IsOpenAPIInterface, public IsServiceInterface
 {
@@ -25,4 +24,7 @@ public:
 
 private:
     std::string baseServicePath;  // Cached for optimization
+    enum ServiceStatus { INIT_FAILED, START_FAILED, STARTED, STOPPED, STOP_FAILED };
+    ServiceStatus service_status_ = STOP_FAILED;
+    unsigned long status_timestamp_ = 0;
 };

@@ -42,9 +42,10 @@ protected:
     std::string baseServicePath;  // Cached for optimization
 
     /**
-    Build a JSON message containing all infos.
-
-    */
+     * @fn buildJson
+     * @brief Build a JSON message containing UDP server statistics
+     * @return JSON string with server information
+     */
     std::string buildJson();
     std::vector<OpenAPIRoute> routes = {};
     // Get the number of dropped packets (thread-safe)

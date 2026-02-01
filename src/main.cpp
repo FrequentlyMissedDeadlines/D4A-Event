@@ -15,24 +15,21 @@
 #include <AsyncUDP.h>
 #include <LittleFS.h>
 #include <SPIFFS.h>
-
-extern RollingLogger debugLogger;
-
 #include <FFat.h>
 #include <unihiker_k10.h>
 #include "services/BoardInfoService.h"
 #include "services/WebcamService.h"
 #include "services/ServoService.h"
-
 #include "services/UDPService.h"
 #include "services/HTTPService.h"
 #include "services/SettingsService.h"
 #include "sensor/K10sensorsService.h"
-#include "ui/utb2026.h"
 #include "services/RollingLogger.h"
+#include "ui/utb2026.h"
+
 
 #define LOAD_FONT8N // TFT font - special case for library config
-
+#define VERBOSE_DEBUG // Enable verbose debug logging
 namespace
 {
   constexpr uint16_t kWebPort = 80;
@@ -72,7 +69,7 @@ K10SensorsService k10sensorsService = K10SensorsService();
 BoardInfoService boardInfo = BoardInfoService();
 ServoService servoService = ServoService();
 WebcamService webcamService = WebcamService();
-MicroTFService microTFService = MicroTFService();
+
 RollingLogger debugLogger = RollingLogger();
 RollingLogger appInfoLogger = RollingLogger();
 
@@ -145,7 +142,7 @@ namespace
     // If the service supports logging, attach the global debug logger.
     unihiker.rgb->write(0, 32, 0, 0); // pixel0 = red
     service.setLogger(&debugLogger);
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     debugLogger.debug("Service " + service.getServiceName());
 #endif
     if (service.initializeService())
@@ -158,7 +155,7 @@ namespace
       else
       {
         unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
         appInfoLogger.debug(service.getServiceName() + " started.");
 #endif
       }
@@ -175,7 +172,7 @@ namespace
       openapi->registerRoutes();
       try
       {
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
         debugLogger.info("OpenAPI registered " + service.getServiceName());
 #endif
         httpService.registerOpenAPIService(openapi);
@@ -187,7 +184,7 @@ namespace
     }
     else
     {
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
       debugLogger.debug("No OpenAPI for " + service.getServiceName());
 #endif
     }
@@ -251,7 +248,7 @@ void setup()
 {
   // Small delay to ensure system stabilizes
   delay(500);
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
   // Initialize Serial for debugging
   Serial.begin(kSerialBaud);
   delay(1000); // Wait for Serial to initialize
@@ -267,7 +264,7 @@ void setup()
   unihiker.creatCanvas();
   unihiker.setScreenBackground(TFT_DARKGREY);
   unihiker.canvas->canvasClear();
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
   Serial.println("[INIT] Display initialized");
 #endif
 
@@ -289,6 +286,9 @@ void setup()
 // testAllPartFitions();
 // return;
   
+
+
+
   debugLogger.info("Starting services...");
   if (!start_service(wifiService))
   {
@@ -296,13 +296,12 @@ void setup()
     appInfoLogger.error("Fix code.");
     return;
   }
-  // Start services and register routes BEFORE webserver.begin()
   start_service(settingsService);
   start_service(k10sensorsService);
   start_service(boardInfo);
   start_service(servoService);
-  start_service(microTFService);
-  // //start_service(webcamService);
+  start_service(webcamService);
+
   if (start_service(udpService))
   {
     xTaskCreatePinnedToCore(udpSvrTask, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);

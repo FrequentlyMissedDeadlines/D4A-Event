@@ -147,7 +147,7 @@ bool ServoService::startService()
     {
         service_status_ = STARTED;
         status_timestamp_ = millis();
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
         logger->debug(getName() + ServiceInterfaceConsts::msg_start_done);
 #endif
     }
@@ -356,7 +356,7 @@ bool ServoService::registerRoutes()
 
     // Set servo angle endpoint
     std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_angle;
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 
@@ -401,7 +401,7 @@ bool ServoService::registerRoutes()
 
     // Set servo speed endpoint
     path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_speed;
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 
@@ -440,7 +440,7 @@ bool ServoService::registerRoutes()
 
     // API: Stop all servos at /api/servo/stop_all
     path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_stop_all;
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 
@@ -456,7 +456,7 @@ bool ServoService::registerRoutes()
 
     // API: Get attached servo status for a specific channel
     path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_get_status;
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 
@@ -491,7 +491,7 @@ if (!webserver.hasArg(ServoConsts::servo_channel)) {
 
     // API: Get all attached servos status
     path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_get_all_status;
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 
@@ -510,7 +510,7 @@ if (!webserver.hasArg(ServoConsts::servo_channel)) {
 
     // API: Set all angular servos to the same angle
     path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_all_angle;
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 
@@ -544,7 +544,7 @@ if (!webserver.hasArg(ServoConsts::servo_angle)) {
 
     // API: Set all continuous servos to the same speed
     path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_all_speed;
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 
@@ -578,7 +578,7 @@ if (!webserver.hasArg(ServoConsts::servo_speed)) {
 
     // API: Attach servo to a channel
     path = getPath(ServoConsts::action_attach_servo);
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
 

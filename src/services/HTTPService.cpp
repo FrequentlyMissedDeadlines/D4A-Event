@@ -1,4 +1,5 @@
 #include "HTTPService.h"
+#include "FlashStringHelper.h"
 /**
  * @file HTTPService.cpp
  * @brief Implementation for HTTP web server integration
@@ -96,137 +97,13 @@ static const char HOME_HTML_ROUTE_ITEM[] PROGMEM = "      <li>\n        <span cl
 
 static const char HOME_HTML_TAIL[] PROGMEM = "    </ul>\n  </div>\n</body>\n</html>\n";
 
-// PROGMEM HTML/CSS constants for test page
-static const char TEST_HTML_HEAD[] PROGMEM = R"(<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>K10 Bot API Test</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-    h1 { color: #333; }
-    .route-container { background: white; margin: 15px 0; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .route-header { margin-bottom: 10px; }
-    .method { display: inline-block; padding: 4px 8px; border-radius: 3px; font-weight: bold; color: white; margin-right: 10px; }
-    .method-GET { background: #61affe; }
-    .method-POST { background: #49cc90; }
-    .method-PUT { background: #fca130; }
-    .method-DELETE { background: #f93e3e; }
-    .path { font-family: monospace; font-size: 14px; }
-    .description { color: #666; margin: 5px 0; }
-    .param-group { margin: 10px 0; }
-    .param-label { display: block; margin: 5px 0 3px; font-weight: bold; font-size: 13px; }
-    .param-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box; }
-    .btn { padding: 10px 20px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; margin-right: 10px; }
-    .btn-primary { background: #4CAF50; color: white; }
-    .btn-primary:hover { background: #45a049; }
-    .response-area { margin-top: 15px; display: none; }
-    .response-content { background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; padding: 10px; max-height: 300px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
-    .error { color: #f93e3e; }
-    .success { color: #49cc90; }
-  </style>
-</head>
-<body>
-  <h1>K10 Bot API Test Interface</h1>
-  <div id="routes-container">
-)";
-
-static const char TEST_HTML_TAIL[] PROGMEM = R"(  </div>
-  <script>
-    function testRoute(formId, method, path) {
-      const form = document.getElementById('form' + formId);
-      const inputs = form.querySelectorAll('input[name]');
-      const responseArea = document.getElementById('response' + formId);
-      const responseContent = document.getElementById('responseContent' + formId);
-      
-      // Build URL and separate parameters by type
-      let url = path;
-      const queryParams = new URLSearchParams();
-      const bodyParams = {};
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      
-      // Process each input based on its parameter type
-      inputs.forEach(input => {
-        const name = input.name;
-        const value = input.value;
-        const paramIn = input.getAttribute('data-param-in');
-        
-        if (value) {
-          if (paramIn === 'path') {
-            // Replace path parameter
-            url = url.replace('{' + name + '}', encodeURIComponent(value));
-          } else if (paramIn === 'query') {
-            // Add to query string
-            queryParams.append(name, value);
-          } else if (paramIn === 'header') {
-            // Add to headers
-            headers[name] = value;
-          } else {
-            // Default: for GET use query, for POST/PUT use body
-            if (method === 'GET') {
-              queryParams.append(name, value);
-            } else {
-              bodyParams[name] = value;
-            }
-          }
-        }
-      });
-      
-      // Append query parameters to URL
-      if (queryParams.toString()) {
-        url += (url.includes('?') ? '&' : '?') + queryParams.toString();
-      }
-      
-      responseContent.innerHTML = 'Loading...';
-      responseArea.style.display = 'block';
-      
-      const fetchOptions = {
-        method: method,
-        headers: headers
-      };
-      
-      // Add body for POST/PUT/PATCH methods if there are body parameters
-      if (method !== 'GET' && Object.keys(bodyParams).length > 0) {
-        fetchOptions.body = JSON.stringify(bodyParams);
-      }
-      
-      fetch(url, fetchOptions)
-        .then(response => {
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            return response.json().then(data => ({
-              status: response.status,
-              data: JSON.stringify(data, null, 2),
-              ok: response.ok
-            }));
-          } else {
-            return response.text().then(text => ({
-              status: response.status,
-              data: text,
-              ok: response.ok
-            }));
-          }
-        })
-        .then(result => {
-          const className = result.ok ? 'success' : 'error';
-          responseContent.innerHTML = '<span class="' + className + '">Status: ' + result.status + '</span>\n\n' + result.data;
-        })
-        .catch(error => {
-          responseContent.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
-        });
-      
-      return false;
-    }
-  </script>
-</body>
-</html>
-)";
+// File paths for API test page templates (stored in LittleFS)
+static const char path_api_test_head[] PROGMEM = "/api_test_head.html";
+static const char path_api_test_tail[] PROGMEM = "/api_test_tail.html";
 
 bool HTTPService::initializeService()
 {
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_initialize_done)));
 #endif
   return true;
@@ -262,7 +139,7 @@ bool HTTPService::startService()
     logger->info("WebServer started");
   
   
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
   logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_start_done)));
 #endif
   return true;
@@ -278,7 +155,7 @@ bool HTTPService::stopService()
       serverRunning = false;
     }
     LittleFS.end();
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_stop_done)));
 #endif
     return true;
@@ -296,7 +173,7 @@ void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
   if (service)
   {
     openAPIServices.push_back(service);
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     if (logger)
       logger->debug("Registered services #" + std::to_string(openAPIServices.size()) + ": " + std::to_string(service->getOpenAPIRoutes().size()));
 #endif
@@ -350,6 +227,50 @@ void HTTPService::handleHomeClient(WebServer *webserver)
 }
 
 /**
+ * @brief Read file content from LittleFS into a string
+ * @param path Path to the file in LittleFS
+ * @return File content as string, empty string on failure
+ */
+std::string HTTPService::readFileToString(const char *path)
+{
+  if (!LittleFS.exists(path))
+  {
+    if (logger)
+    {
+      logger->warning(std::string("Template not found: ") + path);
+    }
+    return "";
+  }
+
+  File file = LittleFS.open(path, "r");
+  if (!file || file.isDirectory())
+  {
+    if (logger)
+    {
+      logger->warning(std::string("Cannot read template: ") + path);
+    }
+    if (file)
+      file.close();
+    return "";
+  }
+
+  size_t file_size = file.size();
+  std::string content;
+  content.reserve(file_size);
+
+  constexpr size_t kBufferSize = 512;
+  char buffer[kBufferSize];
+  while (file.available())
+  {
+    size_t bytes_read = file.readBytes(buffer, kBufferSize);
+    content.append(buffer, bytes_read);
+  }
+
+  file.close();
+  return content;
+}
+
+/**
  * Handle test page request with interactive forms for all routes
  */
 void HTTPService::handleTestClient(WebServer *webserver)
@@ -360,10 +281,16 @@ void HTTPService::handleTestClient(WebServer *webserver)
   }
   logRequest(webserver);
 
-  std::stringstream ss;
+  // Read HTML header from LittleFS
+  std::string html_head = readFileToString(path_api_test_head);
+  if (html_head.empty())
+  {
+    webserver->send(500, RoutesConsts::mime_plain_text, "Template file not found");
+    return;
+  }
 
-  // HTML header with styles and JavaScript
-  ss << TEST_HTML_HEAD;
+  std::stringstream ss;
+  ss << html_head;
 
   // Generate forms for each route
   int formId = 0;
@@ -414,11 +341,17 @@ void HTTPService::handleTestClient(WebServer *webserver)
     }
   }
 
-  // JavaScript for handling form submissions
-  ss << TEST_HTML_TAIL;
+  // Read JavaScript/HTML tail from LittleFS
+  std::string html_tail = readFileToString(path_api_test_tail);
+  if (html_tail.empty())
+  {
+    webserver->send(500, RoutesConsts::mime_plain_text, "Template tail file not found");
+    return;
+  }
+  ss << html_tail;
 
-  std::string htmlContent = ss.str();
-  webserver->send_P(200, "text/html; charset=utf-8", htmlContent.c_str());
+  std::string html_content = ss.str();
+  webserver->send_P(200, "text/html; charset=utf-8", html_content.c_str());
 }
 
 /**
@@ -445,14 +378,14 @@ void HTTPService::handleOpenAPIRequest(WebServer *webserver)
   doc["info"]["contact"]["description"] = "For support, contact Thierry.";
 
   JsonObject paths = doc["paths"].to<JsonObject>();
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
   logger->debug("Generating OpenAPI services: " + std::to_string(openAPIServices.size()));
 #endif
   // Aggregate all routes from registered OpenAPI services
   for (auto service : openAPIServices)
   {
     std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("Generating OpenAPI routes:  " + std::to_string(routes.size()));
 #endif
     for (const auto &route : routes)
@@ -721,7 +654,7 @@ bool HTTPService::tryServeLittleFS(WebServer *webserver)
   }
 
   String path = webserver->uri();
-  #ifdef DEBUG
+  #ifdef VERBOSE_DEBUG
     
   logger->debug(std::string("read ") + path.c_str() );
   #endif
@@ -815,7 +748,7 @@ bool HTTPService::tryServeLittleFS(WebServer *webserver)
   }
 
   file.close();
-  #ifdef DEBUG
+  #ifdef VERBOSE_DEBUG
   if (logger)
   {
     logger->debug(std::string(path.c_str()) + " sent.");

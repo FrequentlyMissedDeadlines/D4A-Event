@@ -12,26 +12,33 @@
 #include <ArduinoJson.h>
 #include <pgmspace.h>
 
-// Path constants
-constexpr char kPathSettings[] = "settings";
-
-// Error messages stored in PROGMEM
-static const char kMsgNotInitialized[] PROGMEM = "Settings service not initialized.";
-static const char kMsgInvalidDomain[] PROGMEM = "Invalid domain name.";
-static const char kMsgInvalidKey[] PROGMEM = "Invalid key name.";
-static const char kMsgMissingDomain[] PROGMEM = "Missing required parameter: domain";
-static const char kMsgMissingKey[] PROGMEM = "Missing required parameter: key";
-static const char kMsgMissingValue[] PROGMEM = "Missing required parameter: value";
-static const char kMsgOperationFailed[] PROGMEM = "Operation failed.";
-static const char kMsgSuccess[] PROGMEM = "Operation successful.";
-
-// JSON constants in PROGMEM
-static const char JSON_SUCCESS[] PROGMEM = "success";
-static const char JSON_SETTINGS[] PROGMEM = "settings";
-
-// Domain/key length limits (ESP32 Preferences limitations)
-constexpr size_t kMaxDomainLength = 15;
-constexpr size_t kMaxKeyLength = 15;
+// SettingsService constants namespace
+namespace SettingsConsts
+{
+    constexpr const char path_settings[] PROGMEM = "settings";
+    
+    // Error messages stored in PROGMEM
+    constexpr const char msg_not_initialized[] PROGMEM = "Settings service not initialized.";
+    constexpr const char msg_invalid_domain[] PROGMEM = "Invalid domain name.";
+    constexpr const char msg_invalid_key[] PROGMEM = "Invalid key name.";
+    constexpr const char msg_missing_domain[] PROGMEM = "Missing required parameter: domain";
+    constexpr const char msg_missing_key[] PROGMEM = "Missing required parameter: key";
+    constexpr const char msg_missing_value[] PROGMEM = "Missing required parameter: value";
+    constexpr const char msg_operation_failed[] PROGMEM = "Operation failed.";
+    constexpr const char msg_success[] PROGMEM = "Operation successful.";
+    
+    // JSON constants in PROGMEM
+    constexpr const char json_success[] PROGMEM = "success";
+    constexpr const char json_settings[] PROGMEM = "settings";
+    
+    // Service identification
+    constexpr const char str_service_name[] PROGMEM = "Settings service";
+    constexpr const char path_service[] PROGMEM = "settings/v1";
+    
+    // Domain/key length limits (ESP32 Preferences limitations)
+    constexpr size_t max_domain_length = 15;
+    constexpr size_t max_key_length = 15;
+}
 
 // Global instance pointer for static handlers
 static SettingsService* g_settingsServiceInstance = nullptr;
@@ -76,7 +83,7 @@ bool SettingsService::initializeService()
 bool SettingsService::startService()
 {
     if (initialized_) {
-        #ifdef DEBUG
+        #ifdef VERBOSE_DEBUG
         logger->debug(getName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
         #endif  
     } else {
@@ -91,7 +98,7 @@ bool SettingsService::stopService()
         preferences_.end();
         initialized_ = false;
     }
-    #ifdef DEBUG
+    #ifdef VERBOSE_DEBUG
     logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done );
     #endif
     return true;
@@ -99,12 +106,12 @@ bool SettingsService::stopService()
 
 std::string SettingsService::getServiceName()
 {
-    return "Settings service";
+    return std::string(SettingsConsts::str_service_name);
 }
 
 std::string SettingsService::getServiceSubPath()
 {
-    return "settings/v1";
+    return std::string(SettingsConsts::path_service);
 }
 
 std::string SettingsService::getPath(const std::string& finalpathstring)
@@ -117,7 +124,7 @@ std::string SettingsService::getPath(const std::string& finalpathstring)
 
 bool SettingsService::isValidDomain(const std::string& domain)
 {
-    if (domain.empty() || domain.length() > kMaxDomainLength) {
+    if (domain.empty() || domain.length() > SettingsConsts::max_domain_length) {
         return false;
     }
     
@@ -133,7 +140,7 @@ bool SettingsService::isValidDomain(const std::string& domain)
 
 bool SettingsService::isValidKey(const std::string& key)
 {
-    if (key.empty() || key.length() > kMaxKeyLength) {
+    if (key.empty() || key.length() > SettingsConsts::max_key_length) {
         return false;
     }
     
@@ -264,7 +271,7 @@ std::string SettingsService::buildSettingsJson(const std::vector<Setting>& setti
     
     doc[RoutesConsts::param_domain] = settings.empty() ? "" : settings[0].domain;
     
-    JsonObject settingsObj = doc[FPSTR(JSON_SETTINGS)].to<JsonObject>();
+    JsonObject settingsObj = doc[FPSTR(SettingsConsts::json_settings)].to<JsonObject>();
     
     for (const auto& setting : settings) {
         settingsObj[setting.key] = setting.value;
@@ -279,14 +286,14 @@ void SettingsService::handleGetSettings()
 {
     if (!g_settingsServiceInstance || !g_settingsServiceInstance->initialized_) {
         webserver.send(503, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(kMsgNotInitialized)));
+                      createJsonError(FPSTR(SettingsConsts::msg_not_initialized)));
         return;
     }
     
     // Check for required domain parameter
     if (!webserver.hasArg(RoutesConsts::param_domain)) {
         webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(kMsgMissingDomain)));
+                      createJsonError(FPSTR(SettingsConsts::msg_missing_domain)));
         return;
     }
     
@@ -294,7 +301,7 @@ void SettingsService::handleGetSettings()
     
     if (!isValidDomain(domain)) {
         webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(kMsgInvalidDomain)));
+                      createJsonError(FPSTR(SettingsConsts::msg_invalid_domain)));
         return;
     }
     
@@ -304,7 +311,7 @@ void SettingsService::handleGetSettings()
         
         if (!isValidKey(key)) {
             webserver.send(422, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(kMsgInvalidKey)));
+                          createJsonError(FPSTR(SettingsConsts::msg_invalid_key)));
             return;
         }
         
@@ -320,7 +327,7 @@ void SettingsService::handleGetSettings()
         JsonDocument doc;
         doc[RoutesConsts::param_domain] = domain;
         doc[RoutesConsts::message] = "ESP32 Preferences does not support key enumeration";
-        doc[FPSTR(JSON_SETTINGS)] = serialized("{}");
+        doc[FPSTR(SettingsConsts::json_settings)] = serialized("{}");
         
         String output;
         serializeJson(doc, output);
@@ -332,14 +339,14 @@ void SettingsService::handlePostSettings()
 {
     if (!g_settingsServiceInstance || !g_settingsServiceInstance->initialized_) {
         webserver.send(503, RoutesConsts::mime_json , 
-                      createJsonError(FPSTR(kMsgNotInitialized)));
+                      createJsonError(FPSTR(SettingsConsts::msg_not_initialized)));
         return;
     }
     
     // Check for required domain parameter
     if (!webserver.hasArg(RoutesConsts::param_domain)) {
         webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(kMsgMissingDomain)));
+                      createJsonError(FPSTR(SettingsConsts::msg_missing_domain)));
         return;
     }
     
@@ -347,7 +354,7 @@ void SettingsService::handlePostSettings()
     
     if (!isValidDomain(domain)) {
         webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(kMsgInvalidDomain)));
+                      createJsonError(FPSTR(SettingsConsts::msg_invalid_domain)));
         return;
     }
     
@@ -358,7 +365,7 @@ void SettingsService::handlePostSettings()
         
         if (!isValidKey(key)) {
             webserver.send(422, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(kMsgInvalidKey)));
+                          createJsonError(FPSTR(SettingsConsts::msg_invalid_key)));
             return;
         }
         
@@ -366,15 +373,15 @@ void SettingsService::handlePostSettings()
         
         if (success) {
             JsonDocument doc;
-            doc[FPSTR(JSON_SUCCESS)] = true;
-            doc[RoutesConsts::message] = FPSTR(kMsgSuccess);
+            doc[FPSTR(SettingsConsts::json_success)] = true;
+            doc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
             
             String output;
             serializeJson(doc, output);
             webserver.send(200, RoutesConsts::mime_json, output.c_str());
         } else {
             webserver.send(503, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(kMsgOperationFailed)));
+                          createJsonError(FPSTR(SettingsConsts::msg_operation_failed)));
         }
     } else if (webserver.hasArg("plain")) {
         // Parse JSON body for multiple settings
@@ -399,15 +406,15 @@ void SettingsService::handlePostSettings()
         
         if (success) {
             JsonDocument responseDoc;
-            responseDoc[FPSTR(JSON_SUCCESS)] = true;
-            responseDoc[RoutesConsts::message] = FPSTR(kMsgSuccess);
+            responseDoc[FPSTR(SettingsConsts::json_success)] = true;
+            responseDoc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
             
             String output;
             serializeJson(responseDoc, output);
             webserver.send(200, RoutesConsts::mime_json, output.c_str());
         } else {
             webserver.send(503, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(kMsgOperationFailed)));
+                          createJsonError(FPSTR(SettingsConsts::msg_operation_failed)));
         }
     } else {
         webserver.send(422, RoutesConsts::mime_json, 
@@ -418,9 +425,9 @@ void SettingsService::handlePostSettings()
 bool SettingsService::registerRoutes()
 {
     // GET /api/SettingsService/settings - Get settings
-    std::string getPath = this->getPath(kPathSettings);
+    std::string getPath = this->getPath(SettingsConsts::path_settings);
     
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + getPath);
 #endif
     
@@ -443,9 +450,9 @@ bool SettingsService::registerRoutes()
     webserver.on(getPath.c_str(), HTTP_GET, handleGetSettings);
     
     // POST /api/SettingsService/settings - Set settings
-    std::string postPath = this->getPath(kPathSettings);
+    std::string postPath = this->getPath(SettingsConsts::path_settings);
     
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("+" + postPath);
 #endif
     
@@ -472,6 +479,6 @@ bool SettingsService::registerRoutes()
 
     registerSettingsRoutes("Settings", this);
     
-    logger->info("Settings service routes registered");
+
     return true;
 }

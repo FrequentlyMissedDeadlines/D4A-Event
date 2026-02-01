@@ -10,18 +10,22 @@
 #include "WebcamService.h"
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include <unihiker_k10.h>
 #include "IsOpenAPIInterface.h"
+#include "FlashStringHelper.h"
+#include <img_converters.h>
 
 // External webserver instance
 extern WebServer webserver;
-
-constexpr char kPathWebcam[] = "webcam/";
-constexpr char kActionSnapshot[] = "snapshot";
-constexpr char kActionStatus[] = "status";
+extern UNIHIKER_K10 unihiker;
+QueueHandle_t xQueueCamera; // Camera frame queue from unihiker_k10
 
 // WebcamService constants namespace
 namespace WebcamConsts
 {
+    constexpr const char path_webcam[] PROGMEM = "webcam/";
+    constexpr const char action_snapshot[] PROGMEM = "snapshot";
+    constexpr const char action_status[] PROGMEM = "status";
     constexpr const char msg_not_initialized[] PROGMEM = "Camera not initialized.";
     constexpr const char msg_capture_error[] PROGMEM = "Failed to capture image.";
     constexpr const char msg_camera_capture_failed[] PROGMEM = "Camera capture failed";
@@ -48,165 +52,148 @@ namespace WebcamConsts
     constexpr const char resp_status_ok[] PROGMEM = "Camera status retrieved successfully";
 }
 
-// Camera pin definitions for UNIHIKER K10
-// These are typical ESP32-CAM pin configurations
-// Adjust based on actual K10 hardware schematic
-#define CAM_PIN_PWDN    -1  // Power down pin (not used)
-#define CAM_PIN_RESET   -1  // Reset pin (not used)
-#define CAM_PIN_XCLK    10  // External clock
-#define CAM_PIN_SIOD    40  // I2C SDA
-#define CAM_PIN_SIOC    39  // I2C SCL
 
-#define CAM_PIN_D7      48  // Data pins
-#define CAM_PIN_D6      11
-#define CAM_PIN_D5      12
-#define CAM_PIN_D4      14
-#define CAM_PIN_D3      16
-#define CAM_PIN_D2      18
-#define CAM_PIN_D1      17
-#define CAM_PIN_D0      15
-
-#define CAM_PIN_VSYNC   38  // Vertical sync
-#define CAM_PIN_HREF    47  // Horizontal reference
-#define CAM_PIN_PCLK    13  // Pixel clock
-
+/**
+ * @brief Initialize the camera service using register_camera()
+ * @details Creates the camera queue and registers camera with hardware
+ *          without UI display components
+ */
 bool WebcamService::initializeService()
 {
+    logger->info("Initializing " + getServiceName() + "...");
     initialized_ = false;
 
-    camera_config_t config;
-    configureCameraPins(config);
 
-    // Camera parameters
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.xclk_freq_hz = 20000000;
-    config.pixel_format = PIXFORMAT_JPEG;
-    config.grab_mode = CAMERA_GRAB_LATEST;
-
-    // Frame size and quality settings
-    // FRAMESIZE_SVGA (800x600) is a good balance of quality and size
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 12; // 0-63, lower is higher quality
-    config.fb_count = 1;
-    config.fb_location = CAMERA_FB_IN_PSRAM;
-
-    // Allocate enough buffers for stable operation
-    if (psramFound()) {
-        config.fb_count = 2;
-        config.grab_mode = CAMERA_GRAB_LATEST;
+    if (!xQueueCamera) {
+                logger->info("Creating camera queue...");
+        try
+        {
+        xQueueCamera = xQueueCreate(2, sizeof(camera_fb_t *));
+        }
+        catch(const std::exception& e)
+        {
+            logger->error(std::string("Exception creating camera queue: ") + e.what());
+        }
+        if (!xQueueCamera) {
+            logger->error("Failed to create camera queue");
+            service_status_ = INIT_FAILED;
+            status_timestamp_ = millis();
+            return false;
+        }
     }
 
-    // Initialize camera
-    esp_err_t err = esp_camera_init(&config);
-    if (err != ESP_OK) {
-#ifdef DEBUG
-        Serial.printf("Camera init failed with error 0x%x\n", err);
-#endif
-        logger->error(getServiceName() + " " + std::string(ServiceInterfaceConsts::msg_initialize_failed));
-        return false;
-    }
-
-    // Get camera sensor
+    
+    // Register camera using low-level API (no screen display)
+    // Use RGB565 format - more universally supported than JPEG
+    // The frame will be converted to JPEG in handleSnapshot()
+    register_camera(PIXFORMAT_RGB565, FRAMESIZE_QVGA, 2, xQueueCamera);
+    // Verify camera sensor is accessible
     sensor_t *s = esp_camera_sensor_get();
-    if (s) {
-        // Initial sensor configuration for best performance
-        s->set_brightness(s, 0);     // -2 to 2
-        s->set_contrast(s, 0);       // -2 to 2
-        s->set_saturation(s, 0);     // -2 to 2
-        s->set_special_effect(s, 0); // 0 to 6 (0 - No Effect)
-        s->set_whitebal(s, 1);       // 0 = disable , 1 = enable
-        s->set_awb_gain(s, 1);       // 0 = disable , 1 = enable
-        s->set_wb_mode(s, 0);        // 0 to 4 - if awb_gain enabled
-        s->set_exposure_ctrl(s, 1);  // 0 = disable , 1 = enable
-        s->set_aec2(s, 0);           // 0 = disable , 1 = enable
-        s->set_ae_level(s, 0);       // -2 to 2
-        s->set_aec_value(s, 300);    // 0 to 1200
-        s->set_gain_ctrl(s, 1);      // 0 = disable , 1 = enable
-        s->set_agc_gain(s, 0);       // 0 to 30
-        s->set_gainceiling(s, (gainceiling_t)0); // 0 to 6
-        s->set_bpc(s, 0);            // 0 = disable , 1 = enable
-        s->set_wpc(s, 1);            // 0 = disable , 1 = enable
-        s->set_raw_gma(s, 1);        // 0 = disable , 1 = enable
-        s->set_lenc(s, 1);           // 0 = disable , 1 = enable
-        s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
-        s->set_vflip(s, 0);          // 0 = disable , 1 = enable
-        s->set_dcw(s, 1);            // 0 = disable , 1 = enable
-        s->set_colorbar(s, 0);       // 0 = disable , 1 = enable
+    if (!s) {
+        logger->error("Failed to get camera sensor");
+        service_status_ = INIT_FAILED;
+        status_timestamp_ = millis();
+        return false;
+    }else {
+
     }
-
+    
     initialized_ = true;
-#ifdef DEBUG
 
-    logger->debug(getName() + " initialize done");
-    #endif
+#ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " initialize done");
+#endif
 
-    return true;
+    return initialized_;
 }
 
+/**
+ * @brief Start the camera capture task
+ * @details Calls unihiker.setBgCamerImage(true) to activate the camera task
+ *          which continuously captures frames and puts them in xQueueCamera
+ */
 bool WebcamService::startService()
 {
+    logger->info("Starting " + getServiceName() + "...");
+
     if (initialized_) {
-    #ifdef DEBUG
-        logger->debug(getName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
-    #endif
+        // Start camera capture task
+
+        
+#ifdef VERBOSE_DEBUG
+        logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
+#endif
         service_status_ = STARTED;
         status_timestamp_ = millis();
     } else {
-        logger->error(getServiceName() + " start failed");
+        logger->error(getServiceName() + " start failed - not initialized");
         service_status_ = START_FAILED;
         status_timestamp_ = millis();
     }
     return initialized_;
 }
 
+/**
+ * @brief Stop the camera capture task
+ * @details Calls unihiker.setBgCamerImage(false) to stop the camera task
+ *          and suspend frame capture
+ */
 bool WebcamService::stopService()
 {
+    logger->info("Stopping " + getServiceName() + "...");
     if (initialized_) {
-        esp_camera_deinit();
-        initialized_ = false;
+        // Stop camera capture task
+
+        
         service_status_ = STOPPED;
         status_timestamp_ = millis();
-        #ifdef DEBUG
-        logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done);
-        #endif
+#ifdef VERBOSE_DEBUG
+        logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_stop_done));
+#endif
         return true;
     }
     logger->error(getServiceName() + " " + std::string(ServiceInterfaceConsts::msg_stop_failed));
     return false;
 }
 
-void WebcamService::configureCameraPins(camera_config_t &config)
+void WebcamService::configureCamera(camera_config_t &config)
 {
-    config.pin_pwdn = CAM_PIN_PWDN;
-    config.pin_reset = CAM_PIN_RESET;
-    config.pin_xclk = CAM_PIN_XCLK;
-    config.pin_sscb_sda = CAM_PIN_SIOD;
-    config.pin_sscb_scl = CAM_PIN_SIOC;
-
-    config.pin_d7 = CAM_PIN_D7;
-    config.pin_d6 = CAM_PIN_D6;
-    config.pin_d5 = CAM_PIN_D5;
-    config.pin_d4 = CAM_PIN_D4;
-    config.pin_d3 = CAM_PIN_D3;
-    config.pin_d2 = CAM_PIN_D2;
-    config.pin_d1 = CAM_PIN_D1;
-    config.pin_d0 = CAM_PIN_D0;
-
-    config.pin_vsync = CAM_PIN_VSYNC;
-    config.pin_href = CAM_PIN_HREF;
-    config.pin_pclk = CAM_PIN_PCLK;
+    // This method is no longer used - the UniHiker K10 board
+    // handles camera initialization through register_camera()
+    // Kept for interface compatibility
+    logger->info("Note: Camera configuration is handled by UniHiker K10 board");
 }
 
+/**
+ * @brief Capture a snapshot from the camera queue
+ * @details Retrieves the latest frame from xQueuWebcam queue populated by
+ *          the camera task started via setBgCamerImage(true)
+ * @return Camera frame buffer pointer, or nullptr if unavailable
+ */
 camera_fb_t* WebcamService::captureSnapshot()
 {
+    logger->info("Capturing snapshot from " + getServiceName() + "...");
     if (!initialized_) {
         return nullptr;
     }
 
-    camera_fb_t *fb = esp_camera_fb_get();
+    // Check if queue exists
+    if (!xQueueCamera) {
+        logger->error("Camera queue not initialized");
+        return nullptr;
+    }
+
+    // Try to get frame from queue (wait up to 1 second)
+    camera_fb_t *fb = nullptr;
+    if (xQueueReceive(xQueueCamera, &fb, pdMS_TO_TICKS(1000)) != pdTRUE) {
+#ifdef VERBOSE_DEBUG
+        logger->debug("No frame available in queue");
+#endif
+        return nullptr;
+    }
+
     if (!fb) {
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
         Serial.println(FPSTR(WebcamConsts::msg_camera_capture_failed));
 #endif
         return nullptr;
@@ -217,43 +204,79 @@ camera_fb_t* WebcamService::captureSnapshot()
 
 void WebcamService::handleSnapshot()
 {
-    // Note: This must be handled via instance, not static
-    // Get the global webcam service instance (defined in main.cpp)
-    extern WebcamService webcamService;
-
-    if (!webcamService.initialized_) {
+    logger->info("Handling snapshot request for " + getServiceName() + "...");  
+    if (!initialized_) {
         webserver.send(503, RoutesConsts::mime_plain_text, FPSTR(WebcamConsts::msg_not_initialized));
         return;
     }
 
-    camera_fb_t *fb = webcamService.captureSnapshot();
+    camera_fb_t *fb = captureSnapshot();
     if (!fb) {
         webserver.send(503, RoutesConsts::mime_plain_text, FPSTR(WebcamConsts::msg_capture_error));
         return;
     }
 
+    // Validate frame buffer content
+    if (!fb->buf || fb->len == 0) {
+        logger->error("Frame buffer is empty or invalid");
+        esp_camera_fb_return(fb);
+        webserver.send(503, RoutesConsts::mime_plain_text, "Frame buffer is empty");
+        return;
+    }
+
+    uint8_t *jpg_buf = nullptr;
+    size_t jpg_len = 0;
+    bool needs_free = false;
+
+    // Check actual JPEG magic bytes (0xFF 0xD8) - don't trust fb->format field
+    bool is_valid_jpeg = (fb->len >= 2 && fb->buf[0] == 0xFF && fb->buf[1] == 0xD8);
+    
+    if (is_valid_jpeg) {
+        // Data is already valid JPEG
+        jpg_buf = fb->buf;
+        jpg_len = fb->len;
+        logger->info("Frame is valid JPEG, size: " + std::to_string(jpg_len) + " bytes");
+    } else {
+        // Data is not JPEG - need to convert regardless of what fb->format says
+        logger->info("Frame is not JPEG (format=" + std::to_string(fb->format) + 
+                     ", first bytes: " + std::to_string(fb->buf[0]) + " " + 
+                     std::to_string(fb->buf[1]) + "), converting...");
+        
+        bool conversion_ok = frame2jpg(fb, 80, &jpg_buf, &jpg_len);
+        if (!conversion_ok || !jpg_buf || jpg_len == 0) {
+            logger->error("Failed to convert frame to JPEG");
+            esp_camera_fb_return(fb);
+            if (jpg_buf) free(jpg_buf);
+            webserver.send(503, RoutesConsts::mime_plain_text, "JPEG conversion failed");
+            return;
+        }
+        needs_free = true;
+        logger->info("Converted to JPEG, size: " + std::to_string(jpg_len) + " bytes");
+    }
+
     // Send JPEG image
     webserver.sendHeader(FPSTR(WebcamConsts::str_content_disposition), FPSTR(WebcamConsts::str_inline_filename));
     webserver.sendHeader(FPSTR(WebcamConsts::str_access_control), "*");
-    webserver.setContentLength(fb->len);
+    webserver.setContentLength(jpg_len);
     webserver.send(200, FPSTR(WebcamConsts::mime_image_jpeg), "");
-    webserver.sendContent(reinterpret_cast<const char*>(fb->buf), fb->len);
+    webserver.sendContent(reinterpret_cast<const char*>(jpg_buf), jpg_len);
 
-    // Return frame buffer
+    // Clean up
+    if (needs_free && jpg_buf) {
+        free(jpg_buf);
+    }
     esp_camera_fb_return(fb);
 }
 
 void WebcamService::handleStatus()
 {
-    extern WebcamService webcamService;
-
     JsonDocument doc;
     
     // Add standardized status fields
     doc[PSTR("servicename")] = "WebcamService";
     
     const char* status_str = "unknown";
-    switch (webcamService.service_status_) {
+    switch (service_status_) {
         case WebcamService::INIT_FAILED: status_str = "init failed"; break;
         case WebcamService::START_FAILED: status_str = "start failed"; break;
         case WebcamService::STARTED: status_str = "started"; break;
@@ -261,12 +284,12 @@ void WebcamService::handleStatus()
         case WebcamService::STOP_FAILED: status_str = "stop failed"; break;
     }
     doc[PSTR("status")] = status_str;
-    doc[PSTR("ts")] = (unsigned long)webcamService.status_timestamp_;
+    doc[PSTR("ts")] = (unsigned long)status_timestamp_;
     
     // Add additional camera details
-    doc[FPSTR(WebcamConsts::field_initialized)] = webcamService.initialized_;
+    doc[FPSTR(WebcamConsts::field_initialized)] = initialized_;
     
-    if (webcamService.initialized_) {
+    if (initialized_) {
         sensor_t *s = esp_camera_sensor_get();
         if (s) {
             doc[RoutesConsts::field_status] = FPSTR(WebcamConsts::field_ready);
@@ -304,9 +327,9 @@ void WebcamService::handleStatus()
 bool WebcamService::registerRoutes()
 {
     // Snapshot endpoint - returns JPEG image
-    std::string snapshotPath = getPath(kActionSnapshot);
-#ifdef DEBUG
-    logger->debug("+" + snapshotPath);
+    std::string path = getPath(WebcamConsts::action_snapshot);
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
 #endif
     
     std::vector<OpenAPIResponse> snapshotResponses;
@@ -315,28 +338,28 @@ bool WebcamService::registerRoutes()
     snapshotOk.schema = "{\"type\":\"string\",\"format\":\"binary\",\"description\":\"JPEG image data\"}";
     snapshotResponses.push_back(snapshotOk);
     snapshotResponses.push_back(OpenAPIResponse(503, WebcamConsts::resp_camera_not_init));
-    
-    registerOpenAPIRoute(OpenAPIRoute(snapshotPath.c_str(), RoutesConsts::method_get, 
+    logger->info("Add "+path+" route");
+    registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get, 
                                       WebcamConsts::desc_snapshot,
                                       WebcamConsts::tag_webcam, false, {}, snapshotResponses));
-    webserver.on(snapshotPath.c_str(), HTTP_GET, handleSnapshot);
+    webserver.on(path.c_str(), HTTP_GET, [this]() { handleSnapshot(); });
 
     // Status endpoint - returns JSON with camera info
-    std::string statusPath = getPath(kActionStatus);
-#ifdef DEBUG
-    logger->debug("+" + statusPath);
+    path = getPath(WebcamConsts::action_status);
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
 #endif
-    
+        logger->info("Add "+path+" route");
     std::vector<OpenAPIResponse> statusResponses;
     OpenAPIResponse statusOk(200, WebcamConsts::resp_status_ok);
     statusOk.schema = "{\"type\":\"object\",\"properties\":{\"initialized\":{\"type\":\"boolean\",\"description\":\"Whether camera is initialized\"},\"status\":{\"type\":\"string\",\"enum\":[\"ready\",\"sensor_error\",\"not_initialized\"]},\"settings\":{\"type\":\"object\",\"properties\":{\"framesize\":{\"type\":\"integer\",\"description\":\"Frame size code (0-13)\"},\"framesize_name\":{\"type\":\"string\",\"description\":\"Frame size name (e.g., SVGA, VGA)\"},\"quality\":{\"type\":\"integer\",\"description\":\"JPEG quality (0-63, lower is better)\"},\"brightness\":{\"type\":\"integer\",\"description\":\"Brightness level (-2 to 2)\"},\"contrast\":{\"type\":\"integer\",\"description\":\"Contrast level (-2 to 2)\"},\"saturation\":{\"type\":\"integer\",\"description\":\"Saturation level (-2 to 2)\"}}}}}";
     statusOk.example = "{\"initialized\":true,\"status\":\"ready\",\"settings\":{\"framesize\":9,\"framesize_name\":\"SVGA\",\"quality\":12,\"brightness\":0,\"contrast\":0,\"saturation\":0}}";
     statusResponses.push_back(statusOk);
     
-    registerOpenAPIRoute(OpenAPIRoute(statusPath.c_str(), RoutesConsts::method_get, 
+    registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get, 
                                       WebcamConsts::desc_status,
                                       WebcamConsts::tag_webcam, false, {}, statusResponses));
-    webserver.on(statusPath.c_str(), HTTP_GET, handleStatus);
+    webserver.on(path.c_str(), HTTP_GET, [this]() { handleStatus(); });
 
     registerSettingsRoutes("Webcam", this);
 

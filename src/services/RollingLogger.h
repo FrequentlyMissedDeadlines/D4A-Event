@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include <vector>
+#include "FlashStringHelper.h"
 /**
  * @class Logger
  * @brief Simple logging utility with log levels and screen output.
@@ -59,21 +60,3 @@ private:
     std::vector<std::pair<LogLevel, std::string>> log_rows;
 };
 
-/**
- * @brief Utility function to convert FPSTR (Flash String Helper) to std::string
- * @param flashStr The flash string pointer from FPSTR()
- * @return std::string copy of the flash string
- */
-inline std::string fpstr_to_string(const __FlashStringHelper* flashStr) {
-    if (!flashStr) return std::string();
-    const char* str = reinterpret_cast<const char*>(flashStr);
-    return std::string(str);
-}
-
-inline std::string operator+(const std::string& lhs, const __FlashStringHelper* rhs) {
-    return lhs + fpstr_to_string(rhs);
-}
-
-inline std::string operator+(const __FlashStringHelper* lhs, const std::string& rhs) {
-    return fpstr_to_string(lhs) + rhs;
-}

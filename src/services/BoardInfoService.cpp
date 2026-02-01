@@ -18,7 +18,7 @@
 namespace BoardInfoConsts
 {
     constexpr const char str_board_name[] PROGMEM = "UNIHIKER_K10";
-    constexpr const char str_service_name[] PROGMEM = "Board info Service X";
+    constexpr const char str_service_name[] PROGMEM = "Board info";
     constexpr const char path_service[] PROGMEM = "board/v1";
     constexpr const char str_firmware_version[] PROGMEM = "1.0.0";
 }
@@ -26,7 +26,7 @@ namespace BoardInfoConsts
 bool BoardInfoService::initializeService() { 
     service_status_ = STARTED;
     status_timestamp_ = millis();
-    #ifdef DEBUG
+    #ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " initialize done");
     #endif
     return true; 
@@ -34,7 +34,7 @@ bool BoardInfoService::initializeService() {
 bool BoardInfoService::startService() { 
     service_status_ = STARTED;
     status_timestamp_ = millis();
-    #ifdef DEBUG
+    #ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " start done");
     #endif
     return true; 
@@ -42,7 +42,7 @@ bool BoardInfoService::startService() {
 bool BoardInfoService::stopService() { 
     service_status_ = STOPPED;
     status_timestamp_ = millis();
-    #ifdef DEBUG
+    #ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " stop done");
     #endif  
     return true; 
@@ -58,7 +58,7 @@ bool BoardInfoService::registerRoutes()
   static constexpr char kResponseDesc[] PROGMEM = "Board information retrieved successfully";
 
   std::string path = getPath("");
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
   logger->debug("Registering " + path);
 #endif
 

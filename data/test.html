@@ -6,17 +6,6 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="icon" href="/favicon.svg">
   <style>
-    .route-container { background: white; margin: 15px 0; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .route-header { margin-bottom: 10px; }
-    .param-group { margin: 10px 0; }
-    .param-label { display: block; margin: 5px 0 3px; font-weight: bold; font-size: 13px; }
-    .param-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box; }
-    .btn-primary { background: #4CAF50; color: white; }
-    .btn-primary:hover { background: #45a049; }
-    .response-area { margin-top: 15px; display: none; }
-    .response-content { background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; padding: 10px; max-height: 300px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
-    .error { color: #f93e3e; }
-    .success { color: #49cc90; }
   </style>
 </head>
 <body>
@@ -119,8 +108,9 @@
       .then(data => {
         const container = document.getElementById('routes-container');
         let formId = 0;
-        
-        for (const [path, methods] of Object.entries(data.paths || {})) {
+        const sortedPaths = Object.keys(data.paths || {}).sort();
+        for (const path of sortedPaths) {
+          const methods = data.paths[path];
           for (const [method, details] of Object.entries(methods)) {
             const route = {
               method: method.toUpperCase(),

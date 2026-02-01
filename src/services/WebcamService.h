@@ -80,15 +80,15 @@ private:
     /**
      * @brief Handle snapshot HTTP request
      */
-    static void handleSnapshot();
+    void handleSnapshot();
 
     /**
      * @brief Handle camera status HTTP request
      */
-    static void handleStatus();
+    void handleStatus();
 
     /**
      * @brief Configure camera pins for UNIHIKER K10 board
      */
-    void configureCameraPins(camera_config_t &config);
+    void configureCamera(camera_config_t &config);
 };

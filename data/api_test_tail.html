@@ -1,0 +1,91 @@
+  </div>
+  <script>
+    function testRoute(formId, method, path) {
+      const form = document.getElementById('form' + formId);
+      const inputs = form.querySelectorAll('input[name]');
+      const responseArea = document.getElementById('response' + formId);
+      const responseContent = document.getElementById('responseContent' + formId);
+      
+      // Build URL and separate parameters by type
+      let url = path;
+      const queryParams = new URLSearchParams();
+      const bodyParams = {};
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Process each input based on its parameter type
+      inputs.forEach(input => {
+        const name = input.name;
+        const value = input.value;
+        const paramIn = input.getAttribute('data-param-in');
+        
+        if (value) {
+          if (paramIn === 'path') {
+            // Replace path parameter
+            url = url.replace('{' + name + '}', encodeURIComponent(value));
+          } else if (paramIn === 'query') {
+            // Add to query string
+            queryParams.append(name, value);
+          } else if (paramIn === 'header') {
+            // Add to headers
+            headers[name] = value;
+          } else {
+            // Default: for GET use query, for POST/PUT use body
+            if (method === 'GET') {
+              queryParams.append(name, value);
+            } else {
+              bodyParams[name] = value;
+            }
+          }
+        }
+      });
+      
+      // Append query parameters to URL
+      if (queryParams.toString()) {
+        url += (url.includes('?') ? '&' : '?') + queryParams.toString();
+      }
+      
+      responseContent.innerHTML = 'Loading...';
+      responseArea.style.display = 'block';
+      
+      const fetchOptions = {
+        method: method,
+        headers: headers
+      };
+      
+      // Add body for POST/PUT/PATCH methods if there are body parameters
+      if (method !== 'GET' && Object.keys(bodyParams).length > 0) {
+        fetchOptions.body = JSON.stringify(bodyParams);
+      }
+      
+      fetch(url, fetchOptions)
+        .then(response => {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            return response.json().then(data => ({
+              status: response.status,
+              data: JSON.stringify(data, null, 2),
+              ok: response.ok
+            }));
+          } else {
+            return response.text().then(text => ({
+              status: response.status,
+              data: text,
+              ok: response.ok
+            }));
+          }
+        })
+        .then(result => {
+          const className = result.ok ? 'success' : 'error';
+          responseContent.innerHTML = '<span class="' + className + '">Status: ' + result.status + '</span>\n\n' + result.data;
+        })
+        .catch(error => {
+          responseContent.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+        });
+      
+      return false;
+    }
+  </script>
+</body>
+</html>

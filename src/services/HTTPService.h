@@ -135,6 +135,13 @@ protected:
     bool tryServeLittleFS(WebServer *webserver);
 
     /**
+     * @brief Read file content from LittleFS into a string
+     * @param path Path to the file in LittleFS
+     * @return File content as string, empty string on failure
+     */
+    std::string readFileToString(const char *path);
+
+    /**
      * @brief Resolve MIME type based on file extension
      * @param path Request path
      * @return MIME type string

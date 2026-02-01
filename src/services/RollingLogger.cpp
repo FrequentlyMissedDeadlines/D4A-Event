@@ -2,6 +2,7 @@
  * Logger implementation
  */
 #include "RollingLogger.h"
+#include "FlashStringHelper.h"
 #include <vector>
 #include <TFT_eSPI.h>
 #include <Arduino.h>
@@ -57,7 +58,7 @@ void RollingLogger::renderLogs()
                     tft.setTextColor(COLOR_ERROR);
                     break;
                 }
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
             const char *levelName = "?";
             switch (line.first)
             {
@@ -76,7 +77,7 @@ void RollingLogger::renderLogs()
             }
 #endif
             tft.setCursor(vp_x, vp_y + i * CHAR_HEIGHT);
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
             tft.print(levelName);
             tft.print("|");
 #endif

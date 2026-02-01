@@ -41,7 +41,7 @@
       "name": "UDP",
       "description": "UDP service status and messages"
     },
-    {#ifdef DEBUG
+    {
       "name": "Settings",
       "description": "Configuration and settings management"
     }

@@ -113,7 +113,7 @@ private:
     mutable std::string baseServicePath;  // Cached for optimization (mutable for const method)
 
     // HTTP handler methods
-    void handleSetServoAngle();
-    void handleSetMotorSpeed();
-    void handleGetStatus();
+    void handle_set_servo_angle();
+    void handle_set_motor_speed();
+    void handle_get_status();
 };

@@ -23,21 +23,21 @@ extern UNIHIKER_K10 unihiker;
 
 bool K10SensorsService::initializeService()
 {
-  #ifdef DEBUG
+  #ifdef VERBOSE_DEBUG
   logger->debug(getServiceName() + " initialize done");
   #endif
   return true;
 }
 bool K10SensorsService::startService()
 {
-  #ifdef DEBUG  
+  #ifdef VERBOSE_DEBUG  
   logger->debug(getServiceName() + " start done");
   #endif
   return true;
 }
 bool K10SensorsService::stopService()
 {
-  #ifdef DEBUG
+  #ifdef VERBOSE_DEBUG
   logger->debug(getServiceName() + " stop done");
   #endif
   return true;
@@ -78,7 +78,7 @@ bool K10SensorsService::registerRoutes()
 
   std::string path = getPath("");
   
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
   if (logger)
     logger->debug("Registering " + path);
 #endif

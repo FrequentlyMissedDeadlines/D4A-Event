@@ -1,4 +1,5 @@
 #include "UDPService.h"
+#include "FlashStringHelper.h"
 /**
  * @file UDPService.cpp
  * @brief Implementation for UDP server integration
@@ -133,7 +134,7 @@ bool UDPService::initializeService()
   {
     messageMutex = xSemaphoreCreateMutex();
   }
-  #ifdef DEBUG
+  #ifdef VERBOSE_DEBUG
   logger->debug(getName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
   #endif
   return true;
@@ -150,7 +151,7 @@ bool UDPService::startService()
   if (udpHandle->listen(port))
   {
     udpHandle->onPacket(handleUDPPacket);
-  #ifdef DEBUG
+  #ifdef VERBOSE_DEBUG
     logger->debug(getName() + ServiceInterfaceConsts::msg_start_done);
   #endif
     return true;
@@ -178,7 +179,7 @@ bool UDPService::stopService()
     vSemaphoreDelete(messageMutex);
     messageMutex = nullptr;
   }
-  #ifdef DEBUG
+  #ifdef VERBOSE_DEBUG
     logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done);
   #endif
   return true;
@@ -256,7 +257,7 @@ unsigned long UDPService::getHandledPackets()
 bool UDPService::registerRoutes()
 {
   std::string path = getPath("");
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
   logger->debug("Registering " + path);
 #endif
   

@@ -20,6 +20,8 @@ namespace ServiceInterfaceConsts {
     constexpr const char msg_stop_failed[] PROGMEM = "stop failed";
 }
 
+enum ServiceStatus { INIT_FAILED, START_FAILED, STARTED, STOPPED, STOP_FAILED };
+
 struct IsServiceInterface
 {
 public:

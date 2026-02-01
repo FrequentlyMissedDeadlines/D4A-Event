@@ -32,6 +32,7 @@
 - common constants should be in a dedicated namespace e.g. RoutesConsts.
 - use `ServiceInterfaceConsts` for common service strings.
 - use `OpenApiInterfaceConsts` for common openapi strings.
+- variable and contstant naming should follow the existing conventions. : prefix with goal, usage or context, and  lowercase with underscores.s
 
 
 

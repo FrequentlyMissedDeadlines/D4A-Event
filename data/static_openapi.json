@@ -1,0 +1,92 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "K10 Bot API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/music/v1/play": {
+      "post": {
+        "summary": "Play built-in melody with playback options",
+        "tags": ["Music"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "melody": { 
+                    "type": "integer", 
+                    "description": "Melody enum value (0-19)"
+                  },
+                  "option": { 
+                    "type": "integer", 
+                    "description": "Playback option (1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground)"
+                  }
+                },
+                "required": ["melody"]
+              },
+              "example": {
+                "melody": 0,
+                "option": 4
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { 
+            "description": "Operation completed successfully"
+          }
+        }
+      }
+    },
+    "/api/music/v1/tone": {
+      "post": {
+        "summary": "Play a tone at specified frequency and duration",
+        "tags": ["Music"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "freq": { 
+                    "type": "integer", 
+                    "description": "Frequency in Hz"
+                  },
+                  "beat": { 
+                    "type": "integer", 
+                    "description": "Beat duration (1 beat = 8000)"
+                  }
+                },
+                "required": ["freq"]
+              },
+              "example": {
+                "freq": 440,
+                "beat": 8000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { 
+            "description": "Operation completed successfully"
+          }
+        }
+      }
+    },
+    "/api/music/v1/stop": {
+      "post": {
+        "summary": "Stop current tone playback",
+        "tags": ["Music"],
+        "responses": {
+          "200": { 
+            "description": "Operation completed successfully"
+          }
+        }
+      }
+    }
+  }
+}

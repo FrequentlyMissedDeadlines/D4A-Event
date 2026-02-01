@@ -59,7 +59,7 @@ namespace
 TFT_eSPI tft;
 
 UNIHIKER_K10 unihiker;
-
+Music music;
 WifiService wifiService = WifiService();
 WebServer webserver(kWebPort);
 UDPService udpService = UDPService();
@@ -69,11 +69,11 @@ K10SensorsService k10sensorsService = K10SensorsService();
 BoardInfoService boardInfo = BoardInfoService();
 ServoService servoService = ServoService();
 WebcamService webcamService = WebcamService();
-
 RollingLogger debugLogger = RollingLogger();
 RollingLogger appInfoLogger = RollingLogger();
-
 UTB2026 utb2026UI;
+#include "services/MusicService.h"
+MusicService musicService = MusicService();
 
 // Camera frame queue
 // Packet handling is implemented in udp_handler module
@@ -298,9 +298,11 @@ void setup()
   }
   start_service(settingsService);
   start_service(k10sensorsService);
+
   start_service(boardInfo);
   start_service(servoService);
   start_service(webcamService);
+  start_service(musicService);
 
   if (start_service(udpService))
   {

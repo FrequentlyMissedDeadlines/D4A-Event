@@ -1112,7 +1112,7 @@ curl -X POST "http://192.168.1.100/api/servo/setAngle?channel=0&angle=90"
 
 1. **Enable/disable features:**
    ```cpp
-   #ifdef DEBUG
+   #ifdef VERBOSE_DEBUG
        logger->debug("Only in debug builds");
    #endif
    ```

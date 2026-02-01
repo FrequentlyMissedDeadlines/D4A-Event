@@ -114,14 +114,6 @@ std::string SettingsService::getServiceSubPath()
     return std::string(SettingsConsts::path_service);
 }
 
-std::string SettingsService::getPath(const std::string& finalpathstring)
-{
-    if (baseServicePath_.empty()) {
-        baseServicePath_ = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
-    }
-    return baseServicePath_ + finalpathstring;
-}
-
 bool SettingsService::isValidDomain(const std::string& domain)
 {
     if (domain.empty() || domain.length() > SettingsConsts::max_domain_length) {

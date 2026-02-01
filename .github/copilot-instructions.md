@@ -28,9 +28,11 @@
 - each time a OpenApiService implementation changed, update the registerRoutes() if needed.
 - each time a registerRoutes implementation changed, update the static /data/static_openapi.json file 
 - strings constants should be stored in PROGMEM to save RAM.
+- constants for service names, paths, versions should be in a dedicated namespace e.g. BoardInfoConsts.
+- common constants should be in a dedicated namespace e.g. RoutesConsts.
 - use `ServiceInterfaceConsts` for common service strings.
 - use `OpenApiInterfaceConsts` for common openapi strings.
-- 
+
 
 
 ## Forbidden/avoid

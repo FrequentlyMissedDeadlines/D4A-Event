@@ -290,13 +290,6 @@ std::string UDPService::getServiceSubPath()
 {
     return fpstr_to_string(FPSTR(UDPConsts::path_service));
 }
-std::string UDPService::getPath(const std::string& finalpathstring)
-{
-  if (baseServicePath.empty()) {
-    baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
-  }
-  return baseServicePath + finalpathstring;
-}
 
 bool UDPService::saveSettings()
 {

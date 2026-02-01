@@ -12,7 +12,6 @@ class BoardInfoService : public IsOpenAPIInterface, public IsServiceInterface
 {
 public:
     bool registerRoutes() override;
-    std::string getPath(const std::string& finalpathstring) override;
     std::string getServiceSubPath() override;
     bool initializeService() override ;
     bool startService() override ;
@@ -23,7 +22,6 @@ public:
     bool loadSettings() override;
 
 private:
-    std::string baseServicePath;  // Cached for optimization
     enum ServiceStatus { INIT_FAILED, START_FAILED, STARTED, STOPPED, STOP_FAILED };
     ServiceStatus service_status_ = STOP_FAILED;
     unsigned long status_timestamp_ = 0;

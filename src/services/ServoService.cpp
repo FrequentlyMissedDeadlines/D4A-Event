@@ -628,15 +628,6 @@ std::string ServoService::getServiceSubPath()
     return "servos/v1";
 }
 
-std::string ServoService::getPath(const std::string &finalpathstring)
-{
-    if (baseServicePath.empty())
-    {
-        baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
-    }
-    return baseServicePath + finalpathstring;
-}
-
 bool ServoService::saveSettings()
 {
     return settingsService.setSetting(getServiceName(), reinterpret_cast<const char *>(FPSTR(ServoConsts::settings_key_servos)), std::to_string(static_cast<int>(attached_servos[0])) + "," + std::to_string(static_cast<int>(attached_servos[1])) + "," + std::to_string(static_cast<int>(attached_servos[2])) + "," + std::to_string(static_cast<int>(attached_servos[3])) + "," + std::to_string(static_cast<int>(attached_servos[4])) + "," + std::to_string(static_cast<int>(attached_servos[5])) + "," + std::to_string(static_cast<int>(attached_servos[6])) + "," + std::to_string(static_cast<int>(attached_servos[7])));

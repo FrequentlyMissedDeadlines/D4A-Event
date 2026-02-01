@@ -77,13 +77,6 @@ public:
     std::string getServiceSubPath() override;
 
     /**
-     * @brief Get path for a specific route
-     * @param finalPathString The final path segment
-     * @return Full API path
-     */
-    std::string getPath(const std::string& finalPathString) override;
-
-    /**
      * @brief Capture image from camera and run inference
      * @return true if detection completed successfully
      */

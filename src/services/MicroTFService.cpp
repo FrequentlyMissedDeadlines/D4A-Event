@@ -65,10 +65,6 @@ std::string MicroTFService::getServiceSubPath() {
     return MicroTFConsts::svc_path;
 }
 
-std::string MicroTFService::getPath(const std::string& finalPathString) {
-    return std::string("/api/") + MicroTFConsts::svc_path + std::string("/") + finalPathString;
-}
-
 bool MicroTFService::detectObjects() {
     if (!is_initialized) {
         if (logger) {

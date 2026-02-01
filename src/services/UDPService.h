@@ -20,7 +20,6 @@ class UDPService : public IsOpenAPIInterface, public IsServiceInterface
 {
 public:
     bool registerRoutes() override;
-    std::string getPath(const std::string& finalpathstring) override;
     std::string getServiceSubPath() override;
     bool initializeService() override;
     bool startService() override;
@@ -39,7 +38,6 @@ protected:
     AsyncUDP *udpHandle = nullptr;
     bool udpOwned = false;
     int port = 24642;
-    std::string baseServicePath;  // Cached for optimization
 
     /**
      * @fn buildJson

@@ -23,6 +23,9 @@ QueueHandle_t xQueueCamera; // Camera frame queue from unihiker_k10
 // WebcamService constants namespace
 namespace WebcamConsts
 {
+    constexpr uint8_t camera_queue_length = 1;
+    constexpr uint8_t camera_rate_ms = 10;
+    
     constexpr const char path_webcam[] PROGMEM = "webcam/";
     constexpr const char action_snapshot[] PROGMEM = "snapshot";
     constexpr const char action_status[] PROGMEM = "status";
@@ -68,7 +71,7 @@ bool WebcamService::initializeService()
                 logger->info("Creating camera queue...");
         try
         {
-        xQueueCamera = xQueueCreate(2, sizeof(camera_fb_t *));
+        xQueueCamera = xQueueCreate(WebcamConsts::camera_queue_length, sizeof(camera_fb_t *));
         }
         catch(const std::exception& e)
         {
@@ -86,7 +89,7 @@ bool WebcamService::initializeService()
     // Register camera using low-level API (no screen display)
     // Use RGB565 format - more universally supported than JPEG
     // The frame will be converted to JPEG in handleSnapshot()
-    register_camera(PIXFORMAT_RGB565, FRAMESIZE_QVGA, 2, xQueueCamera);
+    register_camera(PIXFORMAT_RGB565, FRAMESIZE_QVGA, WebcamConsts::camera_queue_length, xQueueCamera);
     // Verify camera sensor is accessible
     sensor_t *s = esp_camera_sensor_get();
     if (!s) {
@@ -185,7 +188,7 @@ camera_fb_t* WebcamService::captureSnapshot()
 
     // Try to get frame from queue (wait up to 1 second)
     camera_fb_t *fb = nullptr;
-    if (xQueueReceive(xQueueCamera, &fb, pdMS_TO_TICKS(1000)) != pdTRUE) {
+    if (xQueueReceive(xQueueCamera, &fb, pdMS_TO_TICKS(WebcamConsts::camera_rate_ms)) != pdTRUE) {
 #ifdef VERBOSE_DEBUG
         logger->debug("No frame available in queue");
 #endif
@@ -374,20 +377,6 @@ std::string WebcamService::getServiceSubPath()
 {
     return std::string(WebcamConsts::path_service);
 }
-std::string WebcamService::getPath(const std::string& finalpathstring)
-{
-    if (baseServicePath_.empty()) {
-        // Cache base path on first call
-        std::string serviceName = getServiceSubPath();
-        size_t slashPos = serviceName.find('/');
-        if (slashPos != std::string::npos) {
-            serviceName = serviceName.substr(0, slashPos);
-        }
-        baseServicePath_ = std::string(RoutesConsts::path_api) + serviceName + "/";
-    }
-    return baseServicePath_ + finalpathstring;
-}
-
 bool WebcamService::saveSettings()
 {
     // To be implemented if needed

@@ -107,14 +107,6 @@ std::string BoardInfoService::getServiceSubPath()
 {
     return fpstr_to_string(FPSTR(BoardInfoConsts::path_service));
 }
-std::string BoardInfoService::getPath(const std::string& finalpathstring)
-{
-  if (baseServicePath.empty()) {
-    baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
-  }
-  return baseServicePath + finalpathstring;
-}
-
 bool BoardInfoService::saveSettings()
 {
     // To be implemented if needed

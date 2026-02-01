@@ -96,7 +96,6 @@ public:
      * @return true if registration was successful, false otherwise.
      */
     bool registerRoutes() override;
-    std::string getPath(const std::string& finalpathstring) override;
     std::string getServiceSubPath() override;
 
     // Service lifecycle methods (implemented in the .cpp file)
@@ -109,7 +108,6 @@ public:
     bool loadSettings() override;
 
 private:
-    std::string baseServicePath;  // Cached for optimization
     enum ServiceStatus { INIT_FAILED, START_FAILED, STARTED, STOPPED, STOP_FAILED };
     ServiceStatus service_status_ = STOP_FAILED;
     unsigned long status_timestamp_ = 0;

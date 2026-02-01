@@ -203,7 +203,12 @@ public:
      * @return: Full path in format /api/<servicename>/<finalpathstring>
      * @note: Requires implementing class to also implement IsServiceInterface for getSericeName()
      */
-    virtual std::string getPath(const std::string& finalpathstring = "") = 0;
+    virtual std::string getPath(const std::string& finalpathstring = "") {
+        if (baseServicePath_.empty()) {
+            baseServicePath_ = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
+        }
+        return baseServicePath_ + finalpathstring;
+    }
     
     /**
      * @fn: getOpenAPIRoutes
@@ -218,6 +223,7 @@ public:
     virtual ~IsOpenAPIInterface() = default;
 
 protected:
+    mutable std::string baseServicePath_;  // Cached base path for performance
     std::vector<OpenAPIRoute> openAPIRoutes = {};
     bool registerOpenAPIRoute(const OpenAPIRoute &route)
     {

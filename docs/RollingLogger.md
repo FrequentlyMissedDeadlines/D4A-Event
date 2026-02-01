@@ -480,7 +480,7 @@ for (int i = 0; i < 1000; i++) {
 logger->debug(msg);
 
 // ✅ Good - filter verbose logs in production
-#ifdef DEBUG
+#ifdef VERBOSE_DEBUG
     logger->debug("Detailed debug info");
 #endif
 ```

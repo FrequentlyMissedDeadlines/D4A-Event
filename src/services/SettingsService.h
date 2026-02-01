@@ -69,13 +69,6 @@ public:
     bool registerRoutes() override;
     
     /**
-     * @brief Get path for route
-     * @param finalpathstring The final path segment
-     * @return Full API path
-     */
-    std::string getPath(const std::string& finalpathstring) override;
-    
-    /**
      * @brief Get service subpath component
      * @return Service subpath
      */
@@ -135,7 +128,6 @@ public:
 private:
     Preferences preferences_;
     bool initialized_;
-    std::string baseServicePath_;
     
     /**
      * @brief Handle GET /settings request

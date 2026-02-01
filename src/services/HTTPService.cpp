@@ -801,15 +801,6 @@ String HTTPService::getContentTypeForPath(const String &path)
   return String("application/octet-stream");
 }
 
-std::string HTTPService::getPath(const std::string &finalpathstring)
-{
-  if (baseServicePath.empty())
-  {
-    baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
-  }
-  return baseServicePath + finalpathstring;
-}
-
 std::string HTTPService::getServiceName()
 {
   return "HTTP Service";

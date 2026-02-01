@@ -77,13 +77,6 @@ public:
     bool registerRoutes() override;
 
     /**
-     * Construct full API path from service name and final path segment
-     * @param finalpathstring The final path segment to append
-     * @return Full path in format /api/<servicename>/<finalpathstring>
-     */
-    std::string getPath(const std::string& finalpathstring) override;
-
-    /**
      * Get service subpath component
      * @return Service subpath
      */
@@ -125,7 +118,6 @@ protected:
     std::vector<IsOpenAPIInterface *> openAPIServices;
     bool routesRegistered = false;
     bool serverRunning = false;
-    std::string baseServicePath;  // Cached for optimization
 
     /**
      * @brief Attempt to serve a file from LittleFS for the current request

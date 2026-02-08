@@ -46,17 +46,11 @@ public:
     LogLevel get_log_level();
     void set_max_rows(int rows);
     int get_max_rows();
-    void set_logger_viewport(int x, int y, int width, int height);
-    void set_logger_text_color(uint16_t color, uint16_t bg_color);
+    const std::vector<std::pair<LogLevel, std::string>>& get_log_rows() const;
 
 private:
-    void renderLogs();
-
     LogLevel current_log_level = DEBUG;
     int max_rows;
-    int vp_x, vp_y, viewport_width, viewport_height;
-    uint16_t text_color;
-    uint16_t background_color;
     std::vector<std::pair<LogLevel, std::string>> log_rows;
 };
 

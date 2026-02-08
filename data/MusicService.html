@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Music Control - K10 Bot</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    .music-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .music-card {
+      background: #2c3e50;
+      padding: 20px;
+      border-radius: 8px;
+      border: 2px solid #34495e;
+    }
+    .music-card h3 {
+      margin-top: 0;
+      color: #3498db;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+    }
+    .control-group {
+      margin: 15px 0;
+    }
+    .control-label {
+      display: block;
+      font-size: 13px;
+      color: #bdc3c7;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+    .melody-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .melody-btn {
+      padding: 10px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.3s;
+      text-align: center;
+    }
+    .melody-btn:hover {
+      background: #2980b9;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+    }
+    .melody-btn:active {
+      transform: translateY(0);
+    }
+    .option-group {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 10px 0;
+    }
+    .option-btn {
+      padding: 8px;
+      background: #95a5a6;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.2s;
+    }
+    .option-btn:hover {
+      background: #7f8c8d;
+    }
+    .option-btn.active {
+      background: #e74c3c;
+      box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+    }
+    .tone-controls {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      margin: 15px 0;
+    }
+    .tone-input-group {
+      flex: 1;
+    }
+    .tone-input-group input {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #34495e;
+      border-radius: 5px;
+      background: #34495e;
+      color: white;
+      font-size: 14px;
+    }
+    .tone-input-group input:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+    .quick-notes {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+      margin: 10px 0;
+    }
+    .note-btn {
+      padding: 12px 5px;
+      background: #16a085;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .note-btn:hover {
+      background: #1abc9c;
+    }
+    .stop-btn {
+      background: #e74c3c;
+      font-size: 16px;
+      padding: 15px;
+      width: 100%;
+    }
+    .stop-btn:hover {
+      background: #c0392b;
+    }
+    .status-message {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      background: #27ae60;
+      color: white;
+      text-align: center;
+      display: none;
+    }
+    .status-message.show {
+      display: block;
+      animation: fadeIn 0.3s;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .info-box {
+      background: #34495e;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+      border-left: 4px solid #3498db;
+    }
+    .info-box h4 {
+      margin-top: 0;
+      color: #3498db;
+    }
+    .info-box ul {
+      margin: 5px 0;
+      padding-left: 20px;
+      color: #bdc3c7;
+    }
+  </style>
+</head>
+<body>
+  <h1 id="pageTitle">🎵 Music Control Panel <span id="titleStatus" style="font-size: 0.6em; color: #999;"></span></h1>
+  
+  <div class="panel">
+    <a href="/" class="btn">← Back to Home</a>
+    <button onclick="stopAllMusic()" class="btn stop-btn">⏹️ Stop All Music</button>
+  </div>
+
+  <div id="statusMessage" class="status-message"></div>
+
+  <div class="music-grid">
+    <!-- Built-in Melodies -->
+    <div class="music-card">
+      <h3>🎼 Built-in Melodies</h3>
+      
+      <div class="control-group">
+        <label class="control-label">Playback Options:</label>
+        <div class="option-group">
+          <button class="option-btn active" onclick="selectOption(1, this)" data-option="1">
+            ▶️ Once
+          </button>
+          <button class="option-btn" onclick="selectOption(2, this)" data-option="2">
+            🔁 Forever
+          </button>
+          <button class="option-btn" onclick="selectOption(4, this)" data-option="4">
+            ⏯️ Once (BG)
+          </button>
+          <button class="option-btn" onclick="selectOption(8, this)" data-option="8">
+            🔂 Forever (BG)
+          </button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">Select Melody:</label>
+        <div class="melody-grid" id="melodyGrid">
+          <!-- Melodies will be loaded here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Tone Generator -->
+    <div class="music-card">
+      <h3>🎹 Tone Generator</h3>
+      
+      <div class="control-group">
+        <label class="control-label">Quick Notes (A4-G5):</label>
+        <div class="quick-notes">
+          <button class="note-btn" onclick="playNote(440)">A4</button>
+          <button class="note-btn" onclick="playNote(494)">B4</button>
+          <button class="note-btn" onclick="playNote(523)">C5</button>
+          <button class="note-btn" onclick="playNote(587)">D5</button>
+          <button class="note-btn" onclick="playNote(659)">E5</button>
+          <button class="note-btn" onclick="playNote(698)">F5</button>
+          <button class="note-btn" onclick="playNote(784)">G5</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">Custom Tone:</label>
+        <div class="tone-controls">
+          <div class="tone-input-group">
+            <label class="control-label">Frequency (Hz):</label>
+            <input type="number" id="freqInput" value="440" min="20" max="20000">
+          </div>
+          <div class="tone-input-group">
+            <label class="control-label">Duration (ms):</label>
+            <input type="number" id="beatInput" value="500" min="100" max="5000">
+          </div>
+          <button class="btn" onclick="playCustomTone()" style="padding: 10px 20px;">
+            ▶️ Play
+          </button>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <h4>ℹ️ Tone Info</h4>
+        <ul style="font-size: 12px;">
+          <li>Frequency: 20-20,000 Hz</li>
+          <li>Duration: Beat value (1 beat ≈ 8000 units)</li>
+          <li>Quick notes are standard musical frequencies</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-box">
+    <h4>📝 Playback Options Explained</h4>
+    <ul>
+      <li><strong>Once</strong>: Play melody once, blocking execution</li>
+      <li><strong>Forever</strong>: Loop melody continuously, blocking execution</li>
+      <li><strong>Once (BG)</strong>: Play melody once in background, non-blocking</li>
+      <li><strong>Forever (BG)</strong>: Loop melody in background, non-blocking</li>
+    </ul>
+  </div>
+
+  <script>
+    const melodies = [
+      { id: 0, name: 'DADADADUM' },
+      { id: 1, name: 'ENTERTAINER' },
+      { id: 2, name: 'PRELUDE' },
+      { id: 3, name: 'ODE' },
+      { id: 4, name: 'NYAN' },
+      { id: 5, name: 'RINGTONE' },
+      { id: 6, name: 'FUNK' },
+      { id: 7, name: 'BLUES' },
+      { id: 8, name: 'BIRTHDAY' },
+      { id: 9, name: 'WEDDING' },
+      { id: 10, name: 'FUNERAL' },
+      { id: 11, name: 'PUNCHLINE' },
+      { id: 12, name: 'BADDY' },
+      { id: 13, name: 'CHASE' },
+      { id: 14, name: 'BA_DING' },
+      { id: 15, name: 'WAWAWAWAA' },
+      { id: 16, name: 'JUMP_UP' },
+      { id: 17, name: 'JUMP_DOWN' },
+      { id: 18, name: 'POWER_UP' },
+      { id: 19, name: 'POWER_DOWN' }
+    ];
+
+    let selectedOption = 1; // Default: Once
+
+    function renderMelodies() {
+      const grid = document.getElementById('melodyGrid');
+      grid.innerHTML = melodies.map(melody => 
+        `<button class="melody-btn" onclick="playMelody(${melody.id})">${melody.name}</button>`
+      ).join('');
+    }
+
+    function selectOption(option, button) {
+      // Remove active class from all buttons
+      document.querySelectorAll('.option-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      
+      // Add active class to clicked button
+      button.classList.add('active');
+      selectedOption = option;
+    }
+
+    async function apiCall(endpoint, method = 'GET', params = null) {
+      try {
+        let url = endpoint;
+        if (method === 'POST' && params) {
+          const queryString = new URLSearchParams(params).toString();
+          url += '?' + queryString;
+        }
+        
+        const response = await fetch(url, { method: method });
+        const data = await response.json();
+        return { ok: response.ok, data };
+      } catch (error) {
+        console.error('API call failed:', error);
+        return { ok: false, error: error.message };
+      }
+    }
+
+    function showStatus(message, isError = false) {
+      const statusEl = document.getElementById('statusMessage');
+      statusEl.textContent = message;
+      statusEl.style.background = isError ? '#e74c3c' : '#27ae60';
+      statusEl.classList.add('show');
+      
+      setTimeout(() => {
+        statusEl.classList.remove('show');
+      }, 3000);
+    }
+
+    async function playMelody(melodyId) {
+      const result = await apiCall('/api/music/v1/play', 'POST', {
+        melody: melodyId,
+        option: selectedOption
+      });
+      
+      if (result.ok) {
+        const melodyName = melodies.find(m => m.id === melodyId)?.name || melodyId;
+        const optionName = getOptionName(selectedOption);
+        showStatus(`🎵 Playing ${melodyName} (${optionName})`);
+      } else {
+        showStatus('❌ Failed to play melody', true);
+      }
+    }
+
+    async function playNote(frequency) {
+      const result = await apiCall('/api/music/v1/tone', 'POST', {
+        freq: frequency,
+        beat: 8000
+      });
+      
+      if (result.ok) {
+        showStatus(`🎹 Playing ${frequency}Hz`);
+      } else {
+        showStatus('❌ Failed to play note', true);
+      }
+    }
+
+    async function playCustomTone() {
+      const freq = document.getElementById('freqInput').value;
+      const duration = document.getElementById('beatInput').value;
+      
+      // Convert milliseconds to beat value (approximately)
+      const beat = Math.round(duration * 16);
+      
+      const result = await apiCall('/api/music/v1/tone', 'POST', {
+        freq: freq,
+        beat: beat
+      });
+      
+      if (result.ok) {
+        showStatus(`🎹 Playing ${freq}Hz for ${duration}ms`);
+      } else {
+        showStatus('❌ Failed to play tone', true);
+      }
+    }
+
+    async function stopAllMusic() {
+      const result = await apiCall('/api/music/v1/stop', 'POST');
+      
+      if (result.ok) {
+        showStatus('⏹️ Music stopped');
+      } else {
+        showStatus('❌ Failed to stop music', true);
+      }
+    }
+
+    function getOptionName(option) {
+      switch(option) {
+        case 1: return 'Once';
+        case 2: return 'Forever';
+        case 4: return 'Once (BG)';
+        case 8: return 'Forever (BG)';
+        default: return 'Unknown';
+      }
+    }
+
+    // Check service status
+    async function checkServiceStatus() {
+      try {
+        const result = await apiCall('/api/music/v1/serviceStatus', 'GET');
+        const titleStatus = document.getElementById('titleStatus');
+        if (titleStatus && result.ok && result.data.status) {
+          titleStatus.textContent = `[${result.data.status}]`;
+          titleStatus.style.color = result.data.status === 'started' ? '#4CAF50' : '#FFA500';
+        }
+      } catch (error) {
+        const titleStatus = document.getElementById('titleStatus');
+        if (titleStatus) {
+          titleStatus.textContent = '[Error]';
+          titleStatus.style.color = '#f44336';
+        }
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      renderMelodies();
+      checkServiceStatus();
+    });
+  </script>
+</body>
+</html>

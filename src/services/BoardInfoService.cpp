@@ -23,39 +23,15 @@ namespace BoardInfoConsts
     constexpr const char str_firmware_version[] PROGMEM = "1.0.0";
 }
 
-bool BoardInfoService::initializeService() { 
-    service_status_ = STARTED;
-    status_timestamp_ = millis();
-    #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + " initialize done");
-    #endif
-    return true; 
-}
-bool BoardInfoService::startService() { 
-    service_status_ = STARTED;
-    status_timestamp_ = millis();
-    #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + " start done");
-    #endif
-    return true; 
-}
-bool BoardInfoService::stopService() { 
-    service_status_ = STOPPED;
-    status_timestamp_ = millis();
-    #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + " stop done");
-    #endif  
-    return true; 
-}
+
 
 bool BoardInfoService::registerRoutes()
 {
 
-
-  static constexpr char kSchemaJson[] PROGMEM = R"({"type":"object","properties":{"uptimeMs":{"type":"integer","description":"System uptime in milliseconds"},"board":{"type":"string","description":"Board model name"},"version":{"type":"string","description":"Firmware version"},"heapTotal":{"type":"integer","description":"Total heap size in bytes"},"heapFree":{"type":"integer","description":"Free heap size in bytes"},"freeStackBytes":{"type":"integer","description":"Free stack space for current task"},"chipCores":{"type":"integer","description":"Number of CPU cores"},"chipModel":{"type":"string","description":"Chip model name"},"chipRevision":{"type":"integer","description":"Chip revision number"},"cpuFreqMHz":{"type":"integer","description":"CPU frequency in MHz"},"freeSketchSpace":{"type":"integer","description":"Available flash space for sketch"},"sdkVersion":{"type":"string","description":"ESP-IDF SDK version"}}})";
-  static constexpr char kExampleJson[] PROGMEM = R"({"uptimeMs":123456,"board":"UNIHIKER_K10","version":"1.0.0","heapTotal":327680,"heapFree":280000,"freeStackBytes":2048,"chipCores":2,"chipModel":"ESP32-S3","chipRevision":1,"cpuFreqMHz":240,"freeSketchSpace":1310720,"sdkVersion":"v4.4.2"})";
-  static constexpr char kRouteDesc[] PROGMEM = "Retrieves comprehensive board information including system metrics, memory usage, chip details, and firmware version";
-  static constexpr char kResponseDesc[] PROGMEM = "Board information retrieved successfully";
+  static constexpr char schema_json[] PROGMEM = R"({"type":"object","properties":{"uptimeMs":{"type":"integer","description":"System uptime in milliseconds"},"board":{"type":"string","description":"Board model name"},"version":{"type":"string","description":"Firmware version"},"heapTotal":{"type":"integer","description":"Total heap size in bytes"},"heapFree":{"type":"integer","description":"Free heap size in bytes"},"freeStackBytes":{"type":"integer","description":"Free stack space for current task"},"chipCores":{"type":"integer","description":"Number of CPU cores"},"chipModel":{"type":"string","description":"Chip model name"},"chipRevision":{"type":"integer","description":"Chip revision number"},"cpuFreqMHz":{"type":"integer","description":"CPU frequency in MHz"},"freeSketchSpace":{"type":"integer","description":"Available flash space for sketch"},"sdkVersion":{"type":"string","description":"ESP-IDF SDK version"}}})";
+  static constexpr char example_json[] PROGMEM = R"({"uptimeMs":123456,"board":"UNIHIKER_K10","version":"1.0.0","heapTotal":327680,"heapFree":280000,"freeStackBytes":2048,"chipCores":2,"chipModel":"ESP32-S3","chipRevision":1,"cpuFreqMHz":240,"freeSketchSpace":1310720,"sdkVersion":"v4.4.2"})";
+  static constexpr char route_desc[] PROGMEM = "Retrieves comprehensive board information including system metrics, memory usage, chip details, and firmware version";
+  static constexpr char response_desc[] PROGMEM = "Board information retrieved successfully";
 
   std::string path = getPath("");
 #ifdef VERBOSE_DEBUG
@@ -63,16 +39,19 @@ bool BoardInfoService::registerRoutes()
 #endif
 
   std::vector<OpenAPIResponse> responses;
-  OpenAPIResponse successResponse(200, kResponseDesc);
-  successResponse.schema = kSchemaJson;
-  successResponse.example = kExampleJson;
+  OpenAPIResponse successResponse(200, response_desc);
+  successResponse.schema = schema_json;
+  successResponse.example = example_json;
   responses.push_back(successResponse);
+  responses.push_back(createServiceNotStartedResponse());
 
-  OpenAPIRoute route(path.c_str(), RoutesConsts::method_get, kRouteDesc, "Board Info", false, {}, responses);
+  OpenAPIRoute route(path.c_str(), RoutesConsts::method_get, route_desc, "Board Info", false, {}, responses);
   registerOpenAPIRoute(route);
   
-  webserver.on(path.c_str(), HTTP_GET, []()
+  webserver.on(path.c_str(), HTTP_GET, [this]()
                {
+               if (!checkServiceStarted()) return;
+               
                // Gather ESP32 metrics
                JsonDocument doc;
                doc["uptimeMs"] = millis ();

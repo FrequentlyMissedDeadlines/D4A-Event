@@ -17,7 +17,7 @@
 // ref documentation:
 //  https://docs.espressif.com/projects/arduino-esp32/en/latest/tutorials/preferences.html
 
-extern SettingsService settingsService;
+extern SettingsService settings_service;
 
 // WiFiService constants namespace
 namespace WiFiConsts
@@ -174,7 +174,8 @@ bool WifiService::initializeService()
     ESP_SUFFIX = std::string(mac_hex);
     WiFi.setHostname((HOSTNAME+ESP_SUFFIX).c_str());
     // Initialization successful (preferences read). Return true so start_service proceeds.
-    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
+    setServiceStatus(INITIALIZED);
+    logger->debug(getServiceName() + " " +  getStatusString());   
     return true;
 }
 bool WifiService::startService()
@@ -193,13 +194,15 @@ bool WifiService::startService()
 
     if (result)
     {
+        setServiceStatus(STARTED);
 #ifdef VERBOSE_DEBUG
-        logger->debug(getName() + ServiceInterfaceConsts::msg_start_done);
+        logger->debug(getServiceName() + " "  + getStatusString());   
 #endif
     }
     else
     {
-        logger->error(getServiceName() + ServiceInterfaceConsts::msg_start_failed);
+        setServiceStatus(START_FAILED);
+        logger->error(getServiceName() + " "  + getStatusString());   
     }
     return result;
 }
@@ -208,13 +211,15 @@ bool WifiService::stopService()
     bool result = disconnect_from_wifi();
     if (result)
     {
+        setServiceStatus(STOPPED);
 #ifdef VERBOSE_DEBUG
-        logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done);
+        logger->debug(getServiceName() + " " + getStatusString());
 #endif
     }
     else
     {
-        logger->error(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_stop_failed));
+        setServiceStatus(STOP_FAILED);
+        logger->error(getServiceName() + " " + getStatusString());
     }
     return result;
 }
@@ -244,22 +249,22 @@ bool WifiService::connect_and_fallback(std::string ssid, std::string password)
 bool WifiService::saveSettings()
 {
     bool saved = true;
-    saved = settingsService.setSetting(getServiceName(), WiFiConsts::settings_key_wifi_ssid, WIFI_SSID) && saved;
-    saved = settingsService.setSetting(getServiceName(), WiFiConsts::settings_key_wifi_password, WIFI_PWD) && saved;
-    saved = settingsService.setSetting(getServiceName(), WiFiConsts::settings_key_ap_ssid, AP_SSID) && saved;
-    saved = settingsService.setSetting(getServiceName(), WiFiConsts::settings_key_ap_password, AP_PASSWORD) && saved;
-    saved = settingsService.setSetting(getServiceName(), WiFiConsts::settings_key_hostname, HOSTNAME) && saved;
+    saved = settings_service.setSetting(getServiceName(), WiFiConsts::settings_key_wifi_ssid, WIFI_SSID) && saved;
+    saved = settings_service.setSetting(getServiceName(), WiFiConsts::settings_key_wifi_password, WIFI_PWD) && saved;
+    saved = settings_service.setSetting(getServiceName(), WiFiConsts::settings_key_ap_ssid, AP_SSID) && saved;
+    saved = settings_service.setSetting(getServiceName(), WiFiConsts::settings_key_ap_password, AP_PASSWORD) && saved;
+    saved = settings_service.setSetting(getServiceName(), WiFiConsts::settings_key_hostname, HOSTNAME) && saved;
 
     return true;
 }
 
 bool WifiService::loadSettings()
 {
-    WIFI_SSID = settingsService.getSetting(getServiceName(), WiFiConsts::settings_key_wifi_ssid, DEFAULT_WIFI_SSID);
-    WIFI_PWD = settingsService.getSetting(getServiceName(), WiFiConsts::settings_key_wifi_password, DEFAULT_WIFI_PASSWORD);
-    AP_SSID = settingsService.getSetting(getServiceName(), WiFiConsts::settings_key_ap_ssid, DEFAULT_AP_SSID);
-    AP_PASSWORD = settingsService.getSetting(getServiceName(), WiFiConsts::settings_key_ap_password, DEFAULT_AP_PASSWORD);
-    HOSTNAME = settingsService.getSetting(getServiceName(), WiFiConsts::settings_key_hostname, DEFAULT_HOSTNAME);
+    WIFI_SSID = settings_service.getSetting(getServiceName(), WiFiConsts::settings_key_wifi_ssid, DEFAULT_WIFI_SSID);
+    WIFI_PWD = settings_service.getSetting(getServiceName(), WiFiConsts::settings_key_wifi_password, DEFAULT_WIFI_PASSWORD);
+    AP_SSID = settings_service.getSetting(getServiceName(), WiFiConsts::settings_key_ap_ssid, DEFAULT_AP_SSID);
+    AP_PASSWORD = settings_service.getSetting(getServiceName(), WiFiConsts::settings_key_ap_password, DEFAULT_AP_PASSWORD);
+    HOSTNAME = settings_service.getSetting(getServiceName(), WiFiConsts::settings_key_hostname, DEFAULT_HOSTNAME);
     logger->info(FPSTR(WiFiConsts::msg_settings_loaded));
     logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_ssid_prefix)) + WIFI_SSID);
     logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_pwd_prefix)) + WIFI_PWD);

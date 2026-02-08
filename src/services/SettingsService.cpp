@@ -11,6 +11,8 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <pgmspace.h>
+#include <Preferences.h>
+Preferences preferences_;
 
 // SettingsService constants namespace
 namespace SettingsConsts
@@ -18,7 +20,7 @@ namespace SettingsConsts
     constexpr const char path_settings[] PROGMEM = "settings";
     
     // Error messages stored in PROGMEM
-    constexpr const char msg_not_initialized[] PROGMEM = "Settings service not initialized.";
+    constexpr const char msg_not_started[] PROGMEM = "Settings service not started.";
     constexpr const char msg_invalid_domain[] PROGMEM = "Invalid domain name.";
     constexpr const char msg_invalid_key[] PROGMEM = "Invalid key name.";
     constexpr const char msg_missing_domain[] PROGMEM = "Missing required parameter: domain";
@@ -76,6 +78,7 @@ bool SettingsService::initializeService()
 {
     logger->info("Initializing Settings Service...");
     initialized_ = true;
+    setServiceStatus(INITIALIZED);
     logger->info("Settings service initialized successfully.");
     return true;
 }
@@ -83,11 +86,13 @@ bool SettingsService::initializeService()
 bool SettingsService::startService()
 {
     if (initialized_) {
+        setServiceStatus(STARTED);
         #ifdef VERBOSE_DEBUG
-        logger->debug(getName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
+        logger->debug(getServiceName() + " " + getStatusString());   
         #endif  
     } else {
-        logger->error(getServiceName() + " " + std::string(ServiceInterfaceConsts::msg_start_failed));
+        setServiceStatus(START_FAILED);
+        logger->error(getServiceName() + " " + getStatusString());
     }
     return initialized_;
 }
@@ -98,8 +103,9 @@ bool SettingsService::stopService()
         preferences_.end();
         initialized_ = false;
     }
+    setServiceStatus(STOPPED);
     #ifdef VERBOSE_DEBUG
-    logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done );
+    logger->debug(getServiceName() + " " + getStatusString());   
     #endif
     return true;
 }
@@ -276,9 +282,9 @@ std::string SettingsService::buildSettingsJson(const std::vector<Setting>& setti
 
 void SettingsService::handleGetSettings()
 {
-    if (!g_settingsServiceInstance || !g_settingsServiceInstance->initialized_) {
+    if (!g_settingsServiceInstance || !g_settingsServiceInstance->isStarted()) {
         webserver.send(503, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(SettingsConsts::msg_not_initialized)));
+                      createJsonError(FPSTR(SettingsConsts::msg_not_started)));
         return;
     }
     
@@ -329,9 +335,10 @@ void SettingsService::handleGetSettings()
 
 void SettingsService::handlePostSettings()
 {
+    if (g_settingsServiceInstance && !g_settingsServiceInstance->isStarted( )) return;
     if (!g_settingsServiceInstance || !g_settingsServiceInstance->initialized_) {
         webserver.send(503, RoutesConsts::mime_json , 
-                      createJsonError(FPSTR(SettingsConsts::msg_not_initialized)));
+                      createJsonError(FPSTR(SettingsConsts::msg_not_started)));
         return;
     }
     
@@ -434,6 +441,7 @@ bool SettingsService::registerRoutes()
     getResponse200.example = "{\"domain\":\"wifi\",\"settings\":{}}";
     getResponses.push_back(getResponse200);
     getResponses.push_back(OpenAPIResponse(422, "Invalid parameters"));
+    getResponses.push_back(createServiceNotStartedResponse());
     
     registerOpenAPIRoute(OpenAPIRoute(getPath.c_str(), RoutesConsts::method_get,
                                       "Retrieve a single setting value or all settings in a domain",
@@ -462,6 +470,7 @@ bool SettingsService::registerRoutes()
     postResponses.push_back(postResponse200);
     postResponses.push_back(OpenAPIResponse(422, "Invalid parameters"));
     postResponses.push_back(OpenAPIResponse(503, "Operation failed"));
+    postResponses.push_back(createServiceNotStartedResponse());
     
     registerOpenAPIRoute(OpenAPIRoute(postPath.c_str(), RoutesConsts::method_post,
                                       "Update or insert setting. Use query parameters.",

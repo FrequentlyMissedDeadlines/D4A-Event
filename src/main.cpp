@@ -23,8 +23,10 @@
 #include "services/UDPService.h"
 #include "services/HTTPService.h"
 #include "services/SettingsService.h"
-#include "sensor/K10sensorsService.h"
+#include "services/K10sensorsService.h"
 #include "services/RollingLogger.h"
+#include "services/RollingLoggerService.h"
+#include "services/MusicService.h"
 #include "ui/utb2026.h"
 
 
@@ -32,99 +34,108 @@
 #define VERBOSE_DEBUG // Enable verbose debug logging
 namespace
 {
-  constexpr uint16_t kWebPort = 80;
-  constexpr TickType_t kUdpTaskDelayTicks = pdMS_TO_TICKS(1000);
-  constexpr TickType_t kDisplayTaskDelayTicks = pdMS_TO_TICKS(250);
-  constexpr TickType_t kDisplayUpdateIntervalTicks = pdMS_TO_TICKS(25000);
-  constexpr TickType_t kWebServerTaskDelayTicks = pdMS_TO_TICKS(10);
-  constexpr uint8_t kWifiMaxAttempts = 20;
-  constexpr uint16_t kWifiAttemptDelayMs = 500;
-  constexpr uint32_t kSerialBaud = 115200;
-  constexpr uint32_t kColorOk = 0x00D000;
-  constexpr uint32_t kColorError = 0xD00000;
-  constexpr uint32_t kColorInfo = 0xD0D0D0;
-  constexpr uint32_t kColorSubtle = 0xE0E0E0;
+  constexpr uint16_t web_port = 80;
+  constexpr TickType_t udp_task_delay_ticks = pdMS_TO_TICKS(1000);
+  constexpr TickType_t display_task_delay_ticks = pdMS_TO_TICKS(250);
+  constexpr TickType_t display_update_interval_ticks = pdMS_TO_TICKS(250);
+  constexpr TickType_t web_server_task_delay_ticks = pdMS_TO_TICKS(10);
+  constexpr uint8_t wifi_max_attempts = 20;
+  constexpr uint16_t wifi_attempt_delay_ms = 500;
+  constexpr uint32_t serial_baud = 115200;
+  constexpr uint32_t color_ok = 0x00D000;
+  constexpr uint32_t color_error = 0xD00000;
+  constexpr uint32_t color_info = 0xD0D0D0;
+  constexpr uint32_t color_subtle = 0xE0E0E0;
 
   std::string ssid = "";
   std::string password = "";
 
   // Separate buffer for display (non-blocking)
-  constexpr int MAX_MESSAGE_LEN = 256;
-  std::set<std::string> allRoutes = {};
+  constexpr int max_message_len = 256;
+  std::set<std::string> all_routes = {};
   // Global variables for master IP and token (required by web_server.cpp)
-  std::string master_IP = "";
-  std::string master_TOKEN = "";
+  std::string master_ip = "";
+  std::string master_token = "";
 }
 
 TFT_eSPI tft;
 
 UNIHIKER_K10 unihiker;
 Music music;
-WifiService wifiService = WifiService();
-WebServer webserver(kWebPort);
-UDPService udpService = UDPService();
-HTTPService httpService = HTTPService();
-SettingsService settingsService = SettingsService();
-K10SensorsService k10sensorsService = K10SensorsService();
-BoardInfoService boardInfo = BoardInfoService();
-ServoService servoService = ServoService();
-WebcamService webcamService = WebcamService();
-RollingLogger debugLogger = RollingLogger();
-RollingLogger appInfoLogger = RollingLogger();
-UTB2026 utb2026UI;
-#include "services/MusicService.h"
-MusicService musicService = MusicService();
+WifiService wifi_service = WifiService();
+WebServer webserver(web_port);
+UDPService udp_service = UDPService();
+HTTPService http_service = HTTPService();
+SettingsService settings_service = SettingsService();
+K10SensorsService k10sensors_service = K10SensorsService();
+BoardInfoService board_info = BoardInfoService();
+ServoService servo_service = ServoService();
+WebcamService webcam_service = WebcamService();
+RollingLogger debug_logger = RollingLogger();
+RollingLogger app_info_logger = RollingLogger();
+RollingLoggerService rolling_logger_service = RollingLoggerService();
+UTB2026 ui = UTB2026();
+
+MusicService music_service = MusicService();
 
 // Camera frame queue
 // Packet handling is implemented in udp_handler module
 
-// FreeRTOS Task: Handle UDP messages on Core 0
-void udpSvrTask(void *pvParameters)
+/**
+ * @brief FreeRTOS Task: Handle UDP messages on Core 0
+ * @param pvParameters Task parameters (unused)
+ */
+void xtask_UDP_SVR(void *pvParameters)
 {
   for (;;)
   {
-    vTaskDelay(kUdpTaskDelayTicks);
+    vTaskDelay(udp_task_delay_ticks);
   }
 }
-// FreeRTOS Task: Update display on Core 1 (non-blocking) - SIMPLIFIED to avoid blocking
-void displayTask(void *pvParameters)
+
+/**
+ * @brief FreeRTOS Task: Update display on Core 1 (non-blocking)
+ * @param pvParameters Task parameters (unused)
+ * @details Simplified implementation to avoid blocking operations
+ */
+void task_DISPLAY(void *pvParameters)
 {
-  char localLastMessage[MAX_MESSAGE_LEN] = {0};
-  int localTotalMessages = 0;
-  int lastDisplayedTotalMessages = 0;
-  TickType_t lastUpdateTick = xTaskGetTickCount();
-  TickType_t lastWakeTick = xTaskGetTickCount();
+  char local_last_message[max_message_len] = {0};
+  int local_total_messages = 0;
+  int last_displayed_total_messages = 0;
+  TickType_t last_update_tick = xTaskGetTickCount();
+  TickType_t last_wake_tick = xTaskGetTickCount();
 
   for (;;)
   {
-    // Check if there's a master conflict to handle
-    // This will display the dialog and wait for button input
-
     TickType_t now = xTaskGetTickCount();
-    if ((now - lastUpdateTick) >= kDisplayUpdateIntervalTicks)
+    if ((now - last_update_tick) >= display_update_interval_ticks)
     {
-      lastUpdateTick = now;
+      last_update_tick = now;
     }
 
-    vTaskDelayUntil(&lastWakeTick, kDisplayTaskDelayTicks);
+    vTaskDelayUntil(&last_wake_tick, display_task_delay_ticks);
   }
 }
 
-// FreeRTOS Task: Handle web server on Core 1
-void httpSvrTask(void *pvParameters)
+/**
+ * @brief FreeRTOS Task: Handle web server on Core 1
+ * @param pvParameters Task parameters (unused)
+ */
+void task_HTTP_SVR(void *pvParameters)
 {
-  debugLogger.info("HTTP server task started");
-  int loopCount = 0;
+  debug_logger.info("HTTP server task started");
+  int loop_count = 0;
   for (;;)
   {
-    httpService.handleClient(&webserver);
-    loopCount++;
-    if (loopCount % 1000 == 0)
+    http_service.handleClient(&webserver);
+    loop_count++;
+    if (loop_count % 1000 == 0)
     {
-      debugLogger.trace("WebServer task running...");
+      debug_logger.trace("WebServer task running...");
     }
     // Very short delay to allow other tasks to run
-    vTaskDelay(kWebServerTaskDelayTicks);
+    vTaskDelay(web_server_task_delay_ticks);
   }
 }
 
@@ -141,31 +152,32 @@ namespace
   {
     // If the service supports logging, attach the global debug logger.
     unihiker.rgb->write(0, 32, 0, 0); // pixel0 = red
-    service.setLogger(&debugLogger);
+
 #ifdef VERBOSE_DEBUG
-    debugLogger.debug("Service " + service.getServiceName());
+    debug_logger.debug("Service " + service.getServiceName());
 #endif
+    service.setLogger(&debug_logger);
     if (service.initializeService())
     {
       unihiker.rgb->write(0, 32, 32, 0); // pixel0 = red
       if (!service.startService())
       {
-        appInfoLogger.error(service.getServiceName() + " start failed.");
+        app_info_logger.error(service.getServiceName() + " start failed.");
       }
       else
       {
         unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
 #ifdef VERBOSE_DEBUG
-        appInfoLogger.debug(service.getServiceName() + " started.");
+        app_info_logger.debug(service.getServiceName() + " started.");
 #endif
       }
     }
     else
     {
-      appInfoLogger.error(service.getServiceName() + " initialize failed.");
+      app_info_logger.error(service.getServiceName() + " initialize failed.");
     }
 
-    // // Register OpenAPI routes if the service implements IsOpenAPIInterface
+    // Register OpenAPI routes if the service implements IsOpenAPIInterface
     IsOpenAPIInterface *openapi = service.asOpenAPIInterface();
     if (openapi)
     {
@@ -173,19 +185,19 @@ namespace
       try
       {
 #ifdef VERBOSE_DEBUG
-        debugLogger.info("OpenAPI registered " + service.getServiceName());
+        debug_logger.info("OpenAPI registered " + service.getServiceName());
 #endif
-        httpService.registerOpenAPIService(openapi);
+        http_service.registerOpenAPIService(openapi);
       }
       catch (const std::exception &e)
       {
-        debugLogger.error("registerOpenAPIService failed for " + service.getServiceName());
+        debug_logger.error("registerOpenAPIService failed for " + service.getServiceName());
       }
     }
     else
     {
 #ifdef VERBOSE_DEBUG
-      debugLogger.debug("No OpenAPI for " + service.getServiceName());
+      debug_logger.debug("No OpenAPI for " + service.getServiceName());
 #endif
     }
     unihiker.rgb->write(0, 0, 0, 0); // pixel0 = red
@@ -193,8 +205,8 @@ namespace
     return true;
   }
 
-} // namespace
-
+}
+// //debugging function to list files in a filesystem (e.g., LittleFS, SPIFFS, FFat)
 // void listFilesInFS(fs::FS &fs, const char* fsName)
 // {
 //   debugLogger.info(std::string("=== ") + fsName + " File List ===");
@@ -221,6 +233,7 @@ namespace
 //   }
 //   debugLogger.info("Total: " + std::to_string(fileCount) + " files");
 // }
+// // debug function to check all partitions for LittleFS and list files (used for debugging storage issues)
 // void testAllPartFitions()
 // {
 //   const char* partitions[] = { "voice_data"};
@@ -244,27 +257,22 @@ namespace
 //   }
 // }
 
+/**
+ * @brief Arduino setup function - initializes hardware and services
+ * @details Initializes display, loggers, services, and FreeRTOS tasks
+ */
 void setup()
 {
   // Small delay to ensure system stabilizes
   delay(500);
-#ifdef VERBOSE_DEBUG
-  // Initialize Serial for debugging
-  Serial.begin(kSerialBaud);
-  delay(1000); // Wait for Serial to initialize
-  Serial.println("\n\n===========================================");
-  Serial.println("[BOOT] K10-Bot Starting...");
-  Serial.println("===========================================");
-  Serial.flush();
-
-  Serial.println("[INIT] Initializing UNIHIKER...");
+#ifdef SERIAL_DEBUG
+  Serial.begin(serial_baud);
 #endif
   unihiker.begin();
   unihiker.initScreen(2, 30);
   unihiker.creatCanvas();
-  unihiker.setScreenBackground(TFT_DARKGREY);
-  unihiker.canvas->canvasClear();
-#ifdef VERBOSE_DEBUG
+  unihiker.setScreenBackground(TFT_BLACK);
+#ifdef SERIAL_DEBUG
   Serial.println("[INIT] Display initialized");
 #endif
 
@@ -272,79 +280,77 @@ void setup()
   unihiker.rgb->write(1, 0, 0, 0);
   unihiker.rgb->write(2, 0, 0, 0);
   // Initialize the display once via the helper
+  app_info_logger.set_max_rows(8);
+  app_info_logger.set_log_level(RollingLogger::INFO);
+  debug_logger.set_max_rows(16);
+  debug_logger.set_log_level(RollingLogger::DEBUG);
 
-  appInfoLogger.set_logger_viewport(0, 120, 240, 320);
-  appInfoLogger.set_logger_text_color(TFT_GREEN, TFT_DARKCYAN);
-  appInfoLogger.set_max_rows(8);
-  appInfoLogger.set_log_level(RollingLogger::INFO);
+  ui.init();
+  // ui.add_logger_view(&app_info_logger, 0, 120, 240, 240, TFT_BLACK, TFT_BLACK);
+  ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_LIGHTGREY, TFT_LIGHTGREY);
+  xTaskCreatePinnedToCore(task_DISPLAY, "Display_Task", 4096, nullptr, 1, nullptr, 1);
 
-  debugLogger.set_logger_text_color(TFT_BLACK, TFT_BLACK);
-  debugLogger.set_logger_viewport(0, 40, 240, 200);
-  debugLogger.set_max_rows(16);
-  debugLogger.set_log_level(RollingLogger::DEBUG);
 
-// testAllPartFitions();
-// return;
+
+
+
+  debug_logger.info("Starting services...");
+  if (!start_service(wifi_service))
+  {
+    app_info_logger.error("FATAL : WiFi failed to start.");
   
-
-
-
-  debugLogger.info("Starting services...");
-  if (!start_service(wifiService))
-  {
-    appInfoLogger.error("WiFi failed to start.");
-    appInfoLogger.error("Fix code.");
     return;
-  }
-  start_service(settingsService);
-  start_service(k10sensorsService);
+  }  
+  start_service(settings_service);
+  start_service(k10sensors_service);
+  start_service(board_info);
+  start_service(servo_service);
+  start_service(webcam_service);
+  start_service(music_service);
+  
+  // Set up rolling logger service with logger instances
+  rolling_logger_service.set_logger_instances(&debug_logger, &app_info_logger);
+  start_service(rolling_logger_service);
 
-  start_service(boardInfo);
-  start_service(servoService);
-  start_service(webcamService);
-  start_service(musicService);
-
-  if (start_service(udpService))
+  if (start_service(udp_service))
   {
-    xTaskCreatePinnedToCore(udpSvrTask, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);
+    xTaskCreatePinnedToCore(xtask_UDP_SVR, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);
   }
   else
   {
-    appInfoLogger.error("Failed to start UDP service");
+    app_info_logger.error("Failed to start UDP service");
   }
 
-  if (start_service(httpService))
+  if (start_service(http_service))
   {
-    xTaskCreatePinnedToCore(httpSvrTask, "WebServer_Task", 8192, nullptr, 2, nullptr, 1);
+    xTaskCreatePinnedToCore(task_HTTP_SVR, "WebServer_Task", 8192, nullptr, 2, nullptr, 1);
   }
   else
   {
-    appInfoLogger.error("Failed to start webserver");
+    app_info_logger.error("Failed to start webserver");
   }
 
-  utb2026UI.init();
 
-  utb2026UI.set_info(utb2026UI.KEY_WIFI_NAME, wifiService.getSSID().c_str());
-  utb2026UI.set_info(utb2026UI.KEY_IP_ADDRESS, wifiService.getIP().c_str());
-  utb2026UI.draw_all();
+
+  ui.set_info(ui.KEY_WIFI_NAME, wifi_service.getSSID().c_str());
+  ui.set_info(ui.KEY_IP_ADDRESS, wifi_service.getIP().c_str());
+  ui.draw_all();
   unihiker.rgb->write(0, 0, 0, 0);
   unihiker.rgb->write(1, 0, 0, 0);
   unihiker.rgb->write(2, 0, 0, 0);
 
-  appInfoLogger.info("Bot "+wifiService.getHostname()+" started.");
-  appInfoLogger.info(wifiService.getIP() + " " + wifiService.getSSID());
-  appInfoLogger.info("UDP port:" + std::to_string(udpService.getPort()));
+  app_info_logger.info("Bot "+wifi_service.getHostname()+" started.");
+  app_info_logger.info(wifi_service.getIP() + " " + wifi_service.getSSID());
+  app_info_logger.info("UDP port:" + std::to_string(udp_service.getPort()));
   
-  xTaskCreatePinnedToCore(displayTask, "Display_Task", 4096, nullptr, 1, nullptr, 1);
 }
 
+/**
+ * @brief Arduino main loop function
+ * @details All application logic runs inside FreeRTOS tasks, this loop is empty
+ */
 void loop()
 {
-  // debugLogger.debug("debug msg");
-  // debugLogger.info("info msg");
-  // debugLogger.warning("warning msg");
-  // debugLogger.error("error msg");
-
-  // // All application logic runs inside FreeRTOS tasks
+  // All application logic runs inside FreeRTOS tasks
   // delay(60000);
 }

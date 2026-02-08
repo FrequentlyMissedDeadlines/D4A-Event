@@ -52,8 +52,8 @@ struct OpenAPIParameter {
 
 **Example**:
 ```cpp
-OpenAPIParameter param("angle", RoutesConsts::TypeInteger, 
-                      RoutesConsts::InQuery, 
+OpenAPIParameter param("angle", RoutesConsts::type_integer, 
+                      RoutesConsts::in_query, 
                       "Servo angle in degrees (0-180)", true);
 param.example = "90";
 param.defaultValue = "90";
@@ -84,7 +84,7 @@ struct OpenAPIResponse {
 **Example**:
 ```cpp
 OpenAPIResponse successResp(200, "Servo moved successfully");
-successResp.schema = RoutesConsts::JsonObjectResult;
+successResp.schema = RoutesConsts::json_object_result;
 successResp.example = "{\"result\":\"ok\",\"message\":\"Servo moved to 90 degrees\"}";
 ```
 
@@ -137,20 +137,39 @@ struct OpenAPIRoute {
 ```cpp
 // Define parameters
 std::vector<OpenAPIParameter> params;
-params.push_back(OpenAPIParameter("id", RoutesConsts::TypeInteger, 
-                                  RoutesConsts::InPath, 
+params.push_back(OpenAPIParameter("id", RoutesConsts::type_integer, 
+                                  RoutesConsts::in_path, 
                                   "Servo ID", true));
 
 // Define responses
 std::vector<OpenAPIResponse> responses;
-responses.push_back(createSuccessResponse("Servo moved successfully"));
-responses.push_back(createMissingParamsResponse());
+OpenAPIResponse successResp(200, "Servo moved successfully");
+successResp.schema = RoutesConsts::json_object_result;
+responses.push_back(successResp);
+responses.push_back(createServiceNotStartedResponse());
 
 // Create route
-OpenAPIRoute route("/api/servo/move", RoutesConsts::MethodPOST,
+OpenAPIRoute route("/api/servo/move", RoutesConsts::method_post,
                    "Move servo to specified angle",
                    "Servo Control", false,
                    params, responses);
+```
+
+---
+
+## Core Interface
+
+The `IsOpenAPIInterface` is a struct (not a class) that provides:
+- Pure virtual methods that must be implemented
+- Protected helper methods and data members
+- Static response creator functions
+
+### Member Variables
+
+```cpp
+protected:
+    mutable std::string baseServicePath_;       // Cached base path for performance
+    std::vector<OpenAPIRoute> openAPIRoutes;    // Registered route definitions
 ```
 
 ---
@@ -177,10 +196,13 @@ virtual bool registerRoutes() = 0;
 ```cpp
 bool MyService::registerRoutes() {
     std::vector<OpenAPIResponse> responses;
-    responses.push_back(createSuccessResponse("Data retrieved"));
+    OpenAPIResponse successResp(200, "Data retrieved successfully");
+    successResp.schema = "{\"type\":\"object\"}";
+    responses.push_back(successResp);
+    responses.push_back(createServiceNotStartedResponse());
     
-    std::string path = getPath("data");
-    registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::MethodGET,
+    std::string path = getPath("");
+    registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get,
                                       "Get service data", "My Service", 
                                       false, {}, responses));
     
@@ -203,9 +225,9 @@ virtual std::string getServiceSubPath() = 0;
 ```
 **Purpose**: Returns the service's subpath component used in API routes.
 
-**Returns**: Service subpath (e.g., "servos/v1", "sensors/v1")
+**Returns**: Service subpath (e.g., "servo/v1", "sensors/v1")
 
-**Convention**: Use format `<service>/<version>` for versioned APIs.
+**Convention**: Use format `<service>/v<version>` for versioned APIs, or just `<service>/` for unversioned services.
 
 **Example**:
 ```cpp
@@ -218,25 +240,29 @@ std::string MyService::getServiceSubPath() {
 
 ### `getPath()`
 ```cpp
-virtual std::string getPath(const std::string& finalpathstring) = 0;
+virtual std::string getPath(const std::string& finalpathstring = "");
 ```
 **Purpose**: Constructs full API path from service name and final path segment.
 
 **Parameters**:
-- `finalpathstring`: The final path segment (e.g., "move", "status")
+- `finalpathstring`: The final path segment (e.g., "move", "status"). Default is empty string to get base path.
 
 **Returns**: Full path in format `/api/<servicename>/<finalpathstring>`
 
-**Note**: Implementation typically uses `getServiceSubPath()` internally.
+**Note**: Implementation caches the base service path in `baseServicePath_` for performance. Uses `getServiceSubPath()` internally.
 
 **Example**:
 ```cpp
 std::string MyService::getPath(const std::string& finalpathstring) {
-    return std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/" + finalpathstring;
+    if (baseServicePath_.empty()) {
+        baseServicePath_ = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
+    }
+    return baseServicePath_ + finalpathstring;
 }
 
 // Usage:
 std::string movePath = getPath("move");  // Returns "/api/myservice/v1/move"
+std::string basePath = getPath();        // Returns "/api/myservice/v1/"
 ```
 
 ---
@@ -325,16 +351,18 @@ std::string getResultJsonString(std::string result, std::string message);
 ```
 **Purpose**: Creates a standard JSON response with result and message fields.
 
-**Parameters**:
-- `result`: "ok" or "err" (use `RoutesConsts::ResultOk` or `RoutesConsts::ResultErr`)
-- `message`: Descriptive message
+**Parameters**: (used as tag)
+- `serviceInstance`: Pointer to the service instance implementing `IsServiceInterface`
 
-**Returns**: JSON string `{"result":"ok","message":"description"}`
+**Creates Endpoints**:
+- `GET /api/<service>/saveSettings` - Calls `serviceInstance->saveSettings()`, returns 200 on success or 500 on failure
+- `GET /api/<service>/loadSettings` - Calls `serviceInstance->loadSettings()`, returns 200 on success or 500 on failure
 
+**Note**: Both endpoints return standard JSON response with `result` and `message` fields.
 **Example**:
 ```cpp
-std::string response = getResultJsonString(RoutesConsts::ResultOk, "Settings saved");
-webserver.send(200, RoutesConsts::MimeJSON, response.c_str());
+std::string response = getResultJsonString(RoutesConsts::result_ok, "Settings saved");
+webserver.send(200, RoutesConsts::mime_json, response.c_str());
 ```
 
 ---
@@ -373,60 +401,75 @@ The `RoutesConsts` namespace provides PROGMEM-stored constants to save RAM.
 
 ### JSON Fields
 ```cpp
-RoutesConsts::Result         // "result"
-RoutesConsts::ResultOk       // "ok"
-RoutesConsts::ResultErr      // "err"
-RoutesConsts::Message        // "message"
-RoutesConsts::FieldError     // "error"
-RoutesConsts::FieldStatus    // "status"
+RoutesConsts::result             // "result"
+RoutesConsts::result_ok          // "ok"
+RoutesConsts::result_err         // "error"
+RoutesConsts::message            // "message"
+RoutesConsts::field_error        // "error"
+RoutesConsts::field_status       // "status"
+RoutesConsts::status_ready       // "ready"
+RoutesConsts::status_not_initialized      // "not_initialized"
+RoutesConsts::status_sensor_error         // "sensor_error"
 ```
 
 ### Paths
 ```cpp
-RoutesConsts::PathAPI        // "/api/"
-RoutesConsts::PathOpenAPI    // "/api/openapi.json"
+RoutesConsts::path_api           // "/api/"
+RoutesConsts::path_openapi       // "/api/openapi.json"
 ```
 
 ### MIME Types
 ```cpp
-RoutesConsts::MimeJSON       // "application/json"
-RoutesConsts::MimePlainText  // "text/plain"
+RoutesConsts::mime_json          // "application/json"
+RoutesConsts::mime_plain_text    // "text/plain"
 ```
 
 ### HTTP Methods
 ```cpp
-RoutesConsts::MethodGET      // "GET"
-RoutesConsts::MethodPOST     // "POST"
-RoutesConsts::MethodPUT      // "PUT"
-RoutesConsts::MethodDELETE   // "DELETE"
+RoutesConsts::method_get         // "GET"
+RoutesConsts::method_post        // "POST"
+RoutesConsts::method_put         // "PUT"
+RoutesConsts::method_delete      // "DELETE"
 ```
 
 ### OpenAPI Types
 ```cpp
-RoutesConsts::TypeString     // "string"
-RoutesConsts::TypeInteger    // "integer"
-RoutesConsts::TypeNumber     // "number"
-RoutesConsts::TypeBoolean    // "boolean"
-RoutesConsts::TypeArray      // "array"
-RoutesConsts::TypeObject     // "object"
+RoutesConsts::type_string        // "string"
+RoutesConsts::type_integer       // "integer"
+RoutesConsts::type_number        // "number"
+RoutesConsts::type_boolean       // "boolean"
+RoutesConsts::type_array         // "array"
+RoutesConsts::type_object        // "object"
 ```
 
 ### Parameter Locations
 ```cpp
-RoutesConsts::InQuery        // "query"
-RoutesConsts::InPath         // "path"
-RoutesConsts::InHeader       // "header"
-RoutesConsts::InBody         // "body"
+RoutesConsts::in_query           // "query"
+RoutesConsts::in_path            // "path"
+RoutesConsts::in_header          // "header"
+RoutesConsts::in_body            // "body"
 ```
 
 ### Common Messages
 ```cpp
-RoutesConsts::MsgInvalidParams      // "Invalid or missing parameter(s)."
-RoutesConsts::MsgInvalidValues      // "Invalid parameter(s) values."
-RoutesConsts::RespMissingParams     // "Missing or invalid parameters"
-RoutesConsts::RespNotInitialized    // "Service not initialized"
-RoutesConsts::RespOperationSuccess  // "Operation successful"
-RoutesConsts::RespOperationFailed   // "Operation failed"
+RoutesConsts::msg_invalid_params      // "Invalid or missing parameter(s)."
+RoutesConsts::msg_invalid_values      // "Invalid parameter(s) values."
+RoutesConsts::resp_missing_params     // "Missing or invalid parameters"
+RoutesConsts::resp_not_initialized    // "Service not initialized"
+RoutesConsts::resp_operation_success  // "Operation successful"
+RoutesConsts::resp_operation_failed   // "Operation failed"
+```
+
+### Additional Parameters
+```cpp
+RoutesConsts::param_domain       // "domain"
+RoutesConsts::param_key          // "key"
+RoutesConsts::param_value        // "value"
+```
+
+### JSON Schemas
+```cpp
+RoutesConsts::json_object_result // JSON schema for result/message object
 ```
 
 ---
@@ -454,8 +497,11 @@ public:
         return "myservice/v1";
     }
     
-    std::string getPath(const std::string& finalpathstring) override {
-        return std::string(RoutesConsts::PathAPI) + getServiceSubPath() + "/" + finalpathstring;
+    std::string getPath(const std::string& finalpathstring = "") override {
+        if (baseServicePath_.empty()) {
+            baseServicePath_ = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
+        }
+        return baseServicePath_ + finalpathstring;
     }
     
     bool registerRoutes() override {
@@ -475,10 +521,7 @@ private:
     void registerStatusRoute() {
         std::vector<OpenAPIResponse> responses;
         responses.push_back(createSuccessResponse("Service status retrieved"));
-        responses.push_back(createNotInitializedResponse());
-        
-        std::string path = getPath("status");
-        registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::MethodGET,
+        responses.push_back(createNotInitializedResponse());method_get,
                                           "Get service status",
                                           "My Service", false, {}, responses));
         
@@ -490,8 +533,8 @@ private:
     void registerActionRoute() {
         // Define parameters
         std::vector<OpenAPIParameter> params;
-        OpenAPIParameter actionParam("action", RoutesConsts::TypeString, 
-                                     RoutesConsts::InQuery, 
+        OpenAPIParameter actionParam("action", RoutesConsts::type_string, 
+                                     RoutesConsts::in_query, 
                                      "Action to perform", true);
         actionParam.example = "start";
         params.push_back(actionParam);
@@ -503,7 +546,7 @@ private:
         responses.push_back(createOperationFailedResponse());
         
         std::string path = getPath("action");
-        registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::MethodPOST,
+        registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_post,
                                           "Perform an action",
                                           "My Service", false,
                                           params, responses));
@@ -515,21 +558,21 @@ private:
     
     void handleGetStatus() {
         JsonDocument doc;
-        doc[RoutesConsts::FieldStatus] = RoutesConsts::StatusReady;
-        doc[RoutesConsts::Message] = "Service is running";
+        doc[RoutesConsts::field_status] = RoutesConsts::status_ready;
+        doc[RoutesConsts::message] = "Service is running";
         
         String output;
         serializeJson(doc, output);
-        webserver.send(200, RoutesConsts::MimeJSON, output.c_str());
+        webserver.send(200, RoutesConsts::mime_json, output.c_str());
     }
     
     void handleAction() {
         // Validate parameters
         if (!webserver.hasArg("action")) {
             std::string response = getResultJsonString(
-                RoutesConsts::ResultErr,
-                RoutesConsts::MsgInvalidParams);
-            webserver.send(422, RoutesConsts::MimeJSON, response.c_str());
+                RoutesConsts::result_err,
+                RoutesConsts::msg_invalid_params);
+            webserver.send(422, RoutesConsts::mime_json, response.c_str());
             return;
         }
         
@@ -539,7 +582,10 @@ private:
         bool success = executeAction(action.c_str());
         
         std::string response = getResultJsonString(
-            success ? RoutesConsts::ResultOk : RoutesConsts::ResultErr,
+            success ? RoutesConsts::result_ok : RoutesConsts::result_err,
+            success ? "Action completed" : "Action failed");
+        
+        webserver.send(success ? 200 : 456, RoutesConsts::mime_jsontErr,
             success ? "Action completed" : "Action failed");
         
         webserver.send(success ? 200 : 456, RoutesConsts::MimeJSON, response.c_str());
@@ -657,17 +703,17 @@ Always handle these cases:
 
 **Example**:
 ```cpp
-void handleRequest() {
-    // Check initialization
-    if (!initialized) {
-        webserver.send(503, RoutesConsts::MimeJSON,
-                      getResultJsonString(RoutesConsts::ResultErr, 
-                                         RoutesConsts::RespNotInitialized).c_str());
+void handleRequest() {mime_json,
+                      getResultJsonString(RoutesConsts::result_err, 
+                                         RoutesConsts::resp_not_initialized).c_str());
         return;
     }
     
     // Validate parameters
     if (!webserver.hasArg("param")) {
+        webserver.send(422, RoutesConsts::mime_json,
+                      getResultJsonString(RoutesConsts::result_err, 
+                                         RoutesConsts::msg_invalid_p
         webserver.send(422, RoutesConsts::MimeJSON,
                       getResultJsonString(RoutesConsts::ResultErr, 
                                          RoutesConsts::MsgInvalidParams).c_str());

@@ -32,13 +32,21 @@ public:
     void setValue(int newval) { value = newval; }
 };
 
-class ServoService : public IsServiceInterface, public IsOpenAPIInterface
+class ServoService : public IsOpenAPIInterface
 {
 public:
-    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+    struct ServoSpeedOp {
+        uint8_t channel;
+        int8_t speed;
+    };
+    struct ServoAngleOp {
+        uint8_t channel;
+        uint16_t angle;
+    };
+
     /**
      * @brief Attach a servo model to a channel.
-     * @param channel Servo channel (0-7 or 5)
+     * @param channel Servo channel (0-7)
      * @param connection ServoConnection enum value
      * @return true if successful, false otherwise
      */
@@ -67,12 +75,26 @@ public:
     bool setAllServoSpeed(int8_t speed);
 
     /**
+     * @brief Set speed for multiple servos at once
+     * @param ops Vector of ServoSpeedOp operations
+     * @return true if all operations successful, false otherwise
+     */
+    bool setServosSpeedMultiple(const std::vector<ServoSpeedOp>& ops);
+
+    /**
      * 
-     * @brief Set all attachedangular servos to middle position
+     * @brief Set all attached angular servos to middle position
      * @return true if successful, false otherwise
      */
     bool setAllServoAngle(u_int16_t angle);
-    
+
+    /**
+     * @brief Set angle for multiple servos at once
+     * @param ops Vector of ServoAngleOp operations
+     * @return true if all operations successful, false otherwise
+     */
+    bool setServosAngleMultiple(const std::vector<ServoAngleOp>& ops);
+
     // Get servo status
     /**
      * @brief Get the status of a servo channel
@@ -108,6 +130,17 @@ public:
     bool loadSettings() override;
 
 private:
-    ServiceStatus service_status_ = STOP_FAILED;
-    unsigned long status_timestamp_ = 0;
+
+
+    // Route registration helper methods
+    bool addRouteSetServoAngle(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteStopAll(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteGetStatus(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteGetAllStatus();
+    bool addRouteSetAllAngle(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteSetServosSpeedMultiple(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteSetServosAngleMultiple(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteAttachServo(const std::vector<OpenAPIResponse>& standard_responses);
 };

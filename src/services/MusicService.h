@@ -10,7 +10,7 @@
 #include "IsServiceInterface.h"
 #include "IsOpenAPIInterface.h"
 
-class MusicService : public IsServiceInterface, public IsOpenAPIInterface
+class MusicService : public IsOpenAPIInterface
 {
 public:
     bool registerRoutes() override;
@@ -19,11 +19,8 @@ public:
     bool startService() override;
     bool stopService() override;
     std::string getServiceName() override;
-    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+
     bool saveSettings() override;
     bool loadSettings() override;
 
-private:
-    ServiceStatus service_status_ = STOP_FAILED;
-    unsigned long status_timestamp_ = 0;
 };

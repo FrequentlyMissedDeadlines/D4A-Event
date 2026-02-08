@@ -1,7 +1,7 @@
 #include "MicroTFService.h"
 /**
  * @file MicroTFService.cpp
- * @brief Implementation for MicroTensorFlow object detection service
+ * @brief NOT IMPLEMENTED for MicroTensorFlow object detection service
  * @details Exposed routes:
  *          - POST /api/microtf/v1/detect - Trigger object detection asynchronously
  *          - GET /api/microtf/v1/results - Retrieve results from last detection inference
@@ -28,28 +28,6 @@ MicroTFService::MicroTFService()
     : last_inference_time_ms(0), is_initialized(false) {
 }
 
-bool MicroTFService::initializeService() {
-    // TODO: Initialize TensorFlow Lite interpreter
-    // - Load model from PROGMEM or flash
-    // - Create interpreter and allocate tensors
-    // - Verify input/output tensor dimensions
-    
-    is_initialized = true;
-    if (logger) {
-        logger->info(PSTR("MicroTFService initialized"));
-    }
-    return true;
-}
-
-bool MicroTFService::startService() {
-    // Service is ready when initialized
-    return is_initialized;
-}
-
-bool MicroTFService::stopService() {
-    // TODO: Clean up TensorFlow Lite resources if needed
-    return true;
-}
 
 std::string MicroTFService::getServiceName() {
     return MicroTFConsts::svc_name;
@@ -98,12 +76,14 @@ uint32_t MicroTFService::getLastInferenceTimeMs() const {
 }
 
 void MicroTFService::handleDetect() {
+    if (!checkServiceStarted()) return;
     // TODO: Trigger detection asynchronously
-    webserver.send(200, "application/json", "{\"status\":\"detection_triggered\"}");
+    webserver.send(501, "application/json", "{\"status\":\"detection_triggered\"}");
 }
 
 void MicroTFService::handleGetResults() {
+    if (!checkServiceStarted()) return;
     // TODO: Serialize detection results to JSON
     // Include inference time and all detected objects with boundaries
-    webserver.send(200, "application/json", "{\"objects\":[]}");
+    webserver.send(501, "application/json", "{\"objects\":[]}");
 }

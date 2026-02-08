@@ -2,25 +2,39 @@
 
 ## Overview
 
-`RollingLogger` is a logging utility designed for the K10 bot project that provides structured logging with multiple severity levels and automatic on-screen rendering to the TFT display. It maintains a rolling buffer of log messages **and displays** them in a configurable viewport on the screen.
+`RollingLogger` is a logging utility designed for the K10 bot project that provides structured logging with multiple severity levels. It maintains a rolling buffer of log messages that can be retrieved and displayed by UI components.
 
 **Location**: [src/services/RollingLogger.h](src/services/RollingLogger.h), [src/services/RollingLogger.cpp](src/services/RollingLogger.cpp)
 
 ## Purpose
 
-The logger serves two main purposes:
+The logger serves as a centralized logging facility:
 1. **Structured logging** - Provides leveled logging (TRACE, DEBUG, INFO, WARNING, ERROR) for debugging and monitoring
-2. **Visual feedback** - Displays log messages on the TFT screen for real-time system monitoring without requiring a serial connection
+2. **Message buffering** - Maintains a rolling buffer of log entries with automatic memory management
+3. **Separation of concerns** - Log storage is separate from display rendering, allowing flexible UI integration
+
+## Architecture
+
+The logging system follows a clean separation of concerns:
+- **RollingLogger** - Handles log message storage and buffering
+- **UTB2026 UI** - Renders logs to the TFT display (see [src/ui/utb2026.h](src/ui/utb2026.h))
+
+This separation allows:
+- Logging without screen dependency
+- Multiple views of the same log buffer
+- Alternative output methods (file, network) in the future
+- Better testability and maintainability
 
 ## Key Features
 
-- ✅ Multiple log levels with filtering
+- ✅ Multiple log levels with filtering (TRACE, DEBUG, INFO, WARNING, ERROR)
 - ✅ Automatic rolling buffer (prevents memory overflow)
-- ✅ On-screen rendering to TFT display
-- ✅ Configurable viewport and colors
 - ✅ Convenience methods for each log level
-- ✅ Color-coded messages by severity
+- ✅ Support for both `std::string` and PROGMEM strings (`__FlashStringHelper*`)
 - ✅ Memory-bounded operation (automatic trimming)
+- ✅ Thread-safe log retrieval via `get_log_rows()`
+- ✅ Clean separation from UI rendering
+- ✅ Lightweight and efficient
 
 ---
 
@@ -49,11 +63,10 @@ RollingLogger();
 ```
 
 **Default Configuration**:
-- Log level: `INFO`
+- Log level: `DEBUG`
 - Max rows: `16`
-- Viewport: `(0, 0)` with size `320x160` pixels
-- Text color: `TFT_BLACK`
-- Background color: `TFT_BLACK`
+
+**Note**: Display configuration (viewport, colors) is now handled by the UI component when adding logger views.
 
 **Usage**:
 ```cpp
@@ -67,23 +80,27 @@ RollingLogger* logger = new RollingLogger();
 ### `log()`
 ```cpp
 void log(const std::string message, const LogLevel level);
+void log(const __FlashStringHelper* message, const LogLevel level);
 ```
 **Purpose**: Log a message with a specific severity level.
 
 **Parameters**:
-- `message`: The log message to record
+- `message`: The log message to record (either `std::string` or PROGMEM string)
 - `level`: Severity level (TRACE, DEBUG, INFO, WARNING, ERROR)
 
 **Behavior**:
 - Filters messages based on current log level
 - Adds message to rolling buffer
 - Automatically trims buffer if it exceeds max_rows
-- Renders updated logs to screen
+- Does NOT trigger screen rendering (handled separately by UI)
 
 **Example**:
 ```cpp
+// Using std::string
 logger->log("Connection established", RollingLogger::INFO);
-logger->log("Invalid parameter value", RollingLogger::ERROR);
+
+// Using PROGMEM string
+logger->log(FPSTR(MyConsts::msg_error), RollingLogger::ERROR);
 ```
 
 ---
@@ -93,6 +110,7 @@ logger->log("Invalid parameter value", RollingLogger::ERROR);
 #### `trace()`
 ```cpp
 void trace(const std::string message);
+void trace(const __FlashStringHelper* message);
 ```
 **Purpose**: Log a trace-level message (most verbose).
 
@@ -101,7 +119,7 @@ void trace(const std::string message);
 **Example**:
 ```cpp
 logger->trace("Entering initializeService()");
-logger->trace("Processing frame buffer");
+logger->trace(FPSTR(ServiceConsts::msg_trace_entry));
 ```
 
 ---
@@ -109,6 +127,7 @@ logger->trace("Processing frame buffer");
 #### `debug()`
 ```cpp
 void debug(const std::string message);
+void debug(const __FlashStringHelper* message);
 ```
 **Purpose**: Log debug information.
 
@@ -117,7 +136,7 @@ void debug(const std::string message);
 **Example**:
 ```cpp
 logger->debug("Received UDP packet: 128 bytes");
-logger->debug("WiFi signal strength: -45 dBm");
+logger->debug(FPSTR(ServiceInterfaceConsts::msg_initialize_done));
 ```
 
 ---
@@ -125,6 +144,7 @@ logger->debug("WiFi signal strength: -45 dBm");
 #### `info()`
 ```cpp
 void info(const std::string message);
+void info(const __FlashStringHelper* message);
 ```
 **Purpose**: Log general informational messages.
 
@@ -133,7 +153,7 @@ void info(const std::string message);
 **Example**:
 ```cpp
 logger->info("WiFi connected to network");
-logger->info("HTTP server started on port 80");
+logger->info(FPSTR(WiFiConsts::msg_connected));
 ```
 
 ---
@@ -141,6 +161,7 @@ logger->info("HTTP server started on port 80");
 #### `warning()`
 ```cpp
 void warning(const std::string message);
+void warning(const __FlashStringHelper* message);
 ```
 **Purpose**: Log warning messages.
 
@@ -149,7 +170,7 @@ void warning(const std::string message);
 **Example**:
 ```cpp
 logger->warning("Low memory: 10KB free");
-logger->warning("Retrying connection attempt 3/5");
+logger->warning(FPSTR(SystemConsts::msg_low_memory));
 ```
 
 ---
@@ -157,6 +178,7 @@ logger->warning("Retrying connection attempt 3/5");
 #### `error()`
 ```cpp
 void error(const std::string message);
+void error(const __FlashStringHelper* message);
 ```
 **Purpose**: Log error messages.
 
@@ -165,7 +187,7 @@ void error(const std::string message);
 **Example**:
 ```cpp
 logger->error("Failed to connect to WiFi");
-logger->error("Camera initialization failed");
+logger->error(FPSTR(WiFiConsts::msg_connection_failed));
 ```
 
 ---
@@ -227,7 +249,6 @@ void set_max_rows(int rows);
 **Behavior**:
 - Limits memory usage by trimming old messages
 - Automatically trims existing buffer if it exceeds new limit
-- Re-renders logs after trimming
 
 **Example**:
 ```cpp
@@ -255,82 +276,27 @@ int maxRows = logger->get_max_rows();
 
 ---
 
-### `set_logger_viewport()`
+### `get_log_rows()`
 ```cpp
-void set_logger_viewport(int x, int y, int width, int height);
+const std::vector<std::pair<LogLevel, std::string>>& get_log_rows() const;
 ```
-**Purpose**: Configure the screen area where logs are displayed.
+**Purpose**: Retrieve all log entries for display or processing.
 
-**Parameters**:
-- `x`: Left edge of viewport (pixels)
-- `y`: Top edge of viewport (pixels)
-- `width`: Viewport width (pixels)
-- `height`: Viewport height (pixels)
+**Returns**: Const reference to vector of log entries (pairs of LogLevel and message string)
 
-**Default**: `(0, 0, 320, 160)` - top-left corner, standard size
+**Usage**: Called by UI components to render logs. The returned vector contains entries in chronological order.
 
 **Example**:
 ```cpp
-// Position logs at bottom of screen
-logger->set_logger_viewport(0, 80, 320, 160);
-
-// Narrow viewport on right side
-logger->set_logger_viewport(240, 0, 80, 240);
-
-// Full screen
-logger->set_logger_viewport(0, 0, 320, 240);
+const auto& log_rows = logger->get_log_rows();
+for (const auto& entry : log_rows) {
+    RollingLogger::LogLevel level = entry.first;
+    const std::string& message = entry.second;
+    // Process or display the log entry
+}
 ```
 
----
-
-### `set_logger_text_color()`
-```cpp
-void set_logger_text_color(uint16_t color, uint16_t bg_color);
-```
-**Purpose**: Set text and background colors for log display.
-
-**Parameters**:
-- `color`: Text color (16-bit RGB565 format)
-- `bg_color`: Background color (16-bit RGB565 format)
-
-**Behavior**:
-- If `color == bg_color`, automatic color-coding by level is used
-- Otherwise, specified color is used for all messages
-
-**Color Constants** (from TFT_eSPI):
-- `TFT_BLACK` - 0x0000
-- `TFT_WHITE` - 0xFFFF
-- `TFT_RED` - 0xF800
-- `TFT_GREEN` - 0x07E0
-- `TFT_BLUE` - 0x001F
-- `TFT_YELLOW` - 0xFFE0
-- `TFT_LIGHTGREY` - 0xC618
-
-**Example**:
-```cpp
-// White text on black background
-logger->set_logger_text_color(TFT_WHITE, TFT_BLACK);
-
-// Auto color-coding (text color = bg color triggers this mode)
-logger->set_logger_text_color(TFT_BLACK, TFT_BLACK);
-
-// Green text on dark background
-logger->set_logger_text_color(TFT_GREEN, TFT_DARKGREY);
-```
-
----
-
-## Automatic Color-Coding
-
-When text color equals background color (default mode), messages are automatically color-coded by severity:
-
-| Level   | Color       | TFT Constant     |
-|---------|-------------|------------------|
-| ERROR   | Red         | `TFT_RED`        |
-| WARNING | Yellow      | `TFT_YELLOW`     |
-| INFO    | White       | `TFT_WHITE`      |
-| DEBUG   | Light Grey  | `TFT_LIGHTGREY`  |
-| TRACE   | Light Grey  | `TFT_LIGHTGREY`  |
+**Note**: This method is typically called by the UI layer (UTB2026) during rendering cycles.
 
 ---
 
@@ -340,17 +306,25 @@ When text color equals background color (default mode), messages are automatical
 
 ```cpp
 #include "RollingLogger.h"
+#include "ui/utb2026.h"
 
 // Create logger
 RollingLogger* logger = new RollingLogger();
 
-// Configure
+// Configure logging behavior
 logger->set_log_level(RollingLogger::DEBUG);
-logger->set_max_rows(16);
-logger->set_logger_viewport(0, 0, 320, 160);
+logger->set_max_rows(20);
+
+// Create UI and add logger view for display
+UTB2026 ui;
+ui.init();
+ui.add_logger_view(logger, 0, 80, 320, 240, TFT_BLACK, TFT_BLACK);
 
 // Start logging
 logger->info("Logger initialized");
+
+// Later, in your main loop:
+ui.draw_logger();  // Renders logs to screen
 ```
 
 ---
@@ -363,51 +337,56 @@ All services in the K10 bot receive a logger instance via `setLogger()`:
 class MyService : public IsServiceInterface {
 public:
     bool initializeService() override {
-        if (logger) {
-            logger->info("Initializing MyService");
-        }
+        logger->info("Initializing MyService");
         
         // Initialization code...
         
-        if (logger) {
-            logger->info("MyService initialized successfully");
-        }
+        service_status_ = STARTED;
+        status_timestamp_ = millis();
+        #ifdef VERBOSE_DEBUG
+        logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
+        #endif
         return true;
     }
     
     bool someOperation() {
-        if (!initialized) {
-            if (logger) logger->error("Service not initialized");
+        if (service_status_ != STARTED) {
+            logger->error("Service not initialized");
             return false;
         }
         
-        if (logger) logger->debug("Performing operation");
+        #ifdef VERBOSE_DEBUG
+        logger->debug("Performing operation");
+        #endif
         
         // Operation code...
         
-        if (logger) logger->info("Operation completed");
+        logger->info("Operation completed");
         return true;
     }
 };
 ```
 
+**Note**: After `setLogger()` is called, the logger is always available - no need to check for null.
+
 ---
 
-### Conditional Logging
+### Using PROGMEM Strings
 
-Always check if logger is available before using:
+To save RAM, use PROGMEM strings with the `FPSTR()` macro:
 
 ```cpp
-if (logger) {
-    logger->debug("Debug information");
+namespace MyServiceConsts {
+    constexpr const char msg_initialized[] PROGMEM = "Service initialized";
+    constexpr const char msg_error[] PROGMEM = "Operation failed";
 }
 
-// Or with formatted strings
-if (logger) {
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "Value: %d, Status: %s", value, status);
-    logger->info(buffer);
-}
+// In your code:
+logger->info(FPSTR(MyServiceConsts::msg_initialized));
+logger->error(FPSTR(MyServiceConsts::msg_error));
+
+// Combining with dynamic data:
+logger->debug("Port: " + std::to_string(port) + ", " + FPSTR(MyServiceConsts::msg_status));
 ```
 
 ---
@@ -457,13 +436,20 @@ The logger is designed for memory-constrained ESP32-S3:
 
 ### Buffer Management
 - Rolling buffer automatically trims old messages
-- Maximum memory: `max_rows * (message_length + sizeof(LogLevel))`
-- Typical usage: 16 rows × ~50 chars = ~1KB
+- Maximum memory: `max_rows * (message_length + sizeof(LogLevel) + std::pair overhead)`
+- Typical usage: 16 rows × ~50 chars = ~1-2KB
+- PROGMEM strings save RAM by storing constants in flash
 
 ### Optimization Tips
 ```cpp
 // ✅ Good - bounded buffer
 logger->set_max_rows(16);
+
+// ✅ Best - use PROGMEM strings
+namespace MyConsts {
+    constexpr const char msg_status[] PROGMEM = "Status update";
+}
+logger->info(FPSTR(MyConsts::msg_status));
 
 // ✅ Good - reuse buffer for formatting
 char buffer[64];
@@ -482,23 +468,17 @@ logger->debug(msg);
 // ✅ Good - filter verbose logs in production
 #ifdef VERBOSE_DEBUG
     logger->debug("Detailed debug info");
-#endif
-```
-
----
-
-## Performance Considerations
-
-### Rendering Cost
-- Each `log()` call triggers screen refresh
-- Rendering takes ~5-20ms depending on message count
-- **Important**: Don't log in tight loops or ISR contexts
+#endLogging Cost
+- `log()` calls are lightweight - only add to buffer
+- No screen rendering overhead during logging
+- Rendering happens separately in UI update cycle
+- **Important**: Still avoid logging in ISR contexts (thread safety)
 
 ### Best Practices
 ```cpp
 // ✅ Good - log important state changes
 logger->info("WiFi connected");
-logger->info("Camera initialized");
+logger->info(FPSTR(ServiceConsts::msg_initialized));
 
 // ✅ Good - periodic logging
 static unsigned long lastLog = 0;
@@ -507,8 +487,19 @@ if (millis() - lastLog > 1000) {
     lastLog = millis();
 }
 
-// ❌ Bad - logging in tight loop
-for (int i = 0; i < 1000; i++) {
+// ⚠️ Acceptable - logging in loops (no rendering overhead)
+// But still use judiciously to avoid buffer churn
+for (int i = 0; i < 100; i++) {
+    logger->debug("Processing " + std::to_string(i));
+}
+
+// ❌ Bad - logging in ISR (thread safety issue)
+void IRAM_ATTR onInterrupt() {
+    logger->error("Interrupt!"); // DON'T do this!
+}
+
+// UI rendering (separate from logging):
+ui.draw_logger();  // Call periodically in main loop (e.g., every 100-500ms)or (int i = 0; i < 1000; i++) {
     logger->debug("Processing " + std::to_string(i)); // 1000 screen refreshes!
 }
 
@@ -558,55 +549,97 @@ void setState(State newState) {
 
 ## Display Integration
 
-### Requirements
-- Depends on `TFT_eSPI` library for screen rendering
-- Requires global `tft` instance: `extern TFT_eSPI tft;`
-- Uses viewport system for non-overlapping display regions
+### Architecture
+Display rendering is handled by the **UTB2026** UI class, which:
+- Retrieves log entries via `get_log_rows()`
+- Manages viewports and colors
+- Handles automatic color-coding by log level
+- Supports multiple logger views simultaneously
+
+### Adding Logger to UI
+```cpp
+#include "ui/utb2026.h"
+
+UTB2026 ui;
+RollingLogger* logger = new RollingLogger();
+
+// Add logger view with viewport and colors
+// add_logger_view(logger, x1, y1, x2, y2, text_color, bg_color)
+ui.add_logger_view(logger, 0, 80, 320, 240, TFT_BLACK, TFT_BLACK);
+
+// In main loop:
+ui.draw_logger();  // Renders all logger views
+```
+
+### Automatic Color-Coding
+
+When text color equals background color (e.g., both `TFT_BLACK`), messages are automatically color-coded:
+
+| Level   | Color       | Constant (UTB2026Consts) |
+|---------|-------------|---------------------------|
+| ERROR   | Yellow      | `color_error`             |
+| WARNING | Yellow      | `color_warning`           |
+| INFO    | White       | `color_info`              |
+| DEBUG   | Light Grey  | `color_debug`             |
+| TRACE   | Light Grey  | `color_trace`             |
+
+**Note**: Use different text and background colors to override automatic coloring.
 
 ### Layout Planning
 ```cpp
 // Example: Split screen between UI and logs
 constexpr int UI_HEIGHT = 80;
-constexpr int LOG_HEIGHT = 160;
+constexpr int SCREEN_WIDTH = 320;
+constexpr int SCREEN_HEIGHT = 240;
 
-// UI uses top portion
 // Logs use bottom portion
-logger->set_logger_viewport(0, UI_HEIGHT, 320, LOG_HEIGHT);
+ui.add_logger_view(logger, 0, UI_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+// Multiple logger views are supported:
+ui.add_logger_view(systemLogger, 0, 0, 160, 80);   // Top-left
+ui.add_logger_view(debugLogger, 160, 0, 320, 80);  // Top-right
 ```
 
 ### Character Metrics
-- Character height: `10 pixels` (defined as `CHAR_HEIGHT`)
+- Character height: `10 pixels`
 - Typical character width: `6 pixels` (font-dependent)
 - Max characters per line (320px width): ~53 characters
 
+### Requirements
+- UI component depends on `TFT_eSPI` library
+- Logger itself has no display dependencies
+- See [src/ui/utb2026.h](src/ui/utb2026.h) for UI implementation details
+
 ---
 
-## Limitations and Future Improvements
+## Completed Improvements
 
-### Current Limitations
+✅ **Separation of Concerns** - Log handling and screen rendering are now separate:
+- `RollingLogger` - Pure logging functionality
+- `UTB2026` UI class - Display rendering
+- Allows logging without screen dependency
+- Enables alternative outputs (file, network) in future
+- Better testability and maintainability
+
+## Current Limitations
+
 - No log persistence (lost on reboot)
 - No log rotation or file output
-- Screen rendering is synchronous (blocks briefly)
 - No filtering by source/category
+- Not thread-safe (don't call from ISRs)
 
-### Planned Improvements (from TODO)
-> @todo: Split the log handling and screen rendering into separate classes.
+## Potential Future Improvements
 
-This would allow:
-- Logging without screen dependency
-- Async rendering
-- Alternative outputs (file, network)
-- Better separation of concerns
+- Log persistence to flash/SD card
+- Network logging (syslog, remote server)
+- Log filtering by component/tag
+- Thread-safe implementation with mutexes
+- Circular buffer optimization
+#include "ui/utb2026.h"
 
----
-
-## Example: Complete Logger Setup
-
-```cpp
-#include "RollingLogger.h"
-
-// Global logger instance
+// Global instances
 RollingLogger* globalLogger = nullptr;
+UTB2026 ui;
 
 void setupLogging() {
     // Create logger
@@ -616,11 +649,11 @@ void setupLogging() {
     globalLogger->set_log_level(RollingLogger::DEBUG);
     globalLogger->set_max_rows(20);
     
-    // Position at bottom of screen
-    globalLogger->set_logger_viewport(0, 80, 320, 160);
+    // Initialize UI
+    ui.init();
     
-    // Use auto color-coding
-    globalLogger->set_logger_text_color(TFT_BLACK, TFT_BLACK);
+    // Add logger view at bottom of screen with auto color-coding
+    ui.add_logger_view(globalLogger, 0, 80, 320, 240, TFT_BLACK, TFT_BLACK);
     
     // Log initialization
     globalLogger->info("====================");
@@ -649,9 +682,49 @@ void setupServices() {
     wifiService->startService();
     httpService->startService();
 }
-```
+
+void loop() {
+    // Your main loop code...
+    
+    // Update display periodically (not every loop iteration)
+    static unsigned long lastUIUpdate = 0;
+    if (millis() - lastUIUpdate > 200) {  // Update 5 times per second
+        ui.draw_all();  // or ui.draw_logger() for just logs
+        lastUIUpdate = millis();
+- PROGMEM usage for constants
+
+### Design Patterns
+- **Separation of Concerns**: Logger handles storage, UI handles rendering
+- **Single Responsibility**: RollingLogger focused on log management only
+- **Dependency Injection**: Services receive logger via `setLogger()`
+- **Observer Pattern**: UI observes log buffer via `get_log_rows()`
+
+### Real-Time Considerations
+- Logging is **not** real-time safe
+- **Never** call from ISR contexts
+- No mutex protection (services run in same task context)
+- Rendering is decoupled from logging (no blocking)
+- Use `VERBOSE_DEBUG` guards for non-critical debug messages
+
+### Integration with IsServiceInterface
+All services implementing `IsServiceInterface` have access to the logger via the protected `logger` member after calling `setLogger()`.
+
+### Integration with UTB2026 UI
+The UI component (`UTB2026`) handles all display aspects:
+- Multiple logger views supported
+- Configurable viewports and colors
+- Automatic color-coding by log level
+- [src/ui/utb2026.h](src/ui/utb2026.h) - UI component that renders logs
+- [src/services/FlashStringHelper.h](src/services/FlashStringHelper.h) - Helper for PROGMEM string handling
 
 ---
+
+## Questions?
+
+The RollingLogger is used throughout all services in the K10 bot project. Key files to reference:
+- Service implementations: [src/services/](src/services/)
+- UI rendering: [src/ui/utb2026.cpp](src/ui/utb2026.cpp)
+- Logger implementation: [src/services/RollingLogger.cpp](src/services/RollingLogger.cpp)
 
 ## Architectural Notes
 

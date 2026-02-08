@@ -27,29 +27,12 @@ struct DetectedObject {
  * Captures frames from K10 camera and performs inference to detect objects.
  * Provides REST API endpoints for triggering detection and retrieving results.
  */
-class MicroTFService : public IsServiceInterface, public IsOpenAPIInterface {
+class MicroTFService : public IsOpenAPIInterface {
 public:
     MicroTFService();
     ~MicroTFService() = default;
 
-    // IsServiceInterface implementation
-    /**
-     * @brief Initialize the TensorFlow Lite service
-     * @return true if initialization successful, false otherwise
-     */
-    bool initializeService() override;
-
-    /**
-     * @brief Start the TensorFlow Lite service
-     * @return true if start successful, false otherwise
-     */
-    bool startService() override;
-
-    /**
-     * @brief Stop the TensorFlow Lite service
-     * @return true if stop successful, false otherwise
-     */
-    bool stopService() override;
+    // IsServiceInterface implementation (using default implementations)
 
     /**
      * @brief Get service identifier
@@ -57,11 +40,7 @@ public:
      */
     std::string getServiceName() override;
 
-    /**
-     * @brief Get OpenAPI interface for this service
-     * @return Pointer to this service as IsOpenAPIInterface
-     */
-    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+
 
     // IsOpenAPIInterface implementation
     /**

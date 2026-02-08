@@ -38,9 +38,27 @@ Retrieves comprehensive board information including system metrics, memory usage
 }
 ```
 
+### GET /api/board/v1/settings
+Get service-specific settings for Board Info service.
+
+**Tags:** Board Info  
+**Authentication:** None
+
+**Response Codes:**
+- `200` - Settings retrieved successfully
+
+### POST /api/board/v1/settings
+Update service-specific settings for Board Info service.
+
+**Tags:** Board Info  
+**Authentication:** None
+
+**Response Codes:**
+- `200` - Settings updated successfully
+
 ---
 
-## Sensors Service
+## K10 Sensors Service
 
 ### GET /api/sensors/v1
 Retrieves all K10 sensor readings including light, temperature, humidity, microphone, and accelerometer data.
@@ -60,6 +78,144 @@ Retrieves all K10 sensor readings including light, temperature, humidity, microp
   "celcius": 23.8,
   "mic_data": 512,
   "accelerometer": [0.12, -0.05, 9.81]
+}
+```
+
+### GET /api/sensors/v1/settings
+Get service-specific settings for K10 Sensors service.
+
+**Tags:** Sensors  
+**Authentication:** None
+
+**Response Codes:**
+- `200` - Settings retrieved successfully
+
+---
+
+## Music Service
+
+### POST /api/music/v1/play
+Play built-in melody with playback options.
+
+**Tags:** Music  
+**Authentication:** None
+
+**Query Parameters:**
+- `melody` (string, required) - Melody enum value (0-19)
+- `option` (string, optional) - Playback option (1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground)
+
+**Request Example:**
+```json
+{
+  "melody": 0,
+  "option": 4
+}
+```
+
+**Response Codes:**
+- `200` - Operation completed successfully
+- `400` - Missing required parameter
+
+**Available Melodies:**
+0=DADADADUM, 1=ENTERTAINER, 2=PRELUDE, 3=ODE, 4=NYAN, 5=RINGTONE, 6=FUNK, 7=BLUES, 8=BIRTHDAY, 9=WEDDING, 10=FUNERAL, 11=PUNCHLINE, 12=BADDY, 13=CHASE, 14=BA_DING, 15=WAWAWAWAA, 16=JUMP_UP, 17=JUMP_DOWN, 18=POWER_UP, 19=POWER_DOWN
+
+### POST /api/music/v1/tone
+Play a tone at specified frequency and duration.
+
+**Tags:** Music  
+**Authentication:** None
+
+**Query Parameters:**
+- `freq` (string, required) - Frequency in Hz
+- `beat` (string, optional) - Beat duration (default 8000)
+
+**Request Example:**
+```json
+{
+  "freq": 440,
+  "beat": 8000
+}
+```
+
+**Response Codes:**
+- `200` - Operation completed successfully
+- `400` - Missing required parameter
+
+### POST /api/music/v1/stop
+Stop current tone playback.
+
+**Tags:** Music  
+**Authentication:** None
+
+**Response Codes:**
+- `200` - Operation completed successfully
+
+### POST /api/music/v1/melodies
+Get list of available built-in melodies.
+
+**Tags:** Music  
+**Authentication:** None
+
+**Response Codes:**
+- `200` - Melody list retrieved successfully
+
+**Response Example:**
+```json
+["DADADADUM","ENTERTAINER","PRELUDE","ODE","NYAN","RINGTONE","FUNK","BLUES","BIRTHDAY","WEDDING","FUNERAL","PUNCHLINE","BADDY","CHASE","BA_DING","WAWAWAWAA","JUMP_UP","JUMP_DOWN","POWER_UP","POWER_DOWN"]
+```
+
+---
+
+## Settings Service
+
+### GET /api/settings/v1/settings
+Retrieve a single setting value or all settings in a domain.
+
+**Tags:** Settings  
+**Authentication:** None
+
+**Query Parameters:**
+- `domain` (string, required) - Settings domain/namespace (max 15 chars, alphanumeric and underscore)
+- `key` (string, optional) - Setting key (max 15 chars, alphanumeric and underscore)
+
+**Response Codes:**
+- `200` - Successful operation
+- `422` - Invalid parameters
+- `503` - Service not initialized or operation failed
+
+**Response Example:**
+```json
+{
+  "domain": "wifi",
+  "settings": {}
+}
+```
+
+**Note:** ESP32 Preferences does not support key enumeration. Retrieving all settings in a domain returns limited information.
+
+### POST /api/settings/v1/settings
+Update or insert setting values in a domain.
+
+**Tags:** Settings  
+**Authentication:** None
+
+**Query Parameters:**
+- `domain` (string, required) - Settings domain/namespace (max 15 chars, alphanumeric and underscore)
+- `key` (string, optional) - Setting key for single update (max 15 chars)
+- `value` (string, optional) - Setting value for single update
+
+**Alternative:** JSON body with multiple key-value pairs
+
+**Response Codes:**
+- `200` - Settings updated successfully
+- `422` - Invalid parameters
+- `503` - Operation failed
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "message": "Operation successful."
 }
 ```
 
@@ -93,7 +249,7 @@ Set the angle of a servo motor on the DFR1216 expansion board.
 **Response Schema (200):**
 ```json
 {
-  "status": "success",
+  "result": "ok",
   "channel": 0,
   "angle": 90
 }
@@ -125,7 +281,7 @@ Set the speed and direction of a DC motor on the DFR1216 expansion board.
 **Response Schema (200):**
 ```json
 {
-  "status": "success",
+  "result": "ok",
   "motor": 1,
   "speed": 75
 }
@@ -143,9 +299,8 @@ Get initialization status and operational state of the DFR1216 expansion board.
 **Response Schema (200):**
 ```json
 {
-  "service": "DFR1216Service",
-  "initialized": true,
-  "status": "running"
+  "message": "DFR1216Service",
+  "status": "started"
 }
 ```
 
@@ -159,10 +314,6 @@ Set servo angle for angular servos (180° or 270°).
 **Tags:** Servos  
 **Authentication:** Required
 
-**Parameters:**
-- `channel` (integer, required) - Servo channel (0-7)
-- `angle` (integer, required) - Angle in degrees (0-180 for 180° servos, 0-270 for 270° servos)
-
 **Request Body:**
 ```json
 {
@@ -170,6 +321,10 @@ Set servo angle for angular servos (180° or 270°).
   "angle": 90
 }
 ```
+
+**Request Body Schema:**
+- `channel` (integer, required) - Servo channel (0-7)
+- `angle` (integer, required) - Angle in degrees (0-180 for 180° servos, 0-270 for 270° servos)
 
 **Response Codes:**
 - `200` - Operation successful
@@ -191,10 +346,6 @@ Set continuous servo speed for rotational servos.
 **Tags:** Servos  
 **Authentication:** Required
 
-**Parameters:**
-- `channel` (integer, required) - Servo channel (0-7)
-- `speed` (integer, required) - Speed percentage (-100 to +100, negative is reverse)
-
 **Request Body:**
 ```json
 {
@@ -202,6 +353,10 @@ Set continuous servo speed for rotational servos.
   "speed": 50
 }
 ```
+
+**Request Body Schema:**
+- `channel` (integer, required) - Servo channel (0-7)
+- `speed` (integer, required) - Speed percentage (-100 to +100, negative is reverse)
 
 **Response Codes:**
 - `200` - Operation successful
@@ -283,15 +438,15 @@ Set all attached angular servos to the same angle simultaneously.
 **Tags:** Servos  
 **Authentication:** Required
 
-**Parameters:**
-- `angle` (integer, required) - Angle in degrees (0-360)
-
 **Request Body:**
 ```json
 {
   "angle": 90
 }
 ```
+
+**Request Body Schema:**
+- `angle` (integer, required) - Angle in degrees (0-360)
 
 **Response Codes:**
 - `200` - Operation successful
@@ -313,15 +468,15 @@ Set all attached continuous rotation servos to the same speed simultaneously.
 **Tags:** Servos  
 **Authentication:** Required
 
-**Parameters:**
-- `speed` (integer, required) - Speed percentage (-100 to +100)
-
 **Request Body:**
 ```json
 {
   "speed": 50
 }
 ```
+
+**Request Body Schema:**
+- `speed` (integer, required) - Speed percentage (-100 to +100)
 
 **Response Codes:**
 - `200` - Operation successful
@@ -343,10 +498,6 @@ Register a servo type to a channel before use.
 **Tags:** Servos  
 **Authentication:** Required
 
-**Parameters:**
-- `channel` (integer, required) - Servo channel (0-7)
-- `connection` (integer, required) - Servo connection type (0=None, 1=continuous, 2=angular 180°, 3=angular 270°)
-
 **Request Body:**
 ```json
 {
@@ -354,6 +505,10 @@ Register a servo type to a channel before use.
   "connection": 2
 }
 ```
+
+**Request Body Schema:**
+- `channel` (integer, required) - Servo channel (0-7)
+- `connection` (integer, required) - Servo connection type (0=None, 1=continuous, 2=angular 180°, 3=angular 270°)
 
 **Response Codes:**
 - `200` - Operation successful
@@ -403,7 +558,7 @@ Get UDP server statistics including total messages received, dropped packets, bu
 ## Webcam Service
 
 ### GET /api/webcam/v1/snapshot
-Capture and return a JPEG snapshot from the camera in real-time. Image format is SVGA (800x600) by default with quality setting of 12.
+Capture and return a JPEG snapshot from the camera in real-time. Image format is QVGA (320x240) by default with quality setting of 80.
 
 **Tags:** Webcam  
 **Authentication:** None
@@ -430,9 +585,9 @@ Get camera initialization status, current settings including frame size, quality
   "initialized": true,
   "status": "ready",
   "settings": {
-    "framesize": 9,
-    "framesize_name": "SVGA",
-    "quality": 12,
+    "framesize": 6,
+    "framesize_name": "QVGA",
+    "quality": 80,
     "brightness": 0,
     "contrast": 0,
     "saturation": 0
@@ -444,6 +599,44 @@ Get camera initialization status, current settings including frame size, quality
 - `ready` - Camera operational
 - `sensor_error` - Sensor communication error
 - `not_initialized` - Camera not initialized
+
+---
+
+## MicroTF Service
+
+### POST /api/microtf/v1/detect
+Trigger object detection asynchronously using MicroTensorFlow.
+
+**Tags:** MicroTF  
+**Authentication:** None
+
+**Response Codes:**
+- `200` - Detection triggered successfully
+
+**Response Schema (200):**
+```json
+{
+  "status": "detection_triggered"
+}
+```
+
+### GET /api/microtf/v1/results
+Retrieve results from last detection inference including inference time and detected objects.
+
+**Tags:** MicroTF  
+**Authentication:** None
+
+**Response Codes:**
+- `200` - Results retrieved successfully
+
+**Response Schema (200):**
+```json
+{
+  "objects": []
+}
+```
+
+**Note:** This service is currently in development. Full object detection functionality is not yet implemented.
 
 ---
 
@@ -470,6 +663,34 @@ Get OpenAPI 3.0.0 specification for all registered services including paths, par
 }
 ```
 
+### GET /
+Home page with service dashboard and route listing.
+
+**Authentication:** None
+
+**Response:** HTML page with service interfaces and developer tools
+
+### GET /api/docs
+OpenAPI documentation page with interactive API test interface.
+
+**Authentication:** None
+
+**Response:** HTML page for testing API endpoints
+
+---
+
+## WiFi Service
+
+The WiFi service manages network connectivity but does not expose direct HTTP endpoints. It handles:
+- WiFi station connection to existing networks
+- Access Point (AP) mode fallback
+- Hostname configuration
+- Network status monitoring
+
+Configuration is managed through the Settings Service using the `wifi` domain.
+
+---
+
 ---
 
 ## Common Response Format
@@ -487,8 +708,16 @@ Most endpoints follow a standard response format for success and error cases:
 **Error Response:**
 ```json
 {
-  "result": "err",
+  "result": "error",
   "message": "<error_description>"
+}
+```
+
+Or:
+
+```json
+{
+  "error": "<error_description>"
 }
 ```
 
@@ -497,7 +726,7 @@ Most endpoints follow a standard response format for success and error cases:
 ## HTTP Status Codes
 
 - `200 OK` - Request successful
-- `400 Bad Request` - Invalid request format
+- `400 Bad Request` - Invalid request format or missing required parameters
 - `422 Unprocessable Entity` - Missing or invalid parameters
 - `456 Custom Error` - Operation failed (device-specific error)
 - `500 Internal Server Error` - Server error during operation
@@ -520,24 +749,92 @@ Some endpoints require authentication (marked with "Authentication: Required"). 
 
 1. All timestamps are in milliseconds since boot (`uptimeMs`)
 2. Temperature readings are in Celsius
-3. Accelerometer readings are in m/s² (gravity units)
-4. Servo channels are 0-indexed (0-7 for servo service, 0-5 for DFR1216)
-5. Motor numbers are 1-indexed (1-4)
-6. Speed values are percentages: -100 (full reverse) to +100 (full forward)
-7. JPEG quality: 0-63, where lower values mean higher quality
-8. Frame sizes: 0-13 (96x96 to UXGA)
+3. Humidity readings are in relative humidity percentage
+4. Accelerometer readings are in m/s² (gravity units)
+5. Servo channels are 0-indexed:
+   - Servo Service (DFR0548): channels 0-7
+   - DFR1216 Service: channels 0-5
+6. Motor numbers are 1-indexed (1-4) for DFR1216
+7. Speed values are percentages: -100 (full reverse) to +100 (full forward)
+8. JPEG quality: 0-100, where higher values mean higher quality (opposite of some other APIs)
+9. Frame sizes: Various formats supported including QVGA (320x240), SVGA (800x600), UXGA (1600x1200)
+10. Settings service uses ESP32 Preferences with domain and key length limits of 15 characters
+11. Melody IDs range from 0-19, with specific melodies mapped to each number
+12. Music playback options: 1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground
+
+---
+
+## Service Architecture
+
+The K10 Bot uses a modular service-based architecture where each service implements both `IsServiceInterface` and `IsOpenAPIInterface`:
+
+- **IsServiceInterface:** Provides lifecycle management (initialize, start, stop)
+- **IsOpenAPIInterface:** Provides HTTP endpoint registration and OpenAPI documentation
+
+Services are registered with the HTTP service at startup and can be queried for status via their individual status endpoints.
 
 ---
 
 ## Getting Started
 
-1. Connect to the K10 Bot WiFi network or ensure device is on your network
-2. Access the OpenAPI specification at `http://<device-ip>/api/openapi.json`
-3. Use the endpoints documented above to interact with the device
-4. Monitor the UDP service for real-time telemetry data
+1. **Connect to Network:**
+   - Connect to the K10 Bot WiFi network (default: `aMaker-XXXXXX`) or
+   - Ensure the device is on your network if configured with WiFi credentials
+
+2. **Access Dashboard:**
+   - Navigate to `http://<device-ip>/` for the main dashboard
+
+3. **Explore API:**
+   - View OpenAPI specification at `http://<device-ip>/api/openapi.json`
+   - Use interactive API test interface at `http://<device-ip>/api/docs`
+
+4. **Use Endpoints:**
+   - Use the endpoints documented above to interact with the device
+   - Monitor UDP service for real-time telemetry data if enabled
+
+5. **Configure Settings:**
+   - Use Settings Service to persist configuration across reboots
+   - Store WiFi credentials, service parameters, and other persistent data
+
+---
+
+## Service Status Endpoints
+
+Most services provide a `/settings` endpoint that returns service-specific configuration and status:
+
+- `GET /api/<service>/<version>/settings` - Get service settings and status
+
+This follows a common pattern across services implementing the settings interface.
+
+---
+
+## Development Notes
+
+- Camera captures frames in RGB565 format and converts to JPEG on demand
+- UDP service uses FreeRTOS tasks and runs on dedicated core for real-time performance
+- All PROGMEM strings are used to minimize RAM usage on the ESP32-S3
+- Services use a rolling logger for debug output (accessible via serial)
+- File system uses LittleFS for static content (HTML, CSS, JS)
 
 ---
 
 ## Support
 
-For issues or questions, please refer to the project documentation or open an issue in the project repository.
+For issues or questions:
+- Check the project repository documentation
+- Review service-specific header files in `/src/services/`
+- Consult [IsServiceInterface.md](docs/IsServiceInterface.md) and [IsOpenAPIInterface.md](docs/IsOpenAPIInterface.md) for architecture details
+
+---
+
+## Version History
+
+**v1.0.0** - Initial release
+- Board info, sensors, servo control (DFR0548 & DFR1216)
+- Music playback service with 20 built-in melodies
+- Webcam service with JPEG snapshot capture
+- UDP telemetry service
+- Settings service with ESP32 Preferences
+- MicroTensorFlow service (in development)
+- OpenAPI 3.0.0 specification generation
+- Interactive API documentation interface

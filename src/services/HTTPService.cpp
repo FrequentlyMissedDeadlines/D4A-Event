@@ -6,8 +6,8 @@
  * @details Exposed routes:
  *          - GET / - Home page with service dashboard
  *          - GET /api/docs - OpenAPI documentation page
- *          - GET /docs/static_openapi.json - Static OpenAPI schema (serves as fallback)
- * 
+ *          - GET /api/openapi.json - Dynamic OpenAPI specification
+ *          Static files (HTML, CSS, JS) served from LittleFS filesystem
  */
 
 #include <Arduino.h>
@@ -32,82 +32,14 @@ std::string master_TOKEN;
 
 extern UNIHIKER_K10 unihiker;
 
-// PROGMEM HTML/CSS constants for home page
-static const char HOME_HTML_HEAD[] PROGMEM = R"(<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>K10 Bot Control Panel</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-    h1 { color: #333; }
-    h2 { color: #555; margin-top: 30px; }
-    .panel { background: white; padding: 20px; margin: 15px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .service-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
-    .service-card { background: white; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-decoration: none; color: #333; display: block; transition: transform 0.2s; }
-    .service-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
-    .service-title { font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #4CAF50; }
-    .service-desc { font-size: 13px; color: #666; }
-    .route-list { list-style: none; padding: 0; }
-    .route-list li { padding: 8px 0; border-bottom: 1px solid #eee; }
-    .route-list li:last-child { border-bottom: none; }
-    .method { display: inline-block; padding: 3px 6px; border-radius: 3px; font-weight: bold; color: white; margin-right: 8px; font-size: 11px; }
-    .method-GET { background: #61affe; }
-    .method-POST { background: #49cc90; }
-    .method-PUT { background: #fca130; }
-    .method-DELETE { background: #f93e3e; }
-    .path { font-family: monospace; font-size: 13px; color: #333; }
-    .btn { display: inline-block; padding: 10px 20px; background: #4CAF50; color: white; text-decoration: none; border-radius: 3px; margin: 5px; }
-    .btn:hover { background: #45a049; }
-  </style>
-</head>
-<body>
-  <h1>K10 Bot Control Panel</h1>
-  
-  <div class="panel">
-    <h2>Service Interfaces</h2>
-    <div class="service-grid">
-      <a href="/ServoService.html" class="service-card">
-        <div class="service-title">Servo Control</div>
-        <div class="service-desc">Control servo motors (channels 0-7)</div>
-      </a>
-      <a href="/K10webcam.html" class="service-card">
-        <div class="service-title">Webcam</div>
-        <div class="service-desc">View camera feed and capture images</div>
-      </a>
-      <a href="/HTTPService.html" class="service-card">
-        <div class="service-title">HTTP Service</div>
-        <div class="service-desc">Configure HTTP service settings</div>
-      </a>
-    </div>
-  </div>
 
-  <div class="panel">
-    <h2>Developer Tools</h2>
-    <a href="/api/docs" class="btn">API Test Interface</a>
-    <a href="/api/openapi.json" class="btn">OpenAPI Spec</a>
-  </div>
-
-  <div class="panel">
-    <h2>API Routes</h2>
-    <ul class="route-list">
-)";
-
-static const char HOME_HTML_ROUTE_ITEM[] PROGMEM = "      <li>\n        <span class=\"method method-%s\">%s</span>\n        <a href=\"%s\" class=\"path\">%s</a>\n        <div style=\"margin-left: 50px; color: #666; font-size: 13px;\">%s</div>\n      </li>\n";
-
-static const char HOME_HTML_TAIL[] PROGMEM = "    </ul>\n  </div>\n</body>\n</html>\n";
+// static const char HOME_HTML_ROUTE_ITEM[] PROGMEM = "      <li>\n        <span class=\"method method-%s\">%s</span>\n        <a href=\"%s\" class=\"path\">%s</a>\n        <div style=\"margin-left: 50px; color: #666; font-size: 13px;\">%s</div>\n      </li>\n";
+// static const char HOME_HTML_TAIL[] PROGMEM = "    </ul>\n  </div>\n</body>\n</html>\n";
 
 // File paths for API test page templates (stored in LittleFS)
 static const char path_api_test_head[] PROGMEM = "/api_test_head.html";
 static const char path_api_test_tail[] PROGMEM = "/api_test_tail.html";
 
-bool HTTPService::initializeService()
-{
-#ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_initialize_done)));
-#endif
-  return true;
-}
 
 bool HTTPService::startService()
 {
@@ -122,6 +54,7 @@ bool HTTPService::startService()
   if (!mounted)
   {
       if (logger) logger->error("Failed to mount LittleFS  'voice_data'");
+      setServiceStatus(START_FAILED);
       return false;
   }
   
@@ -133,14 +66,26 @@ bool HTTPService::startService()
   }
 
   // Register base routes but don't start server yet (services need to register first)
+  try{
+  
   webserver.begin();
-  serverRunning = true;
+  }
+  catch (const std::exception &e)
+  {
+    setServiceStatus(START_FAILED);
+    logger->error(std::string("Failed webserver.begin ") + e.what());
+    return false;
+  }
+
+  setServiceStatus(STARTED );
+
+  
   if (logger)
     logger->info("WebServer started");
   
   
 #ifdef VERBOSE_DEBUG
-  logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_start_done)));
+  logger->debug(getServiceName() + " "  + getStatusString());   
 #endif
   return true;
 }
@@ -149,22 +94,26 @@ bool HTTPService::stopService()
 {
   try
   {
-    if (serverRunning)
+    if (isStarted())
     {
       webserver.stop();
-      serverRunning = false;
+      setServiceStatus(STOPPED);
     }
     LittleFS.end();
+    setServiceStatus(STOPPED);
+
 #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_stop_done)));
+    logger->debug(getServiceName() + " " + getStatusString());
 #endif
     return true;
   }
   catch (const std::exception &e)
   {
+          setServiceStatus(STOP_FAILED);
+
     logger->error(std::string(e.what()));
   }
-  logger->error(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_stop_failed)));
+  logger->error(getServiceName() + " " + getStatusString());
   return false;
 }
 
@@ -190,40 +139,9 @@ void HTTPService::handleHomeClient(WebServer *webserver)
     return;
   }
   logRequest(webserver);
-
-  // Collect all routes from all services
-  std::vector<OpenAPIRoute> allRoutes;
-  for (auto service : openAPIServices)
-  {
-    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
-    allRoutes.insert(allRoutes.end(), routes.begin(), routes.end());
-  }
-
-  // Sort routes by path
-  std::sort(allRoutes.begin(), allRoutes.end(),
-            [](const OpenAPIRoute &a, const OpenAPIRoute &b)
-            {
-              return a.path < b.path;
-            });
-
-  // Use stringstream for efficient string building (avoids O(n²) concatenation)
-  std::stringstream ss;
-  ss << HOME_HTML_HEAD;
-
-  for (const auto &route : allRoutes)
-  {
-    char buffer[512];
-    snprintf_P(buffer, sizeof(buffer), HOME_HTML_ROUTE_ITEM,
-               route.method.c_str(), route.method.c_str(),
-               route.path.c_str(), route.path.c_str(),
-               route.description.c_str());
-    ss << buffer;
-  }
-
-  ss << HOME_HTML_TAIL;
-
-  std::string allroutes = ss.str();
-  webserver->send_P(200, "text/html; charset=utf-8", allroutes.c_str());
+  //redirect root to index.html
+  webserver->sendHeader("Location", "/index.html");
+  webserver->send(302, "text/plain", "Redirecting to home page...");
 }
 
 /**
@@ -613,6 +531,7 @@ bool HTTPService::registerRoutes()
   openApiOk.schema = "{\"type\":\"object\",\"properties\":{\"openapi\":{\"type\":\"string\"},\"info\":{\"type\":\"object\"},\"paths\":{\"type\":\"object\"}}}";
   openApiOk.example = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"K10 Bot API\",\"version\":\"1.0.0\"},\"paths\":{}}";
   openApiResponses.push_back(openApiOk);
+  openApiResponses.push_back(createServiceNotStartedResponse());
 
   std::string path = RoutesConsts::path_openapi;
   registerOpenAPIRoute(OpenAPIRoute(
@@ -623,18 +542,30 @@ bool HTTPService::registerRoutes()
       false, {}, openApiResponses));
 
   webserver.on("/", HTTP_GET, [this]()
-               { this->handleHomeClient(&webserver); });
+               { 
+                 if (!checkServiceStarted()) return;
+                 this->handleHomeClient(&webserver); 
+               });
 
   // Test interface endpoint
   webserver.on("/api/docs", HTTP_GET, [this]()
-               { this->handleTestClient(&webserver); });
+               { 
+                 if (!checkServiceStarted()) return;
+                 this->handleTestClient(&webserver); 
+               });
 
   // OpenAPI specification endpoint
   webserver.on(path.c_str(), HTTP_GET, [this]()
-               { this->handleOpenAPIRequest(&webserver); });
+               { 
+                 if (!checkServiceStarted()) return;
+                 this->handleOpenAPIRequest(&webserver); 
+               });
 
   webserver.onNotFound([this]()
-                       { this->handleNotFoundClient(&webserver); });
+                       { 
+                         if (!checkServiceStarted()) return;
+                         this->handleNotFoundClient(&webserver); 
+                       });
 
   registerSettingsRoutes("OpenAPI", this);
 

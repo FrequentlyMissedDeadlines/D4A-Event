@@ -15,6 +15,7 @@
   </div>
 
   <script>
+    const openAPISource = '/api/openapi.json';
     function testRoute(formId, method, path) {
       const form = document.getElementById('form' + formId);
       const inputs = form.querySelectorAll('input[name]');
@@ -103,7 +104,7 @@
     }
 
     // Load routes from OpenAPI spec
-    fetch('/api/openapi.json')
+    fetch(openAPISource)
       .then(response => response.json())
       .then(data => {
         const container = document.getElementById('routes-container');
@@ -132,24 +133,32 @@
               <form id="form${formId}" onsubmit="return testRoute(${formId}, '${route.method}', '${route.path}')">
             `;
             
-            // Add parameter inputs
-            route.parameters.forEach(param => {
-              const required = param.required ? '<span style="color:red;">*</span>' : '';
-              const type = param.schema?.type || param.type || 'string';
-              const example = param.example || '';
-              const defaultValue = param.default || '';
+            // Add parameter inputs in table format
+            if (route.parameters.length > 0) {
+              html += `<table class="param-table">`;
               
-              html += `
-                <div class="param-group">
-                  <label class="param-label">${param.name}${required} (${param.in}, ${type})</label>
-                  <input type="text" class="param-input" name="${param.name}" 
-                         data-param-in="${param.in}" 
-                         placeholder="${param.description || ''}${example ? ' (e.g., ' + example + ')' : ''}"
-                         ${defaultValue ? 'value="' + defaultValue + '"' : ''}
-                         ${param.required ? 'required' : ''}>
-                </div>
-              `;
-            });
+              route.parameters.forEach(param => {
+                const required = param.required ? '<span style="color:red;">*</span>' : '';
+                const type = param.schema?.type || param.type || 'string';
+                const example = param.example || '';
+                const defaultValue = param.default || '';
+                
+                html += `
+                  <tr class="param-group">
+                    <td class="param-label">${param.name}${required} (${param.in}, ${type})</td>
+                    <td>
+                      <input type="text" class="param-input" name="${param.name}" 
+                             data-param-in="${param.in}" 
+                             placeholder="${param.description || ''}${example ? ' (e.g., ' + example + ')' : ''}"
+                             ${defaultValue ? 'value="' + defaultValue + '"' : ''}
+                             ${param.required ? 'required' : ''}>
+                    </td>
+                  </tr>
+                `;
+              });
+              
+              html += `</table>`;
+            }
             
             html += `
                 <button type="submit" class="btn btn-primary">Send ${route.method} Request</button>
@@ -169,7 +178,7 @@
       .catch(err => {
         console.error('Failed to load API spec:', err);
         document.getElementById('routes-container').innerHTML = 
-          '<div class="error">Failed to load API routes. Please check if /api/openapi.json is available.</div>';
+          '<div class="error">Failed to load API routes. Please check if '+openAPISource+' is available.</div>';
       });
   </script>
 </body>

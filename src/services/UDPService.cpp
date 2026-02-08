@@ -44,7 +44,8 @@ unsigned long totalMessages = 0;
 unsigned long lastMessageTime = 0;
 char lastMessage[MAX_MESSAGE_LEN] = "";
 SemaphoreHandle_t messageMutex = NULL;
-unsigned long packetsDropped = 0; // Add this
+unsigned long packetsDropped = 0;
+static UDPService* udp_service_instance = nullptr;
 
 bool UDPService::begin(AsyncUDP *u, int p)
 {
@@ -78,6 +79,27 @@ void handleUDPPacket(AsyncUDPPacket packet)
     len = MAX_MESSAGE_LEN - 1;
   memcpy(buffer, packet.data(), len);
   buffer[len] = '\0';
+
+  // Invoke registered handlers first
+  if (udp_service_instance && udp_service_instance->handler_mutex)
+  {
+    if (xSemaphoreTake(udp_service_instance->handler_mutex, 10 / portTICK_PERIOD_MS))
+    {
+      std::string msg(buffer);
+      IPAddress remoteIP = packet.remoteIP();
+      uint16_t remotePort = packet.remotePort();
+      
+      for (const auto& entry : udp_service_instance->message_handlers)
+      {
+        try {
+          entry.handler_callback(msg, remoteIP, remotePort);
+        } catch (...) {
+          // Silently ignore handler exceptions
+        }
+      }
+      xSemaphoreGive(udp_service_instance->handler_mutex);
+    }
+  }
 
   // Try to take mutex without blocking
   if (xSemaphoreTake(messageMutex, 0))
@@ -134,8 +156,14 @@ bool UDPService::initializeService()
   {
     messageMutex = xSemaphoreCreateMutex();
   }
+  if (!handler_mutex)
+  {
+    handler_mutex = xSemaphoreCreateMutex();
+  }
+  udp_service_instance = this;
+  setServiceStatus(INITIALIZED);
   #ifdef VERBOSE_DEBUG
-  logger->debug(getName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
+  logger->debug(getServiceName() + " " + getStatusString());   
   #endif
   return true;
 }
@@ -151,13 +179,15 @@ bool UDPService::startService()
   if (udpHandle->listen(port))
   {
     udpHandle->onPacket(handleUDPPacket);
+    setServiceStatus(STARTED);
   #ifdef VERBOSE_DEBUG
-    logger->debug(getName() + ServiceInterfaceConsts::msg_start_done);
+    logger->debug(getServiceName() + " " + getStatusString());   
   #endif
     return true;
   }
+  setServiceStatus(START_FAILED);
   logger->error(std::string(UDPConsts::msg_failed_start_udp) + std::to_string(port));
-  logger->error(getServiceName() + ServiceInterfaceConsts::msg_start_failed);
+  logger->error(getServiceName() + " " + getStatusString());   
   return false;
 }
 
@@ -179,8 +209,15 @@ bool UDPService::stopService()
     vSemaphoreDelete(messageMutex);
     messageMutex = nullptr;
   }
+  if (handler_mutex)
+  {
+    vSemaphoreDelete(handler_mutex);
+    handler_mutex = nullptr;
+  }
+  udp_service_instance = nullptr;
+  setServiceStatus(STOPPED);
   #ifdef VERBOSE_DEBUG
-    logger->debug(getName() + ServiceInterfaceConsts::msg_stop_done);
+    logger->debug(getServiceName() + " "  + getStatusString());   
   #endif
   return true;
 }
@@ -267,6 +304,7 @@ bool UDPService::registerRoutes()
   successResponse.schema = "{\"type\":\"object\",\"properties\":{\"port\":{\"type\":\"integer\",\"description\":\"UDP listening port\"},\"total\":{\"type\":\"integer\",\"description\":\"Total messages received since start\"},\"dropped\":{\"type\":\"integer\",\"description\":\"Number of packets dropped due to buffer lock\"},\"buffer\":{\"type\":\"string\",\"description\":\"Current buffer usage (used/max)\"},\"messages\":{\"type\":\"array\",\"description\":\"Recent messages with timestamps\",\"items\":{\"type\":\"string\"}},\"error\":{\"type\":\"string\",\"description\":\"Error message if buffer is locked\"}}}";
   successResponse.example = "{\"port\":12345,\"total\":1523,\"dropped\":5,\"buffer\":\"15/20\",\"messages\":[\"[125 ms] Hello\",\"[230 ms] World\"]}";
   responses.push_back(successResponse);
+  responses.push_back(createServiceNotStartedResponse());
   
   registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get,
                                      UDPConsts::desc_route,
@@ -274,6 +312,7 @@ bool UDPService::registerRoutes()
   
   webserver.on(path.c_str(), HTTP_GET, [this]()
              {
+    if (!checkServiceStarted()) return;
     std::string json = this->buildJson();
     webserver.send(200, RoutesConsts::mime_json, json.c_str()); });
 
@@ -301,4 +340,58 @@ bool UDPService::loadSettings()
 {
     // To be implemented if needed
     return true;
+}
+
+/**
+ * @brief Register a message handler callback
+ * @param handler The callback function to register
+ * @return A unique handler ID that can be used to unregister the handler
+ */
+int UDPService::registerMessageHandler(UDPMessageHandler handler)
+{
+    if (!handler_mutex)
+    {
+        return -1;
+    }
+
+    int handler_id = -1;
+    if (xSemaphoreTake(handler_mutex, 100 / portTICK_PERIOD_MS))
+    {
+        handler_id = next_handler_id++;
+        MessageHandlerEntry entry;
+        entry.handler_id = handler_id;
+        entry.handler_callback = handler;
+        message_handlers.push_back(entry);
+        xSemaphoreGive(handler_mutex);
+    }
+    return handler_id;
+}
+
+/**
+ * @brief Unregister a message handler by ID
+ * @param handlerId The ID returned by registerMessageHandler
+ * @return true if the handler was found and removed, false otherwise
+ */
+bool UDPService::unregisterMessageHandler(int handlerId)
+{
+    if (!handler_mutex)
+    {
+        return false;
+    }
+
+    bool found = false;
+    if (xSemaphoreTake(handler_mutex, 100 / portTICK_PERIOD_MS))
+    {
+        for (auto it = message_handlers.begin(); it != message_handlers.end(); ++it)
+        {
+            if (it->handler_id == handlerId)
+            {
+                message_handlers.erase(it);
+                found = true;
+                break;
+            }
+        }
+        xSemaphoreGive(handler_mutex);
+    }
+    return found;
 }

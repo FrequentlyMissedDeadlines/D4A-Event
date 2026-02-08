@@ -6,7 +6,7 @@
  *          - POST /api/dfr1216/setServoAngle - Set the angle of a servo motor on the expansion board
  *          - POST /api/dfr1216/setMotorSpeed - Set the speed and direction of a DC motor
  *          - GET /api/dfr1216/getStatus - Get initialization status and operational state of the board
- * 
+ *
  */
 
 #include "DFR1216Service.h"
@@ -97,55 +97,52 @@ static inline String create_error_json(const __FlashStringHelper *msg)
 
 bool DFR1216Service::initializeService()
 {
-    initialized = controller.begin();
-    service_status_ = initialized ? STARTED : INIT_FAILED;
-    status_timestamp_ = millis();
-    
-    if (initialized) {
-        logger->info(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_initialize_done)));
-    } else {
-        logger->error(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_initialize_failed)));
+    if (!controller.begin())
+    {
+        setServiceStatus(INITIALIZED_FAILED);
+        logger->error(getServiceName() + " " + getStatusString());
+        return false;
     }
-    
-    return initialized;
+    setServiceStatus(INITIALIZED);
+    logger->info(getServiceName() + " " + getStatusString());   
+    return true;
 }
 
 bool DFR1216Service::startService()
 {
-    if (!initialized) {
-        service_status_ = START_FAILED;
-        status_timestamp_ = millis();
-        logger->error(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_start_failed)));
+    if (IsServiceInterface::getStatus() != INITIALIZED)
+    {
+        setServiceStatus(START_FAILED);
+        logger->error(getServiceName() + " " + getStatusString());   
         return false;
     }
-    
-    service_status_ = STARTED;
-    status_timestamp_ = millis();
-    logger->info(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_start_done)));
+
+    setServiceStatus(STARTED);
+
+    logger->info(getServiceName() + " " + getStatusString());
     return true;
 }
 
 bool DFR1216Service::stopService()
 {
-    service_status_ = STOPPED;
-    status_timestamp_ = millis();
-    logger->info(getServiceName() + " " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_stop_done)));
+    setServiceStatus(STOPPED);
+    logger->info(getServiceName() + " " + getStatusString());
     return true;
 }
 
 bool DFR1216Service::setServoAngle(uint8_t channel, uint16_t angle)
 {
-    if (!initialized) {
-        logger->error(fpstr_to_string(FPSTR(RoutesConsts::resp_not_initialized)));
+    if (!checkServiceStarted())
         return false;
-    }
 
-    if (channel > 5) {
+    if (channel > 5)
+    {
         logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_servo_channel_out_of_range)));
         return false;
     }
-    
-    if (angle > 180) {
+
+    if (angle > 180)
+    {
         logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_angle_out_of_range)));
         return false;
     }
@@ -160,17 +157,17 @@ bool DFR1216Service::setServoAngle(uint8_t channel, uint16_t angle)
 
 bool DFR1216Service::setMotorSpeed(uint8_t motor, int8_t speed)
 {
-    if (!initialized) {
-        logger->error(fpstr_to_string(FPSTR(RoutesConsts::resp_not_initialized)));
+    if (!checkServiceStarted())
         return false;
-    }
 
-    if (motor < 1 || motor > 4) {
+    if (motor < 1 || motor > 4)
+    {
         logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_motor_out_of_range)));
         return false;
     }
-    
-    if (speed < -100 || speed > 100) {
+
+    if (speed < -100 || speed > 100)
+    {
         logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_speed_out_of_range)));
         return false;
     }
@@ -180,21 +177,22 @@ bool DFR1216Service::setMotorSpeed(uint8_t motor, int8_t speed)
     eMotorNumber_t motor_enum;
 
     // Map motor number to enum
-    switch (motor) {
-        case 1:
-            motor_enum = speed >= 0 ? eMotor1_A : eMotor1_B;
-            break;
-        case 2:
-            motor_enum = speed >= 0 ? eMotor2_A : eMotor2_B;
-            break;
-        case 3:
-            motor_enum = speed >= 0 ? eMotor3_A : eMotor3_B;
-            break;
-        case 4:
-            motor_enum = speed >= 0 ? eMotor4_A : eMotor4_B;
-            break;
-        default:
-            return false;
+    switch (motor)
+    {
+    case 1:
+        motor_enum = speed >= 0 ? eMotor1_A : eMotor1_B;
+        break;
+    case 2:
+        motor_enum = speed >= 0 ? eMotor2_A : eMotor2_B;
+        break;
+    case 3:
+        motor_enum = speed >= 0 ? eMotor3_A : eMotor3_B;
+        break;
+    case 4:
+        motor_enum = speed >= 0 ? eMotor4_A : eMotor4_B;
+        break;
+    default:
+        return false;
     }
 
     // Convert speed percentage to duty cycle (0-65535)
@@ -207,16 +205,6 @@ bool DFR1216Service::setMotorSpeed(uint8_t motor, int8_t speed)
     return true;
 }
 
-std::string DFR1216Service::getStatus()
-{
-    JsonDocument doc;
-    doc[FPSTR(RoutesConsts::message)] = getServiceName();
-    doc[FPSTR(RoutesConsts::field_status)] = initialized ? "running" : "not initialized";
-
-    std::string output;
-    serializeJson(doc, output);
-    return output;
-}
 
 bool DFR1216Service::registerRoutes()
 {
@@ -236,6 +224,7 @@ bool DFR1216Service::registerRoutes()
     servo_responses.push_back(servo_ok);
     servo_responses.push_back(createMissingParamsResponse());
     servo_responses.push_back(createNotInitializedResponse());
+    servo_responses.push_back(createServiceNotStartedResponse());
 
     OpenAPIRoute servo_route(getPath("setServoAngle").c_str(),
                              RoutesConsts::method_post,
@@ -262,6 +251,7 @@ bool DFR1216Service::registerRoutes()
     motor_responses.push_back(motor_ok);
     motor_responses.push_back(createMissingParamsResponse());
     motor_responses.push_back(createNotInitializedResponse());
+    motor_responses.push_back(createServiceNotStartedResponse());
 
     OpenAPIRoute motor_route(getPath("setMotorSpeed").c_str(),
                              RoutesConsts::method_post,
@@ -278,6 +268,7 @@ bool DFR1216Service::registerRoutes()
     status_ok.schema = DFR1216Consts::resp_status_schema;
     status_ok.example = DFR1216Consts::resp_status_example;
     status_responses.push_back(status_ok);
+    status_responses.push_back(createServiceNotStartedResponse());
 
     registerOpenAPIRoute(
         OpenAPIRoute(getPath("getStatus").c_str(),
@@ -287,13 +278,16 @@ bool DFR1216Service::registerRoutes()
 
     // Register actual HTTP handlers
     webserver.on(getPath("setServoAngle").c_str(), HTTP_POST,
-                 [this]() { this->handle_set_servo_angle(); });
+                 [this]()
+                 { this->handle_set_servo_angle(); });
 
     webserver.on(getPath("setMotorSpeed").c_str(), HTTP_POST,
-                 [this]() { this->handle_set_motor_speed(); });
+                 [this]()
+                 { this->handle_set_motor_speed(); });
 
     webserver.on(getPath("getStatus").c_str(), HTTP_GET,
-                 [this]() { this->handle_get_status(); });
+                 [this]()
+                 { this->handle_get_status(); });
 
     registerSettingsRoutes("DFR1216", this);
 
@@ -303,23 +297,23 @@ bool DFR1216Service::registerRoutes()
 
 void DFR1216Service::handle_set_servo_angle()
 {
-    if (!initialized) {
-        webserver.send(503, RoutesConsts::mime_json, 
-                      create_error_json(FPSTR(RoutesConsts::resp_not_initialized)));
+    if (!checkServiceStarted())
         return;
-    }
+    
 
-    if (!webserver.hasArg("channel") || 
-        !webserver.hasArg("angle")) {
-        webserver.send(422, RoutesConsts::mime_json, 
-                      create_error_json(FPSTR(DFR1216Consts::msg_missing_servo_params)));
+    if (!webserver.hasArg("channel") ||
+        !webserver.hasArg("angle"))
+    {
+        webserver.send(422, RoutesConsts::mime_json,
+                       create_error_json(FPSTR(DFR1216Consts::msg_missing_servo_params)));
         return;
     }
 
     uint8_t channel = webserver.arg("channel").toInt();
     uint16_t angle = webserver.arg("angle").toInt();
 
-    if (setServoAngle(channel, angle)) {
+    if (setServoAngle(channel, angle))
+    {
         JsonDocument doc;
         doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
         doc[FPSTR(DFR1216Consts::json_channel)] = channel;
@@ -328,31 +322,33 @@ void DFR1216Service::handle_set_servo_angle()
         std::string response;
         serializeJson(doc, response);
         webserver.send(200, RoutesConsts::mime_json, response.c_str());
-    } else {
-        webserver.send(456, RoutesConsts::mime_json, 
-                      create_error_json(FPSTR(RoutesConsts::resp_operation_failed)));
+    }
+    else
+    {
+        webserver.send(456, RoutesConsts::mime_json,
+                       create_error_json(FPSTR(RoutesConsts::resp_operation_failed)));
     }
 }
 
 void DFR1216Service::handle_set_motor_speed()
 {
-    if (!initialized) {
-        webserver.send(503, RoutesConsts::mime_json, 
-                      create_error_json(FPSTR(RoutesConsts::resp_not_initialized)));
+    if (!checkServiceStarted())
         return;
-    }
 
-    if (!webserver.hasArg("motor") || 
-        !webserver.hasArg("speed")) {
-        webserver.send(422, RoutesConsts::mime_json, 
-                      create_error_json(FPSTR(DFR1216Consts::msg_missing_motor_params)));
+
+    if (!webserver.hasArg("motor") ||
+        !webserver.hasArg("speed"))
+    {
+        webserver.send(422, RoutesConsts::mime_json,
+                       create_error_json(FPSTR(DFR1216Consts::msg_missing_motor_params)));
         return;
     }
 
     uint8_t motor = webserver.arg("motor").toInt();
     int8_t speed = webserver.arg("speed").toInt();
 
-    if (setMotorSpeed(motor, speed)) {
+    if (setMotorSpeed(motor, speed))
+    {
         JsonDocument doc;
         doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
         doc[FPSTR(DFR1216Consts::json_motor)] = motor;
@@ -361,34 +357,39 @@ void DFR1216Service::handle_set_motor_speed()
         std::string response;
         serializeJson(doc, response);
         webserver.send(200, RoutesConsts::mime_json, response.c_str());
-    } else {
-        webserver.send(456, RoutesConsts::mime_json, 
-                      create_error_json(FPSTR(RoutesConsts::resp_operation_failed)));
+    }
+    else
+    {
+        webserver.send(456, RoutesConsts::mime_json,
+                       create_error_json(FPSTR(RoutesConsts::resp_operation_failed)));
     }
 }
 
 void DFR1216Service::handle_get_status()
 {
+    if (!checkServiceStarted())
+        return;
     JsonDocument doc;
     doc[FPSTR(RoutesConsts::message)] = getServiceName();
 
     const char *status_str = "unknown";
-    switch (service_status_) {
-        case INIT_FAILED:
-            status_str = "init failed";
-            break;
-        case START_FAILED:
-            status_str = "start failed";
-            break;
-        case STARTED:
-            status_str = "started";
-            break;
-        case STOPPED:
-            status_str = "stopped";
-            break;
-        case STOP_FAILED:
-            status_str = "stop failed";
-            break;
+    switch (service_status_)
+    {
+    case INITIALIZED_FAILED:
+        status_str = "init failed";
+        break;
+    case START_FAILED:
+        status_str = "start failed";
+        break;
+    case STARTED:
+        status_str = "started";
+        break;
+    case STOPPED:
+        status_str = "stopped";
+        break;
+    case STOP_FAILED:
+        status_str = "stop failed";
+        break;
     }
     doc[FPSTR(RoutesConsts::field_status)] = status_str;
 

@@ -13,7 +13,7 @@
  * @class HTTPService
  * @brief Service for managing HTTP web server and OpenAPI routes
  */
-class HTTPService : public IsServiceInterface, public IsOpenAPIInterface
+class HTTPService : public IsOpenAPIInterface
 {
 public:
     /**
@@ -66,11 +66,6 @@ public:
     void denyMasterConflict(void);
 
     /**
-     * Allow HTTPService to be accessed as IsOpenAPIInterface
-     */
-    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
-
-    /**
      * Register HTTP routes for HTTPService itself
      * @return true if registration was successful
      */
@@ -94,6 +89,7 @@ public:
      */
     void handleOpenAPIRequest(WebServer *webserver);
 
+
     /**
      * @brief Handle requests without a registered route
      * @param webserver Pointer to WebServer instance
@@ -106,7 +102,7 @@ public:
      */
     bool startWebServer();
 
-    virtual bool initializeService() override;
+
     virtual bool startService() override;
     virtual bool stopService() override;
     std::string getServiceName() override;
@@ -117,7 +113,8 @@ public:
 protected:
     std::vector<IsOpenAPIInterface *> openAPIServices;
     bool routesRegistered = false;
-    bool serverRunning = false;
+
+
 
     /**
      * @brief Attempt to serve a file from LittleFS for the current request

@@ -38,8 +38,7 @@ namespace MusicConsts
 
 bool MusicService::initializeService()
 {
-    service_status_ = STARTED;
-    status_timestamp_ = millis();
+    setServiceStatus(INITIALIZED);
     
 #ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " initialize done");
@@ -49,8 +48,7 @@ bool MusicService::initializeService()
 
 bool MusicService::startService()
 {
-    service_status_ = STARTED;
-    status_timestamp_ = millis();
+    setServiceStatus(STARTED);
 #ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " start done");
 #endif
@@ -59,8 +57,7 @@ bool MusicService::startService()
 
 bool MusicService::stopService()
 {
-    service_status_ = STOPPED;
-    status_timestamp_ = millis();
+   setServiceStatus(STOPPED);
 #ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " stop done");
 #endif
@@ -78,12 +75,13 @@ bool MusicService::registerRoutes()
     // Register play melody route
     std::string path = getPath(MusicConsts::music_action_play);
 #ifdef VERBOSE_DEBUG
-    logger->debug("Registering " + pathPlay);
+    logger->debug("Registering " + path);
 #endif
     
     std::vector<OpenAPIResponse> responses;
     OpenAPIResponse successResponse(200, response_desc);
     responses.push_back(successResponse);
+    responses.push_back(createServiceNotStartedResponse());
     
     // Play melody route parameters
     std::vector<OpenAPIParameter> playParams;
@@ -93,7 +91,9 @@ bool MusicService::registerRoutes()
     OpenAPIRoute routePlay(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_play_melody, MusicConsts::music_tag, false, playParams, responses);
     registerOpenAPIRoute(routePlay);
     
-    webserver.on(path.c_str(), HTTP_POST, []() {
+    webserver.on(path.c_str(), HTTP_POST, [this]() {
+        if (!checkServiceStarted()) return;
+        
         String melodyStr = webserver.arg(MusicConsts::music_param_melody);
         String optionStr = webserver.arg(MusicConsts::music_param_option);
         
@@ -124,7 +124,9 @@ bool MusicService::registerRoutes()
     OpenAPIRoute routeTone(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_play_tone, MusicConsts::music_tag, false, toneParams, responses);
     registerOpenAPIRoute(routeTone);
     
-    webserver.on(path.c_str(), HTTP_POST, []() {
+    webserver.on(path.c_str(), HTTP_POST, [this]() {
+        if (!checkServiceStarted()) return;
+        
         String freqStr = webserver.arg(MusicConsts::music_param_freq);
         String beatStr = webserver.arg(MusicConsts::music_param_beat);
         
@@ -150,10 +152,16 @@ bool MusicService::registerRoutes()
     OpenAPIRoute routeStop(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_stop_tone, MusicConsts::music_tag, false, {}, responses);
     registerOpenAPIRoute(routeStop);
     
-    webserver.on(path.c_str(), HTTP_POST, []() {
+    webserver.on(path.c_str(), HTTP_POST, [this]() {
+        if (!checkServiceStarted()) return;
+        
         music.stopPlayTone();
         webserver.send(200, "application/json", "{\"status\":\"ok\"}");
     });
+
+    // Register status route
+    registerServiceStatusRoute(MusicConsts::music_tag, this);
+
  path = getPath(MusicConsts::music_action_get_melodies);
 #ifdef VERBOSE_DEBUG
     logger->debug("Registering " + path);
@@ -162,7 +170,8 @@ bool MusicService::registerRoutes()
     OpenAPIRoute routeMelodies(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_get_melodies, MusicConsts::music_tag, false, {}, responses);
     registerOpenAPIRoute(routeMelodies  );
     
-    webserver.on(path.c_str(), HTTP_POST, []() {
+    webserver.on(path.c_str(), HTTP_POST, [this]() {
+        if (!checkServiceStarted()) return;
         
         webserver.send(200, "application/json", "[\"DADADADUM\",\"ENTERTAINER\",\"PRELUDE\",\"ODE\",\"NYAN\",\"RINGTONE\",\"FUNK\",\"BLUES\",\"BIRTHDAY\",\"WEDDING\",\"FUNERAL\",\"PUNCHLINE\",\"BADDY\",\"CHASE\",\"BA_DING\",\"WAWAWAWAA\",\"JUMP_UP\",\"JUMP_DOWN\",\"POWER_UP\",\"POWER_DOWN\"]");
     });

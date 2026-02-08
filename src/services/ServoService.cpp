@@ -1,16 +1,18 @@
 // Servo controller handler for DFR0548 board
 /**
- * @file servo_handler.cpp
+ * @file ServoService.cpp
  * @brief Implementation for servo controller integration with the main application
  * @details Exposed routes:
- *          - POST /api/servo/v1/setServoAngle - Set servo angle for angular servos (180° or 270°)
- *          - POST /api/servo/v1/setServoSpeed - Set continuous servo speed for rotational servos
- *          - POST /api/servo/v1/stopAll - Stop all servos by setting speed to 0
- *          - GET /api/servo/v1/getStatus - Get servo type and connection status for a specific channel
- *          - GET /api/servo/v1/getAllStatus - Get connection status and type for all 8 servo channels
- *          - POST /api/servo/v1/attachServo - Register a servo type to a channel before use
- *          - POST /api/servo/v1/setAllServoAngle - Set all attached angular servos to the same angle
- *          - POST /api/servo/v1/setAllServoSpeed - Set all attached continuous rotation servos to the same speed
+ *          - POST /api/servos/v1/setServoAngle - Set servo angle for angular servos (180° or 270°)
+ *          - POST /api/servos/v1/setServoSpeed - Set continuous servo speed for rotational servos
+ *          - POST /api/servos/v1/stopAll - Stop all servos by setting speed to 0
+ *          - GET /api/servos/v1/getStatus - Get servo type and connection status for a specific channel
+ *          - GET /api/servos/v1/getAllStatus - Get connection status and type for all 8 servo channels
+ *          - POST /api/servos/v1/attachServo - Register a servo type to a channel before use
+ *          - POST /api/servos/v1/setAllServoAngle - Set all attached angular servos to the same angle
+ *          - POST /api/servos/v1/setAllServoSpeed - Set all attached continuous rotation servos to the same speed
+ *          - POST /api/servos/v1/setServosSpeedMultiple - Set speed for multiple servos at once
+ *          - POST /api/servos/v1/setServosAngleMultiple - Set angle for multiple servos at once
  * 
  */
 
@@ -26,7 +28,7 @@ constexpr uint8_t MAX_SERVO_CHANNELS = 8;
 DFRobot_UnihikerExpansion_I2C servoController = DFRobot_UnihikerExpansion_I2C();
 bool initialized = false;
 
-extern SettingsService settingsService;
+extern SettingsService settings_service;
 
 // Servo Service constants (stored in PROGMEM to save RAM)
 namespace ServoConsts
@@ -41,11 +43,14 @@ namespace ServoConsts
     constexpr const char action_attach_servo[] PROGMEM = "attachServo";
     constexpr const char action_set_all_angle[] PROGMEM = "setAllServoAngle";
     constexpr const char action_set_all_speed[] PROGMEM = "setAllServoSpeed";
+    constexpr const char action_set_servos_speed_multiple[] PROGMEM = "setServosSpeedMultiple";
+    constexpr const char action_set_servos_angle_multiple[] PROGMEM = "setServosAngleMultiple";
 
     constexpr const char servo_channel[] PROGMEM = "channel";
     constexpr const char servo_angle[] PROGMEM = "angle";
     constexpr const char servo_speed[] PROGMEM = "speed";
     constexpr const char connection[] PROGMEM = "connection";
+    constexpr const char servos[] PROGMEM = "servos";
 
     constexpr const char msg_not_initialized[] PROGMEM = "Servo controller not initialized.";
     constexpr const char msg_failed_action[] PROGMEM = "Servo controller action failed.";
@@ -56,7 +61,7 @@ namespace ServoConsts
     constexpr const char err_angle_range_270[] PROGMEM = "Angle out of range for 270° servo";
     constexpr const char err_servo_not_attached[] PROGMEM = "Servo not attached on channel";
     constexpr const char err_servo_not_continuous[] PROGMEM = "Servo not continuous on channel";
-    constexpr const char err_speed_range[] PROGMEM = "Speed out of range (-100 to 100)";
+    constexpr const char err_speed_range[] PROGMEM = "Speed out of range";
 
     // JSON keys and status strings
     constexpr const char json_attached_servos[] PROGMEM = "attached_servos";
@@ -74,7 +79,7 @@ namespace ServoConsts
     constexpr const char desc_angle_degrees[] PROGMEM = "Angle in degrees (0-180 for 180° servos, 0-270 for 270° servos)";
     constexpr const char desc_angle_degrees_360[] PROGMEM = "Angle in degrees (0-360)";
     constexpr const char desc_speed_percent[] PROGMEM = "Speed percentage (-100 to +100, negative is reverse)";
-    constexpr const char desc_speed_percent_100[] PROGMEM = "Speed percentage (-100 to +100)";
+
     constexpr const char desc_connection_type[] PROGMEM = "Servo connection type (0=None, 1=continuous, 2=angular 180 degree, 3=angular 270 degrees)";
     constexpr const char desc_servo_angle_control[] PROGMEM = "Servo angle control";
     constexpr const char desc_servo_speed_control[] PROGMEM = "Servo speed control";
@@ -90,6 +95,8 @@ namespace ServoConsts
     constexpr const char desc_get_all_status[] PROGMEM = "Get connection status and type for all 8 servo channels";
     constexpr const char desc_set_all_angle[] PROGMEM = "Set all attached angular servos to the same angle simultaneously";
     constexpr const char desc_set_all_speed[] PROGMEM = "Set all attached continuous rotation servos to the same speed simultaneously";
+    constexpr const char desc_set_servos_speed_multiple[] PROGMEM = "Set speed for multiple servos at once";
+    constexpr const char desc_set_servos_angle_multiple[] PROGMEM = "Set angle for multiple servos at once";
     constexpr const char desc_attach_servo[] PROGMEM = "Register a servo type to a channel before use";
 
     // OpenAPI parameter names
@@ -105,6 +112,8 @@ namespace ServoConsts
     constexpr const char req_angle[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"angle\"]}";
     constexpr const char req_speed[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}},\"required\":[\"speed\"]}";
     constexpr const char req_channel_connection[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"connection\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3,\"description\":\"0=None, 1=continuous, 2=angular 180 degree, 3=angular 270 degrees\"}},\"required\":[\"channel\",\"connection\"]}";
+    constexpr const char req_servos_speed_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}},\"required\":[\"channel\",\"speed\"]}}},\"required\":[\"servos\"]}";
+    constexpr const char req_servos_angle_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"channel\",\"angle\"]}}},\"required\":[\"servos\"]}";
 
     // Example values
     constexpr const char ex_channel_angle[] PROGMEM = "{\"channel\":0,\"angle\":90}";
@@ -114,6 +123,8 @@ namespace ServoConsts
     constexpr const char ex_angle[] PROGMEM = "{\"angle\":90}";
     constexpr const char ex_speed[] PROGMEM = "{\"speed\":50}";
     constexpr const char ex_channel_connection[] PROGMEM = "{\"channel\":0,\"connection\":0}";
+    constexpr const char ex_servos_speed_multiple[] PROGMEM = "{\"servos\":[{\"channel\":0,\"speed\":50},{\"channel\":1,\"speed\":-30}]}";
+    constexpr const char ex_servos_angle_multiple[] PROGMEM = "{\"servos\":[{\"channel\":0,\"angle\":90},{\"channel\":1,\"angle\":180}]}";
     constexpr const char ex_result_ok[] PROGMEM = "{\"result\":\"ok\",\"message\":\"setServoAngle\"}";
 }
 
@@ -123,46 +134,44 @@ std::array<ServoConnection, MAX_SERVO_CHANNELS> attached_servos = {NOT_CONNECTED
 bool ServoService::initializeService()
 {
     logger->info("Initializing Servo Service...");
-    initialized = servoController.begin();
-    if (initialized)
+    if (servoController.begin())
     {
         logger->info("Servo controller initialized successfully.");
-        service_status_ = STARTED;
+        setServiceStatus(INITIALIZED);
     }
     else
     {
         logger->warning("Servo controller issue detected.");
-        service_status_ = INIT_FAILED;
+        setServiceStatus(INITIALIZED_FAILED);
     }
-    status_timestamp_ = millis();
+
     // Return true to allow other services to continue even if servo fails
     return true;
 }
 
 bool ServoService::startService()
 {
-    // nothing to start with DFRobot_UnihikerExpansion
-    initialized = true;
-    if (initialized)
+
+    if (getStatus() == INITIALIZED)
     {
-        service_status_ = STARTED;
-        status_timestamp_ = millis();
+                
 #ifdef VERBOSE_DEBUG
-        logger->debug(getName() + ServiceInterfaceConsts::msg_start_done);
+        logger->debug(getServiceName() + " " + getStatusString());   
 #endif
     }
     else
     {
-        service_status_ = START_FAILED;
-        status_timestamp_ = millis();
+        setServiceStatus(START_FAILED);
         logger->error(getServiceName() + " start failed");
+        return false;
     }
-    return initialized;
+    setServiceStatus(STARTED);
+    return true;
 }
 
 bool ServoService::attachServo(uint8_t channel, ServoConnection connection)
 {
-    if (!initialized)
+    if (!isStarted())
     {
         return false;
     }
@@ -287,11 +296,56 @@ bool ServoService::setAllServoAngle(u_int16_t angle)
     return allSuccess;
 }
 
+/**
+ * @brief Set speed for multiple servos at once
+ * @param servos_json JSON string containing array of {channel, speed} objects
+ * @return true if all operations successful, false otherwise
+ */
+
+/**
+ * @brief Set speed for multiple servos at once
+ * @param ops Vector of ServoSpeedOp operations
+ * @return true if all operations successful, false otherwise
+ */
+bool ServoService::setServosSpeedMultiple(const std::vector<ServoSpeedOp>& ops)
+{
+    if (!initialized || ops.empty())
+        return false;
+    bool all_success = true;
+    for (const auto& op : ops) {
+        if (!setServoSpeed(op.channel, op.speed))
+            all_success = false;
+    }
+    return all_success;
+}
+
+/**
+ * @brief Set angle for multiple servos at once
+ * @param servos_json JSON string containing array of {channel, angle} objects
+ * @return true if all operations successful, false otherwise
+ */
+
+/**
+ * @brief Set angle for multiple servos at once
+ * @param ops Vector of ServoAngleOp operations
+ * @return true if all operations successful, false otherwise
+ */
+bool ServoService::setServosAngleMultiple(const std::vector<ServoAngleOp>& ops)
+{
+    if (!initialized || ops.empty())
+        return false;
+    bool all_success = true;
+    for (const auto& op : ops) {
+        if (!setServoAngle(op.channel, op.angle))
+            all_success = false;
+    }
+    return all_success;
+}
+
 bool ServoService::stopService()
 {
     // Stop all servos when service stops
-    service_status_ = STOPPED;
-    status_timestamp_ = millis();
+setServiceStatus(STOPPED);
     return false;
 }
 std::string ServoService::getAllAttachedServos()
@@ -340,278 +394,568 @@ std::string ServoService::getAttachedServo(uint8_t channel)
 }
 
 /**
+ * @brief Add route for setting servo angle
+ */
+bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_angle;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    angle_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_angle_control)),
+                                                ServoConsts::req_channel_angle_07, true);
+    angle_route.requestBody.example = ServoConsts::ex_channel_angle;
+    registerOpenAPIRoute(angle_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        String body = webserver.arg("plain");
+        
+        if (body.isEmpty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body.c_str());
+        
+        if (error || !doc[ServoConsts::servo_channel].is<uint8_t>() || !doc[ServoConsts::servo_angle].is<uint16_t>())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        uint8_t ch = doc[ServoConsts::servo_channel].as<uint8_t>();
+        uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
+
+        if (angle > 360 || ch > 7)
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            return;
+        }
+
+        if (setServoAngle(ch, angle))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_angle).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_angle).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for setting servo speed
+ */
+bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_speed;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    speed_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_speed_control)),
+                                                ServoConsts::req_channel_speed, true);
+    speed_route.requestBody.example = ServoConsts::ex_channel_speed;
+    registerOpenAPIRoute(speed_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        String body = webserver.arg("plain");
+        
+        if (body.isEmpty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body.c_str());
+        
+        if (error || !doc[ServoConsts::servo_channel].is<int>() || !doc[ServoConsts::servo_speed].is<int>())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        uint8_t channel = doc[ServoConsts::servo_channel].as<uint8_t>();
+        int8_t speed = doc[ServoConsts::servo_speed].as<int>();
+        
+        if (channel > 7 || speed < -100 || speed > 100)
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            return;
+        }
+        
+        if (this->setServoSpeed(channel, speed))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_speed).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_speed).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for stopping all servos
+ */
+bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_stop_all;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute stop_all_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_stop_all)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    registerOpenAPIRoute(stop_all_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        if (this->setAllServoSpeed(0))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_stop_all).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_stop_all).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for getting servo status
+ */
+bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_get_status;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    std::vector<OpenAPIParameter> status_params;
+    status_params.push_back(OpenAPIParameter(ServoConsts::param_channel, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_channel)), true));
+
+    std::vector<OpenAPIResponse> status_responses;
+    OpenAPIResponse status_ok(200, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_status_retrieved)));
+    status_ok.schema = ServoConsts::schema_channel_status;
+    status_ok.example = ServoConsts::ex_channel_status;
+    status_responses.push_back(status_ok);
+    status_responses.push_back(createMissingParamsResponse());
+
+    OpenAPIRoute status_route(path.c_str(), RoutesConsts::method_get, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_status)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, status_params, status_responses);
+    registerOpenAPIRoute(status_route);
+
+    webserver.on(path.c_str(), HTTP_GET, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        if (!webserver.hasArg(ServoConsts::servo_channel))
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        uint8_t channel = (uint8_t)webserver.arg(ServoConsts::servo_channel).toInt();
+        
+        if (channel > 7)
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            return;
+        }
+        
+        std::string status = getAttachedServo(channel);
+        webserver.send(200, RoutesConsts::mime_json, status.c_str());
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for getting all servos status
+ */
+bool ServoService::addRouteGetAllStatus()
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_get_all_status;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    std::vector<OpenAPIResponse> all_status_responses;
+    OpenAPIResponse all_status_ok(200, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_all_status_retrieved)));
+    all_status_ok.schema = ServoConsts::schema_all_servos;
+    all_status_ok.example = ServoConsts::ex_all_servos;
+    all_status_responses.push_back(all_status_ok);
+
+    OpenAPIRoute all_status_route(path.c_str(), RoutesConsts::method_get, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_all_status)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, all_status_responses);
+    registerOpenAPIRoute(all_status_route);
+
+    webserver.on(path.c_str(), HTTP_GET, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        std::string status = getAllAttachedServos();
+        webserver.send(200, RoutesConsts::mime_json, status.c_str());
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for setting all servos to same angle
+ */
+bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_all_angle;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute all_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    all_angle_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_angle_for_all)),
+                                                   ServoConsts::req_angle, true);
+    all_angle_route.requestBody.example = ServoConsts::ex_angle;
+    registerOpenAPIRoute(all_angle_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        String body = webserver.arg("plain");
+        
+        if (body.isEmpty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body.c_str());
+        
+        if (error || !doc[ServoConsts::servo_angle].is<uint16_t>())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
+        
+        if (angle > 360)
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            return;
+        }
+        
+        if (setAllServoAngle(angle))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_all_angle).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_all_angle).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for setting all servos to same speed
+ */
+bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_all_speed;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute all_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    all_speed_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_speed_for_all)),
+                                                   ServoConsts::req_speed, true);
+    all_speed_route.requestBody.example = ServoConsts::ex_speed;
+    registerOpenAPIRoute(all_speed_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        String body = webserver.arg("plain");
+        
+        if (body.isEmpty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body.c_str());
+        
+        if (error || !doc[ServoConsts::servo_speed].is<int8_t>())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        int8_t speed = doc[ServoConsts::servo_speed].as<int8_t>();
+        
+        if (speed < -100 || speed > 100)
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            return;
+        }
+        
+        if (setAllServoSpeed(speed))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_all_speed).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_all_speed).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for setting multiple servos speed at once
+ */
+bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_servos_speed_multiple;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute multi_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    multi_speed_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)),
+                                                     ServoConsts::req_servos_speed_multiple, true);
+    multi_speed_route.requestBody.example = ServoConsts::ex_servos_speed_multiple;
+    registerOpenAPIRoute(multi_speed_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        String body = webserver.arg("plain");
+        
+        if (body.isEmpty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body.c_str());
+        if (error || !doc[ServoConsts::servos].is<JsonArray>())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
+        std::vector<ServoSpeedOp> ops;
+        for (JsonObject servo_obj : arr)
+        {
+            if (!servo_obj[ServoConsts::servo_channel].is<uint8_t>() || !servo_obj[ServoConsts::servo_speed].is<int8_t>())
+                continue;
+            ServoSpeedOp op;
+            op.channel = servo_obj[ServoConsts::servo_channel].as<uint8_t>();
+            op.speed = servo_obj[ServoConsts::servo_speed].as<int8_t>();
+            ops.push_back(op);
+        }
+
+        if (ops.empty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        if (setServosSpeedMultiple(ops))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_servos_speed_multiple).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_servos_speed_multiple).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for setting multiple servos angle at once
+ */
+bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_servos_angle_multiple;
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute multi_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    multi_angle_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)),
+                                                     ServoConsts::req_servos_angle_multiple, true);
+    multi_angle_route.requestBody.example = ServoConsts::ex_servos_angle_multiple;
+    registerOpenAPIRoute(multi_angle_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        String body = webserver.arg("plain");
+        
+        if (body.isEmpty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body.c_str());
+        if (error || !doc[ServoConsts::servos].is<JsonArray>())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
+        std::vector<ServoAngleOp> ops;
+        for (JsonObject servo_obj : arr)
+        {
+            if (!servo_obj[ServoConsts::servo_channel].is<uint8_t>() || !servo_obj[ServoConsts::servo_angle].is<uint16_t>())
+                continue;
+            ServoAngleOp op;
+            op.channel = servo_obj[ServoConsts::servo_channel].as<uint8_t>();
+            op.angle = servo_obj[ServoConsts::servo_angle].as<uint16_t>();
+            ops.push_back(op);
+        }
+
+        if (ops.empty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+
+        if (setServosAngleMultiple(ops))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_servos_angle_multiple).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_servos_angle_multiple).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
+ * @brief Add route for attaching servo to a channel
+ */
+bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse>& standard_responses)
+{
+    std::string path = getPath(ServoConsts::action_attach_servo);
+#ifdef VERBOSE_DEBUG
+    logger->debug("+" + path);
+#endif
+
+    OpenAPIRoute attach_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attach_servo)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    attach_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attachment_config)),
+                                                 ServoConsts::req_channel_connection, true);
+    attach_route.requestBody.example = ServoConsts::ex_channel_connection;
+    registerOpenAPIRoute(attach_route);
+
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+    {
+        if (!checkServiceStarted()) return;
+        
+        String body = webserver.arg("plain");
+        
+        if (body.isEmpty())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body.c_str());
+        
+        if (error || !doc[ServoConsts::servo_channel].is<uint8_t>() || !doc[ServoConsts::connection].is<uint8_t>())
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            return;
+        }
+        
+        uint8_t channel = doc[ServoConsts::servo_channel].as<uint8_t>();
+        uint8_t connection = doc[ServoConsts::connection].as<uint8_t>();
+        
+        if (channel > 7 || connection > 3)
+        {
+            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            return;
+        }
+        
+        ServoConnection servo_connection = static_cast<ServoConnection>(connection);
+        if (attachServo(channel, servo_connection))
+        {
+            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_attach_servo).c_str());
+        }
+        else
+        {
+            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_attach_servo).c_str());
+        }
+    });
+
+    return true;
+}
+
+/**
  * @brief Register HTTP routes for servo control.
  * @return true if registration was successful, false otherwise.
  */
 bool ServoService::registerRoutes()
 {
     // Define common response schemas using optimized helper functions
-    std::vector<OpenAPIResponse> standardResponses;
-    OpenAPIResponse okResp = createSuccessResponse(RoutesConsts::resp_operation_success);
-    okResp.example = ServoConsts::ex_result_ok;
-    standardResponses.push_back(okResp);
-    standardResponses.push_back(createMissingParamsResponse());
-    standardResponses.push_back(createOperationFailedResponse());
-    standardResponses.push_back(createNotInitializedResponse());
+    std::vector<OpenAPIResponse> standard_responses;
+    OpenAPIResponse ok_resp = createSuccessResponse(RoutesConsts::resp_operation_success);
+    ok_resp.example = ServoConsts::ex_result_ok;
+    standard_responses.push_back(ok_resp);
+    standard_responses.push_back(createMissingParamsResponse());
+    standard_responses.push_back(createOperationFailedResponse());
+    standard_responses.push_back(createNotInitializedResponse());
+    standard_responses.push_back(createServiceNotStartedResponse());
 
-    // Set servo angle endpoint
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_angle;
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    std::vector<OpenAPIParameter> angleParams;
-    angleParams.push_back(OpenAPIParameter(ServoConsts::param_channel, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_channel)), true));
-    angleParams.push_back(OpenAPIParameter(ServoConsts::param_angle, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_angle_degrees)), true));
-
-    OpenAPIRoute angleRoute(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, angleParams, standardResponses);
-    angleRoute.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_angle_control)),
-                                                ServoConsts::req_channel_angle_07, true);
-    angleRoute.requestBody.example = ServoConsts::ex_channel_angle;
-    registerOpenAPIRoute(angleRoute);
-
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-                 {    
-                   if (!webserver.hasArg(ServoConsts::servo_channel) || !webserver.hasArg(ServoConsts::servo_angle))
-                   {
-                       webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err,  RoutesConsts::msg_invalid_params).c_str());
-                          return;   
-                   }
-
-                   uint8_t ch = (uint8_t)webserver.arg(ServoConsts::servo_channel).toInt();
-                   uint16_t angle = (uint16_t)webserver.arg(ServoConsts::servo_angle).toInt();
-
-                   if ( angle > 360 || ch > 7)
-                    { 
-                    webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values ).c_str());
-                       return;
-                   }
-
-                   if (setServoAngle(ch, angle))
-                   {
-
-                       webserver.send (200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_angle).c_str());
-                       return;
-                   }
-                   else
-                   {
-                    webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_angle).c_str());
-                       return;
-                   } });
-
-    // Set servo speed endpoint
-    path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_speed;
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    std::vector<OpenAPIParameter> speedParams;
-    speedParams.push_back(OpenAPIParameter(ServoConsts::param_channel, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_channel)), true));
-    speedParams.push_back(OpenAPIParameter(ServoConsts::param_speed, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_speed_percent)), true));
-
-    OpenAPIRoute speedRoute(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, speedParams, standardResponses);
-    speedRoute.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_speed_control)),
-                                                ServoConsts::req_channel_speed, true);
-    speedRoute.requestBody.example = ServoConsts::ex_channel_speed;
-    registerOpenAPIRoute(speedRoute);
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-                 {
-        if (!webserver.hasArg(ServoConsts::servo_channel) || !webserver.hasArg(ServoConsts::servo_speed)) {
-
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
-            return;
-        }
-        
-        uint8_t channel = (uint8_t)webserver.arg(ServoConsts::servo_channel).toInt();
-        int8_t speed = (int8_t)webserver.arg(ServoConsts::servo_speed).toInt();
-        
-        
-        if (channel > 7 || speed < -100 || speed > 100) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
-            return;
-        }
-        
-        if (this->setServoSpeed(channel, speed)) {
-            
-            webserver.send (200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_speed).c_str ());
-        } else {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_speed).c_str());
-        } });
-
-    // API: Stop all servos at /api/servo/stop_all
-    path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_stop_all;
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    OpenAPIRoute stopAllRoute(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_stop_all)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standardResponses);
-    registerOpenAPIRoute(stopAllRoute);
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-                 {
-        if (this->setAllServoSpeed(0)) {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_stop_all).c_str());
-        } else {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_stop_all).c_str());
-        } });
-
-    // API: Get attached servo status for a specific channel
-    path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_get_status;
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    std::vector<OpenAPIParameter> statusParams;
-    statusParams.push_back(OpenAPIParameter(ServoConsts::param_channel, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_channel)), true));
-
-    std::vector<OpenAPIResponse> statusResponses;
-    OpenAPIResponse statusOk(200, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_status_retrieved)));
-    statusOk.schema = ServoConsts::schema_channel_status;
-    statusOk.example = ServoConsts::ex_channel_status;
-    statusResponses.push_back(statusOk);
-    statusResponses.push_back(createMissingParamsResponse());
-
-    OpenAPIRoute statusRoute(path.c_str(), RoutesConsts::method_get, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_status)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, statusParams, statusResponses);
-    registerOpenAPIRoute(statusRoute);
-    webserver.on(path.c_str(), HTTP_GET, [this]()
-                 {
-if (!webserver.hasArg(ServoConsts::servo_channel)) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
-            return;
-        }
-
-        uint8_t channel = (uint8_t)webserver.arg(ServoConsts::servo_channel).toInt();
-        
-        if (channel > 7) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
-            return;
-        }
-        
-        std::string status = getAttachedServo(channel);
-        webserver.send(200, RoutesConsts::mime_json, status.c_str()); });
-
-    // API: Get all attached servos status
-    path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_get_all_status;
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    std::vector<OpenAPIResponse> allStatusResponses;
-    OpenAPIResponse allStatusOk(200, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_all_status_retrieved)));
-    allStatusOk.schema = ServoConsts::schema_all_servos;
-    allStatusOk.example = ServoConsts::ex_all_servos;
-    allStatusResponses.push_back(allStatusOk);
-
-    OpenAPIRoute allStatusRoute(path.c_str(), RoutesConsts::method_get, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_all_status)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, allStatusResponses);
-    registerOpenAPIRoute(allStatusRoute);
-    webserver.on(path.c_str(), HTTP_GET, [this]()
-                 {
-        std::string status = getAllAttachedServos();
-        webserver.send(200, RoutesConsts::mime_json, status.c_str()); });
-
-    // API: Set all angular servos to the same angle
-    path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_all_angle;
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    std::vector<OpenAPIParameter> allAngleParams;
-    allAngleParams.push_back(OpenAPIParameter(ServoConsts::param_angle, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_angle_degrees_360)), true));
-
-    OpenAPIRoute allAngleRoute(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, allAngleParams, standardResponses);
-    allAngleRoute.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_angle_for_all)),
-                                                   ServoConsts::req_angle, true);
-    allAngleRoute.requestBody.example = ServoConsts::ex_angle;
-    registerOpenAPIRoute(allAngleRoute);
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-                 {
-if (!webserver.hasArg(ServoConsts::servo_angle)) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
-            return;
-        }
-
-        uint16_t angle = (uint16_t)webserver.arg(ServoConsts::servo_angle).toInt();
-        
-        if (angle > 360) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
-            return;
-        }
-        
-        if (setAllServoAngle(angle)) {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_all_angle).c_str());
-        } else {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_all_angle).c_str());
-        } });
-
-    // API: Set all continuous servos to the same speed
-    path = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/" + ServoConsts::action_set_all_speed;
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    std::vector<OpenAPIParameter> allSpeedParams;
-    allSpeedParams.push_back(OpenAPIParameter(ServoConsts::param_speed, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_speed_percent_100)), true));
-
-    OpenAPIRoute allSpeedRoute(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, allSpeedParams, standardResponses);
-    allSpeedRoute.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_speed_for_all)),
-                                                   ServoConsts::req_speed, true);
-    allSpeedRoute.requestBody.example = ServoConsts::ex_speed;
-    registerOpenAPIRoute(allSpeedRoute);
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-                 {
-if (!webserver.hasArg(ServoConsts::servo_speed)) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
-            return;
-        }
-
-        int8_t speed = (int8_t)webserver.arg(ServoConsts::servo_speed).toInt();
-        
-        if (speed < -100 || speed > 100) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
-            return;
-        }
-        
-        if (setAllServoSpeed(speed)) {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_all_speed).c_str());
-        } else {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_all_speed).c_str());
-        } });
-
-    // API: Attach servo to a channel
-    path = getPath(ServoConsts::action_attach_servo);
-#ifdef VERBOSE_DEBUG
-    logger->debug("+" + path);
-#endif
-
-    std::vector<OpenAPIParameter> attachParams;
-    attachParams.push_back(OpenAPIParameter(ServoConsts::param_channel, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_channel)), true));
-    attachParams.push_back(OpenAPIParameter(ServoConsts::param_speed, RoutesConsts::type_integer, RoutesConsts::in_query, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_connection_type)), true));
-
-    OpenAPIRoute attachRoute(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attach_servo)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, attachParams, standardResponses);
-    attachRoute.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attachment_config)),
-                                                 ServoConsts::req_channel_connection, true);
-    attachRoute.requestBody.example = ServoConsts::ex_channel_connection;
-    registerOpenAPIRoute(attachRoute);
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-                 {
-        if (!webserver.hasArg(ServoConsts::servo_channel) || !webserver.hasArg(ServoConsts::connection)) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
-            return;
-        }
-        
-        uint8_t channel = (uint8_t)webserver.arg(ServoConsts::servo_channel).toInt();
-        uint8_t connection = (uint8_t)webserver.arg(ServoConsts::connection).toInt();
-        
-        if (channel > 7 || connection > 3) {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
-            return;
-        }
-        
-        ServoConnection servoConnection = static_cast<ServoConnection>(connection);
-        if (attachServo(channel, servoConnection)) {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_attach_servo).c_str());
-        } else {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_attach_servo).c_str());
-        } });
+    // Register all routes using dedicated helper functions
+    addRouteSetServoAngle(standard_responses);
+    addRouteSetServoSpeed(standard_responses);
+    addRouteStopAll(standard_responses);
+    addRouteGetStatus(standard_responses);
+    addRouteGetAllStatus();
+    addRouteSetAllAngle(standard_responses);
+    addRouteSetAllSpeed(standard_responses);
+    addRouteSetServosSpeedMultiple(standard_responses);
+    addRouteSetServosAngleMultiple(standard_responses);
+    addRouteAttachServo(standard_responses);
 
     registerSettingsRoutes(reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servo)), this);
 
@@ -630,14 +974,14 @@ std::string ServoService::getServiceSubPath()
 
 bool ServoService::saveSettings()
 {
-    return settingsService.setSetting(getServiceName(), reinterpret_cast<const char *>(FPSTR(ServoConsts::settings_key_servos)), std::to_string(static_cast<int>(attached_servos[0])) + "," + std::to_string(static_cast<int>(attached_servos[1])) + "," + std::to_string(static_cast<int>(attached_servos[2])) + "," + std::to_string(static_cast<int>(attached_servos[3])) + "," + std::to_string(static_cast<int>(attached_servos[4])) + "," + std::to_string(static_cast<int>(attached_servos[5])) + "," + std::to_string(static_cast<int>(attached_servos[6])) + "," + std::to_string(static_cast<int>(attached_servos[7])));
+    return settings_service.setSetting(getServiceName(), reinterpret_cast<const char *>(FPSTR(ServoConsts::settings_key_servos)), std::to_string(static_cast<int>(attached_servos[0])) + "," + std::to_string(static_cast<int>(attached_servos[1])) + "," + std::to_string(static_cast<int>(attached_servos[2])) + "," + std::to_string(static_cast<int>(attached_servos[3])) + "," + std::to_string(static_cast<int>(attached_servos[4])) + "," + std::to_string(static_cast<int>(attached_servos[5])) + "," + std::to_string(static_cast<int>(attached_servos[6])) + "," + std::to_string(static_cast<int>(attached_servos[7])));
     return true;
 }
 
 bool ServoService::loadSettings()
 {
 
-    std::string attached_servos_settings = settingsService.getSetting(getServiceName(), reinterpret_cast<const char *>(FPSTR(ServoConsts::settings_key_servos)));
+    std::string attached_servos_settings = settings_service.getSetting(getServiceName(), reinterpret_cast<const char *>(FPSTR(ServoConsts::settings_key_servos)));
     if (attached_servos_settings.empty())
     {
         logger->info("No saved servo settings found.");

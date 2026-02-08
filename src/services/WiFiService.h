@@ -31,7 +31,9 @@ public:
     bool saveSettings() override;
     bool loadSettings() override;
 
+
 protected:
+
     bool open_access_point();
     bool connect_to_wifi(std::string ssid, std::string password);
     bool disconnect_from_wifi();

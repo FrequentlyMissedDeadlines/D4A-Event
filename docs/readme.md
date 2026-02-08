@@ -73,13 +73,15 @@ It also expose a UDP service that should received commands from a user remote co
 - **Microphone** - Audio level data
 - **Accelerometer** - 3-axis acceleration data [x, y, z]
 
-#### 5. **ServoService** (`/api/servo/*`)
-- Control up to 6 servo motors
-- Angle control (0-180 degrees)
-- Channel-based addressing (0-5)
-- Support for DFR1216 expansion board
+#### 5. **ServoService** (`/api/servos/*`)
+- Control up to 8 servo motors (channels 0-7)
+- Angle control (0-360 degrees depending on servo type)
+- Support for 180°, 270° angular servos and continuous rotation servos
+- Channel-based addressing
+- Multiple servo control operations (individual, all, or batch)
+- Uses DFRobot_UnihikerExpansion controller
 
-#### 6. **WebcamService** (if enabled)
+#### 6. **WebcamService** (`/api/webcam/v1/*`)
 - Camera snapshot capture
 - Streaming capabilities
 - Image quality configuration
@@ -110,7 +112,7 @@ It also expose a UDP service that should received commands from a user remote co
 ### Web Interface Files (in `data/www/`)
 - `index.html` - Main landing page
 - `HTTPService.html` / `HTTPService.js` - HTTP service testing interface
-- `K10webcam.html` / `K10webcam.js` - Webcam control interface
+- `WebcamService.html` / `WebcamService.js` - Webcam control interface
 - `ServoService.html` / `ServoService.js` - Servo control interface
 - `style.css` - Common styles
 
@@ -218,8 +220,8 @@ board_build.embed_txtfiles =
     data/HTTPService.html  
     data/HTTPService.js  
     data/index.html  
-    data/K10webcam.html  
-    data/K10webcam.js  
+    data/WebcamService.html  
+    data/WebcamService.js  
     data/ServoService.html  
     data/ServoService.js  
     data/style.css
@@ -319,7 +321,7 @@ class TemperatureAlertService : public IsOpenAPIInterface, public IsServiceInter
 {
 public:
     // IsServiceInterface methods
-    std::string getName() override;
+    std::string getServiceName() override;
     bool initializeService() override;
     bool startService() override;
     bool stopService() override;
@@ -327,12 +329,11 @@ public:
     // IsOpenAPIInterface methods
     IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
     bool registerRoutes() override;
-    std::string getPath(const std::string& finalpathstring) override;
+    std::string getServiceSubPath() override;
 
 private:
     float alertThreshold = 30.0;  // Default 30°C
     bool alertEnabled = false;
-    std::string baseServicePath;  // Cached path
     
     // Helper methods
     void handleGetStatus();
@@ -353,7 +354,12 @@ Create `src/services/TemperatureAlertService.cpp`:
 extern UNIHIKER_K10 unihiker;
 extern DFRobot_AHT20 aht20_sensor;  // Assuming you need temp sensor
 
-std::string TemperatureAlertService::getName()
+std::string TemperatureAlertService::getServiceName()
+{
+    return "Temperature Alert Service";  // Human-readable service name
+}
+
+std::string TemperatureAlertService::getServiceSubPath()
 {
     return "tempalert/v1";  // Will create /api/tempalert/v1 base path
 }
@@ -388,17 +394,9 @@ bool TemperatureAlertService::stopService()
     return true;
 }
 
-std::string TemperatureAlertService::getPath(const std::string& finalpathstring)
+std::string TemperatureAlertService::getServiceSubPath()
 {
-    if (baseServicePath.empty()) {
-        std::string serviceName = getName();
-        size_t slashPos = serviceName.find('/');
-        if (slashPos != std::string::npos) {
-            serviceName = serviceName.substr(0, slashPos);
-        }
-        baseServicePath = std::string(RoutesConsts::PathAPI) + serviceName + "/";
-    }
-    return baseServicePath + finalpathstring;
+    return "tempalert/v1";  // Service subpath component
 }
 
 bool TemperatureAlertService::registerRoutes()
@@ -743,7 +741,7 @@ Here's a complete example of a service with its own task:
 class LEDBlinkerService : public IsServiceInterface
 {
 public:
-    std::string getName() override { return "LEDBlinker"; }
+    std::string getServiceName() override { return "LEDBlinker"; }
     bool initializeService() override;
     bool startService() override;
     bool stopService() override;
@@ -1016,7 +1014,7 @@ curl http://192.168.1.100/api/sensors/v1
 
 #### Control Servo
 ```bash
-curl -X POST "http://192.168.1.100/api/servo/setAngle?channel=0&angle=90"
+curl -X POST "http://192.168.1.100/api/servos/v1/setServoAngle?channel=0&angle=90"
 ```
 
 ### Using the Test Interface
@@ -1135,7 +1133,7 @@ curl -X POST "http://192.168.1.100/api/servo/setAngle?channel=0&angle=90"
    IP="192.168.1.100"
    curl "$IP/api/board/v1"
    curl "$IP/api/sensors/v1"
-   curl -X POST "$IP/api/servo/setAngle?channel=0&angle=90"
+   curl -X POST "$IP/api/servos/v1/setServoAngle?channel=0&angle=90"
    ```
 
 3. **Use Postman or similar tools** for complex API testing

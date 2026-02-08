@@ -13,7 +13,57 @@ This interface ensures that all services in the system follow a consistent patte
 - Graceful shutdown
 - Configuration management (save/load settings)
 - Integration with the logging system
+- Service status tracking with `ServiceStatus` enum
 - Optional OpenAPI endpoint exposure (see [IsOpenAPIInterface.md](IsOpenAPIInterface.md))
+
+## Core Structure
+
+The `IsServiceInterface` is a **struct** (not a class) that provides:
+- Pure virtual methods for lifecycle management
+- Default implementations for optional features
+- Protected logger member for debug output
+- Standard message constants in `ServiceInterfaceConsts` namespace
+
+### ServiceStatus Enum
+
+```cpp
+enum ServiceStatus { 
+    UNINITIALIZED,        // Service not yet initialized
+    INITIALIZED,          // Service initialized but not started
+    INITIALIZED_FAILED,   // Initialization failed
+    STARTED,              // Service is running
+    START_FAILED,         // Service failed to start
+    STOPPED,              // Service stopped gracefully
+    STOP_FAILED           // Service failed to stop cleanly
+};
+```
+
+**Best Practice**: Track service status using protected members:
+```cpp
+protected:
+    ServiceStatus service_status_ = UNINITIALIZED;
+    unsigned long status_timestamp_ = 0;  // Optional: Last status change time (millis)
+```
+
+### ServiceInterfaceConsts Namespace
+
+Provides PROGMEM constants for common messages:
+
+```cpp
+namespace ServiceInterfaceConsts {
+    constexpr const char msg_initialize_done[] PROGMEM = "initialize done";
+    constexpr const char msg_initialize_failed[] PROGMEM = "initialize failed";
+    constexpr const char msg_start_done[] PROGMEM = "start done";
+    constexpr const char msg_start_failed[] PROGMEM = "start failed";
+    constexpr const char msg_stop_done[] PROGMEM = "stop done";
+    constexpr const char msg_stop_failed[] PROGMEM = "stop failed";
+}
+```
+
+**Usage**: Use `FPSTR()` macro when logging these constants:
+```cpp
+logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
+```
 
 ## Interface Methods
 
@@ -28,6 +78,32 @@ virtual std::string getServiceName() = 0;
 **Returns**: Service name as a string (e.g., "WiFi Service", "Webcam Service")
 
 **Usage**: Used for logging, debugging, and service identification.
+
+---
+
+#### `getStatus()`
+```cpp
+ServiceStatus getStatus();
+```
+**Purpose**: Returns the current status of the service.
+
+**Returns**: Current `ServiceStatus` enum value (UNINITIALIZED, INITIALIZED, STARTED, etc.)
+
+**Usage**: Check service state before performing operations.
+
+---
+
+#### `isStarted()`
+```cpp
+bool isStarted() const;
+```
+**Purpose**: Check if the service is currently running.
+
+**Returns**: 
+- `true` if service status is `STARTED`
+- `false` otherwise
+
+**Usage**: Quick check if service is operational.
 
 ---
 
@@ -51,23 +127,31 @@ virtual bool initializeService() = 0;
 **Example**:
 ```cpp
 bool MyService::initializeService() {
-    if (logger) {
-        logger->log("Initializing MyService...");
-    }
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " initializing...");
+    #endif
     
     // Load settings
     if (!loadSettings()) {
-        if (logger) logger->log("Failed to load settings");
+        service_status_ = INITIALIZED_FAILED;
+        status_timestamp_ = millis();
+        logger->error("Failed to load settings");
         return false;
     }
     
     // Initialize hardware
     if (!setupHardware()) {
-        if (logger) logger->log("Hardware initialization failed");
+        service_status_ = INITIALIZED_FAILED;
+        status_timestamp_ = millis();
+        logger->error("Hardware initialization failed");
         return false;
     }
     
-    if (logger) logger->log("MyService initialized successfully");
+    service_status_ = INITIALIZED;
+    status_timestamp_ = millis();
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
+    #endif
     return true;
 }
 ```
@@ -95,15 +179,25 @@ virtual bool startService() = 0;
 **Example**:
 ```cpp
 bool MyService::startService() {
-    if (!initialized) {
-        if (logger) logger->log("Cannot start uninitialized service");
+    if (service_status_ == INITIALIZED_FAILED) {
+        logger->error("Cannot start uninitialized service");
+        service_status_ = START_FAILED;
+        status_timestamp_ = millis();
         return false;
     }
     
     // Start operation
-    isRunning = true;
+    if (!performStartup()) {
+        service_status_ = START_FAILED;
+        status_timestamp_ = millis();
+        return false;
+    }
     
-    if (logger) logger->log("MyService started");
+    service_status_ = STARTED;
+    status_timestamp_ = millis();
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
+    #endif
     return true;
 }
 ```
@@ -130,17 +224,23 @@ virtual bool stopService() = 0;
 **Example**:
 ```cpp
 bool MyService::stopService() {
-    if (!isRunning) {
-        return true;
+    if (service_status_ == STOPPED) {
+        return true;  // Already stopped
     }
     
-    isRunning = false;
-    
     // Clean up resources
-    closeConnections();
-    releaseHardware();
+    if (!closeConnections() || !releaseHardware()) {
+        service_status_ = STOP_FAILED;
+        status_timestamp_ = millis();
+        logger->error("Failed to stop service cleanly");
+        return false;
+    }
     
-    if (logger) logger->log("MyService stopped");
+    service_status_ = STOPPED;
+    status_timestamp_ = millis();
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_stop_done));
+    #endif
     return true;
 }
 ```
@@ -166,12 +266,15 @@ virtual bool saveSettings() { return true; }
 **Example**:
 ```cpp
 bool MyService::saveSettings() {
-    SettingsService* settings = SettingsService::getInstance();
+    // SettingsService uses ESP32 Preferences API
+    // Settings are automatically saved to NVS (non-volatile storage)
     
-    settings->setInt("myservice_port", port);
-    settings->setString("myservice_mode", mode.c_str());
+    // Services typically implement custom save logic here
+    // For example, saving to JSON file or using SettingsService::setString/setInt
     
-    if (logger) logger->log("Settings saved");
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " settings saved");
+    #endif
     return true;
 }
 ```
@@ -198,12 +301,18 @@ virtual bool loadSettings() { return true; }
 **Example**:
 ```cpp
 bool MyService::loadSettings() {
-    SettingsService* settings = SettingsService::getInstance();
+    // Load configuration from persistent storage
+    // This is typically called during initializeService()
     
-    port = settings->getInt("myservice_port", 8080); // 8080 is default
-    mode = settings->getString("myservice_mode", "auto");
+    // Use defaults if settings don't exist
+    port = 8080;  // default value
+    mode = "auto";
     
-    if (logger) logger->log("Settings loaded");
+    // Services can load from SettingsService or JSON files
+    
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " settings loaded");
+    #endif
     return true;
 }
 ```
@@ -260,8 +369,25 @@ bool setLogger(RollingLogger* rollingLogger)
 
 **Best Practices**:
 - Always call this before `initializeService()`
-- Check if logger is available before logging: `if (logger) logger->log(...)`
+- Logger is always available after `setLogger()` - no need to check for null
 - Use logger instead of `Serial.print()` for debug output
+- Use `VERBOSE_DEBUG` guards for debug-level logging
+- Use appropriate log levels: `debug()`, `info()`, `warning()`, `error()`
+
+**Example**:
+```cpp
+// In main.cpp or service initialization
+RollingLogger* logger = RollingLogger::getInstance();
+myService->setLogger(logger);
+
+// In service methods
+#ifdef VERBOSE_DEBUG
+logger->debug("Debug information");
+#endif
+logger->info("Service started");
+logger->warning("Configuration issue detected");
+logger->error("Critical failure occurred");
+```
 
 ---
 
@@ -271,8 +397,9 @@ bool setLogger(RollingLogger* rollingLogger)
 
 ```cpp
 #include "IsServiceInterface.h"
+#include "IsOpenAPIInterface.h"  // If exposing HTTP endpoints
 
-class MyService : public IsServiceInterface {
+class MyService : public IsServiceInterface, public IsOpenAPIInterface {
 public:
     // Implement required methods
     std::string getServiceName() override;
@@ -284,11 +411,14 @@ public:
     bool saveSettings() override;
     bool loadSettings() override;
     
-    // Optionally implement OpenAPI interface
-    IsOpenAPIInterface* asOpenAPIInterface() override;
+    // Implement OpenAPI interface if exposing HTTP endpoints
+    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+    bool registerRoutes() override;
+    std::string getServiceSubPath() override;
     
-private:
-    bool isRunning = false;
+protected:
+    ServiceStatus service_status_ = UNINITIALIZED;
+    unsigned long status_timestamp_ = 0;
     // Your service-specific members
 };
 ```
@@ -302,27 +432,52 @@ std::string MyService::getServiceName() {
 
 bool MyService::initializeService() {
     // Load configuration
-    loadSettings();
+    if (!loadSettings()) {
+        service_status_ = INIT_FAILED;
+        status_timestamp_ = millis();
+        return false;
+    }
     
     // Initialize resources
     // ...
     
+    service_status_ = STARTED;
+    status_timestamp_ = millis();
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_initialize_done));
+    #endif
     return true;
 }
 
 bool MyService::startService() {
-    if (!isRunning) {
-        isRunning = true;
-        // Start operations
+    if (service_status_ == STARTED) {
+        return true;  // Already started
     }
+    
+    // Start operations
+    // ...
+    
+    service_status_ = STARTED;
+    status_timestamp_ = millis();
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
+    #endif
     return true;
 }
 
 bool MyService::stopService() {
-    if (isRunning) {
-        isRunning = false;
-        // Clean up
+    if (service_status_ == STOPPED) {
+        return true;  // Already stopped
     }
+    
+    // Clean up resources
+    // ...
+    
+    service_status_ = STOPPED;
+    status_timestamp_ = millis();
+    #ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_stop_done));
+    #endif
     return true;
 }
 ```
@@ -392,10 +547,15 @@ service->stopService();
 
 ### DO:
 - ✅ Keep services modular and loosely coupled
-- ✅ Use logger for all debug output
+- ✅ Use logger for all debug output (not `Serial.print()`)
+- ✅ Track service state with `ServiceStatus` enum
+- ✅ Update `status_timestamp_` on status changes
+- ✅ Use `VERBOSE_DEBUG` guards for debug logging
+- ✅ Use `FPSTR()` macro for PROGMEM constants
 - ✅ Implement graceful shutdown in `stopService()`
-- ✅ Load/save settings through `SettingsService`
-- ✅ Use `constexpr` for constants
+- ✅ Use `constexpr` for constants in dedicated namespaces
+- ✅ Store strings in PROGMEM to save RAM
+- ✅ Use meaningful prefixes for constant names (lowercase with underscores)
 - ✅ Validate inputs and return appropriate status
 - ✅ Log important state changes
 
@@ -411,11 +571,15 @@ service->stopService();
 ## Example Services
 
 Refer to existing service implementations:
+- [BoardInfoService](src/services/BoardInfoService.h) - Simple service exposing system info via OpenAPI
 - [WiFiService](src/services/WiFiService.h) - Network connectivity
-- [HTTPService](src/services/HTTPService.h) - Web server with OpenAPI
+- [HTTPService](src/services/HTTPService.h) - Web server with OpenAPI aggregation
 - [ServoService](src/services/ServoService.h) - Servo motor control with OpenAPI
 - [WebcamService](src/services/WebcamService.h) - Camera frame streaming
 - [UDPService](src/services/UDPService.h) - UDP communication
+- [SettingsService](src/services/SettingsService.h) - Configuration persistence
+- [DFR1216Service](src/services/DFR1216Service.h) - UniHiker expansion board interface
+- [MusicService](src/services/MusicService.h) - Audio/buzzer control
 
 ---
 

@@ -13,15 +13,9 @@
 #include "../services/IsOpenAPIInterface.h"
 #include "../DFR1216/DFRobot_UnihikerExpansion.h"
 
-class DFR1216Service : public IsServiceInterface, public IsOpenAPIInterface
+class DFR1216Service : public IsOpenAPIInterface
 {
 public:
-    /**
-     * @brief Returns this service's OpenAPI interface
-     * @return Pointer to the IsOpenAPIInterface implementation (this object)
-     */
-    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
-
     /**
      * @fn: getServiceName
      * @brief: Get the name of the service.
@@ -81,19 +75,12 @@ public:
      */
     bool setMotorSpeed(uint8_t motor, int8_t speed);
 
-    /**
-     * @brief Get the status of the DFR1216 controller
-     * @return JSON string with status information
-     */
-    std::string getStatus();
-
     bool saveSettings() override;
     bool loadSettings() override;
 
+
 private:
-    bool initialized = false;
-    ServiceStatus service_status_ = STOP_FAILED;
-    unsigned long status_timestamp_ = 0;
+
     DFRobot_UnihikerExpansion_I2C controller;
 
     // HTTP handler methods

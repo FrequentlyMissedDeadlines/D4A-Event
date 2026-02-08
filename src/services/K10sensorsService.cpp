@@ -21,27 +21,7 @@ namespace K10SensorsConsts
 DFRobot_AHT20 aht20_sensor;
 extern UNIHIKER_K10 unihiker;
 
-bool K10SensorsService::initializeService()
-{
-  #ifdef VERBOSE_DEBUG
-  logger->debug(getServiceName() + " initialize done");
-  #endif
-  return true;
-}
-bool K10SensorsService::startService()
-{
-  #ifdef VERBOSE_DEBUG  
-  logger->debug(getServiceName() + " start done");
-  #endif
-  return true;
-}
-bool K10SensorsService::stopService()
-{
-  #ifdef VERBOSE_DEBUG
-  logger->debug(getServiceName() + " stop done");
-  #endif
-  return true;
-}
+
 bool K10SensorsService::sensorReady()
 {
   if (aht20_sensor.startMeasurementReady())
@@ -70,11 +50,11 @@ std::string K10SensorsService::getSensorJson()
 
 bool K10SensorsService::registerRoutes()
 {
-  static constexpr char kSchemaJson[] PROGMEM = R"({"type":"object","properties":{"light":{"type":"number","description":"Ambient light sensor reading"},"hum_rel":{"type":"number","description":"Relative humidity percentage"},"celcius":{"type":"number","description":"Temperature in Celsius"},"mic_data":{"type":"number","description":"Microphone data reading"},"accelerometer":{"type":"array","description":"3-axis accelerometer data [x,y,z]","items":{"type":"number"}}}})";
-  static constexpr char kExampleJson[] PROGMEM = R"({"light":125.5,"hum_rel":45.2,"celcius":23.8,"mic_data":512,"accelerometer":[0.12,-0.05,9.81]})";
-  static constexpr char kRouteDesc[] PROGMEM = "Retrieves all K10 sensor readings including light, temperature, humidity, microphone, and accelerometer data";
-  static constexpr char kResponseOk[] PROGMEM = "Sensor data retrieved successfully";
-  static constexpr char kResponseErr[] PROGMEM = "Sensor initialization or reading failed";
+  static constexpr char schema_json[] PROGMEM = R"({"type":"object","properties":{"light":{"type":"number","description":"Ambient light sensor reading"},"hum_rel":{"type":"number","description":"Relative humidity percentage"},"celcius":{"type":"number","description":"Temperature in Celsius"},"mic_data":{"type":"number","description":"Microphone data reading"},"accelerometer":{"type":"array","description":"3-axis accelerometer data [x,y,z]","items":{"type":"number"}}}})";
+  static constexpr char example_json[] PROGMEM = R"({"light":125.5,"hum_rel":45.2,"celcius":23.8,"mic_data":512,"accelerometer":[0.12,-0.05,9.81]})";
+  static constexpr char route_desc[] PROGMEM = "Retrieves all K10 sensor readings including light, temperature, humidity, microphone, and accelerometer data";
+  static constexpr char response_ok[] PROGMEM = "Sensor data retrieved successfully";
+  static constexpr char response_err[] PROGMEM = "Sensor initialization or reading failed";
 
   std::string path = getPath("");
   
@@ -84,16 +64,17 @@ bool K10SensorsService::registerRoutes()
 #endif
 
   std::vector<OpenAPIResponse> responses;
-  OpenAPIResponse successResponse(200, kResponseOk);
-  successResponse.schema = kSchemaJson;
-  successResponse.example = kExampleJson;
+  OpenAPIResponse successResponse(200, response_ok);
+  successResponse.schema = schema_json;
+  successResponse.example = example_json;
   responses.push_back(successResponse);
 
-  OpenAPIResponse errorResponse(503, kResponseErr);
+  OpenAPIResponse errorResponse(503, response_err);
   errorResponse.schema = R"({"type":"object","properties":{"result":{"type":"string"},"message":{"type":"string"}}})";
   responses.push_back(errorResponse);
+  responses.push_back(createServiceNotStartedResponse());
 
-  OpenAPIRoute route(path.c_str(), RoutesConsts::method_get, kRouteDesc, "Sensors", false, {}, responses);
+  OpenAPIRoute route(path.c_str(), RoutesConsts::method_get, route_desc, "Sensors", false, {}, responses);
   registerOpenAPIRoute(route);
 
   // Try to initialize AHT20 sensor
@@ -102,36 +83,52 @@ bool K10SensorsService::registerRoutes()
   {
     if (logger)
       logger->error(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_init_failed)) + std::to_string(initResult));
-    
-    webserver.on(path.c_str(), HTTP_GET, [this]()
-    {
-      webserver.send(503, RoutesConsts::mime_json, this->getResultJsonString(RoutesConsts::result_err, fpstr_to_string(FPSTR(K10SensorsConsts::msg_failed_init_aht20))).c_str());
-    });
-    return true; // Return true to not block other services
   }
-
-  if (!sensorReady())
+  else if (!sensorReady())
   {
     if (logger)
       logger->warning(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready)));
-      
-    webserver.on(path.c_str(), HTTP_GET, [this]()
-    {
-      webserver.send(503, RoutesConsts::mime_json, this->getResultJsonString(RoutesConsts::result_err, fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready_init))).c_str());
-    });
-    return true; // Return true to not block other services
+  }
+  else
+  {
+    if (logger)
+      logger->info(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_init_success)));
   }
 
-  if (logger)
-    logger->info(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_init_success)));
-    
-  webserver.on(path.c_str(), HTTP_GET, [this]()
+  // Single route handler with all logic inside
+  webserver.on(path.c_str(), HTTP_GET, [this, initResult]()
   {
-    try{
-    std::string json = this->getSensorJson();
-    webserver.send(200, RoutesConsts::mime_json, json.c_str());
-    } catch (...) {
-      webserver.send(503, RoutesConsts::mime_json, this->getResultJsonString(RoutesConsts::result_err, fpstr_to_string(FPSTR(K10SensorsConsts::msg_get_sensor_failed))).c_str());
+    if (!checkServiceStarted()) return;
+    
+    // Check if AHT20 initialization failed
+    if (initResult != 0)
+    {
+      webserver.send(503, RoutesConsts::mime_json, 
+        this->getResultJsonString(RoutesConsts::result_err, 
+          fpstr_to_string(FPSTR(K10SensorsConsts::msg_failed_init_aht20))).c_str());
+      return;
+    }
+    
+    // Check if sensor is ready
+    if (!sensorReady())
+    {
+      webserver.send(503, RoutesConsts::mime_json, 
+        this->getResultJsonString(RoutesConsts::result_err, 
+          fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready_init))).c_str());
+      return;
+    }
+    
+    // Sensor is ready, get and return data
+    try
+    {
+      std::string json = this->getSensorJson();
+      webserver.send(200, RoutesConsts::mime_json, json.c_str());
+    }
+    catch (...)
+    {
+      webserver.send(503, RoutesConsts::mime_json, 
+        this->getResultJsonString(RoutesConsts::result_err, 
+          fpstr_to_string(FPSTR(K10SensorsConsts::msg_get_sensor_failed))).c_str());
     }
   });
 

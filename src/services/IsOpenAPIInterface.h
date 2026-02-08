@@ -19,7 +19,7 @@ namespace RoutesConsts
 {
     constexpr const char result[] PROGMEM = "result";
     constexpr const char result_ok[] PROGMEM = "ok";
-    constexpr const char result_err[] PROGMEM = "err";
+    constexpr const char result_err[] PROGMEM = "error";
     constexpr const char path_api[] PROGMEM = "/api/";
     constexpr const char path_openapi[] PROGMEM = "/api/openapi.json";
     constexpr const char message[] PROGMEM = "message";
@@ -55,6 +55,7 @@ namespace RoutesConsts
     constexpr const char resp_not_initialized[] PROGMEM = "Service not initialized";
     constexpr const char resp_operation_success[] PROGMEM = "Operation successful";
     constexpr const char resp_operation_failed[] PROGMEM = "Operation failed";
+    constexpr const char resp_service_not_started[] PROGMEM = "Service not started";
     // Common JSON schemas stored in PROGMEM
     constexpr const char json_object_result[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}}}";
 }
@@ -179,7 +180,7 @@ struct OpenAPIRoute
 // Forward declaration - webserver is instantiated in main.cpp
 extern WebServer webserver;
 
-struct IsOpenAPIInterface
+struct IsOpenAPIInterface : public IsServiceInterface
 {
 public:
     /**
@@ -219,6 +220,13 @@ public:
     {
         return openAPIRoutes;
     };
+
+    /**
+     * @fn asOpenAPIInterface
+     * @brief Returns this pointer since this class implements IsOpenAPIInterface
+     * @return Pointer to this IsOpenAPIInterface instance
+     */
+    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
 
     virtual ~IsOpenAPIInterface() = default;
 
@@ -264,6 +272,14 @@ protected:
     {
         return OpenAPIResponse(456, RoutesConsts::resp_operation_failed);
     }
+    
+    /**
+     * @brief Create a standard error response with code 423 for service not started
+     */
+    static OpenAPIResponse createServiceNotStartedResponse()
+    {
+        return OpenAPIResponse(423, RoutesConsts::resp_service_not_started);
+    }
 
     std::string getResultJsonString(std::string result, std::string message)
     {
@@ -273,6 +289,22 @@ protected:
         String output;
         serializeJson(doc, output);
         return std::string(output.c_str());
+    }
+    
+    /**
+     * @brief Check if service is started and send 423 error if not
+     * @return true if service is started, false otherwise (and 423 response sent)
+     */
+    bool checkServiceStarted()
+    {
+        if (!isStarted())
+        {
+            webserver.send(423, RoutesConsts::mime_json, 
+                          getResultJsonString(RoutesConsts::result_err, 
+                                            reinterpret_cast<const char*>(FPSTR(RoutesConsts::resp_service_not_started))).c_str());
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -306,6 +338,35 @@ protected:
                 success ? RoutesConsts::result_ok : RoutesConsts::result_err,
                 "loadSettings");
             webserver.send(success ? 200 : 500, RoutesConsts::mime_json, response.c_str());
+        });
+    }
+
+    /**
+     * @brief Register standard service status route
+     * @param serviceName Service name for OpenAPI grouping
+     * @param serviceInstance Pointer to IsServiceInterface instance
+     */
+    void registerServiceStatusRoute(const char* serviceName, IsServiceInterface* serviceInstance)
+    {
+        std::string statusPath = getPath("serviceStatus");
+        std::vector<OpenAPIResponse> statusResponses;
+        OpenAPIResponse statusOk(200, "Service status retrieved");
+        statusOk.schema = "{\"type\":\"object\",\"properties\":{\"service\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"},\"initialized\":{\"type\":\"boolean\"}}}";
+        statusOk.example = "{\"service\":\"Example Service\",\"status\":\"started\",\"initialized\":true}";
+        statusResponses.push_back(statusOk);
+        
+        registerOpenAPIRoute(OpenAPIRoute(statusPath.c_str(), RoutesConsts::method_get, 
+                                         "Get service status", serviceName, false, {}, statusResponses));
+        
+        webserver.on(statusPath.c_str(), HTTP_GET, [this, serviceInstance]() {
+            JsonDocument doc;
+            doc["service"] = serviceInstance->getServiceName();
+            doc["status"] = serviceInstance->getStatusString();
+            doc["initialized"] = (serviceInstance->getStatus() != UNINITIALIZED);
+            
+            String output;
+            serializeJson(doc, output);
+            webserver.send(200, RoutesConsts::mime_json, output.c_str());
         });
     }
 };

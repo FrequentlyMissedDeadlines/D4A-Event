@@ -3,6 +3,7 @@
  * @brief Implementation for webcam service integration with the main application
  * @details Exposed routes:
  *          - GET /api/webcam/snapshot - Capture and return a JPEG snapshot from the camera
+ *          - GET /api/webcam/stream - Stream MJPEG video using multipart/x-mixed-replace
  *          - GET /api/webcam/status - Get camera initialization status and current settings
  * 
  */
@@ -25,12 +26,14 @@ namespace WebcamConsts
 {
     constexpr uint8_t webcam_camera_queue_length = 1;
     constexpr uint8_t webcam_camera_rate_ms = 10;
-    constexpr const char webcam_path_webcam[] PROGMEM = "webcam/";
+
     constexpr const char webcam_action_snapshot[] PROGMEM = "snapshot";
     constexpr const char webcam_action_status[] PROGMEM = "status";
+    constexpr const char webcam_action_stream[] PROGMEM = "stream";
     constexpr const char webcam_msg_not_initialized[] PROGMEM = "Camera not initialized.";
     constexpr const char webcam_msg_capture_error[] PROGMEM = "Failed to capture image.";
     constexpr const char webcam_msg_camera_capture_failed[] PROGMEM = "Camera capture failed";
+    constexpr const char webcam_msg_streaming_active[] PROGMEM = "Snapshot unavailable during active streaming. Stop stream first.";
     constexpr const char webcam_service_name[] PROGMEM = "Webcam Service";
     constexpr const char webcam_service_path[] PROGMEM = "webcam/v1";
     constexpr const char webcam_field_initialized[] PROGMEM = "initialized";
@@ -46,12 +49,18 @@ namespace WebcamConsts
     constexpr const char webcam_access_control[] PROGMEM = "Access-Control-Allow-Origin";
     constexpr const char webcam_content_disposition[] PROGMEM = "Content-Disposition";
     constexpr const char webcam_mime_image_jpeg[] PROGMEM = "image/jpeg";
+    constexpr const char webcam_mime_multipart[] PROGMEM = "multipart/x-mixed-replace; boundary=frame";
+    constexpr const char webcam_boundary_start[] PROGMEM = "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ";
+    constexpr const char webcam_boundary_end[] PROGMEM = "\r\n\r\n";
     constexpr const char webcam_tag[] PROGMEM = "Webcam";
     constexpr const char webcam_desc_snapshot[] PROGMEM = "Capture and return a JPEG snapshot from the camera in real-time. Image format is SVGA (800x600) by default with quality setting of 12.";
-    constexpr const char webcam_desc_status[] PROGMEM = "Get camera initialization status, current settings including frame size, quality, brightness, contrast, and saturation levels";
+    constexpr const char webcam_desc_status[] PROGMEM = "Get camera iatusnitialization status, current settings including frame size, quality, brightness, contrast, and saturation levels";
+    constexpr const char webcam_desc_stream[] PROGMEM = "Stream MJPEG video from camera using multipart/x-mixed-replace protocol. Continuously delivers JPEG frames for real-time video display in browser.";
     constexpr const char webcam_resp_snapshot_ok[] PROGMEM = "JPEG image captured successfully";
     constexpr const char webcam_resp_camera_not_init[] PROGMEM = "Camera not initialized";
     constexpr const char webcam_resp_status_ok[] PROGMEM = "Camera status retrieved successfully";
+    constexpr const char webcam_resp_stream_ok[] PROGMEM = "MJPEG stream started successfully";
+    constexpr uint16_t webcam_stream_delay_ms = 100;
 }
 
 
@@ -78,10 +87,10 @@ bool WebcamService::initializeService()
         }
         if (!xQueueCamera) {
             logger->error("Failed to create camera queue");
-            service_status_ = INIT_FAILED;
-            status_timestamp_ = millis();
+           setServiceStatus(INITIALIZED_FAILED);
             return false;
         }
+
     }
 
     
@@ -93,14 +102,14 @@ bool WebcamService::initializeService()
     sensor_t *s = esp_camera_sensor_get();
     if (!s) {
         logger->error("Failed to get camera sensor");
-        service_status_ = INIT_FAILED;
-        status_timestamp_ = millis();
+        setServiceStatus(INITIALIZED_FAILED);
         return false;
     }else {
 
     }
     
     initialized_ = true;
+    setServiceStatus(INITIALIZED);
 
 #ifdef VERBOSE_DEBUG
     logger->debug(getServiceName() + " initialize done");
@@ -123,14 +132,12 @@ bool WebcamService::startService()
 
         
 #ifdef VERBOSE_DEBUG
-        logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_start_done));
+        logger->debug(getServiceName() + " " + getStatusString());   
 #endif
-        service_status_ = STARTED;
-        status_timestamp_ = millis();
+        setServiceStatus(STARTED);
     } else {
-        logger->error(getServiceName() + " start failed - not initialized");
-        service_status_ = START_FAILED;
-        status_timestamp_ = millis();
+        logger->error(getServiceName() + " " + getStatusString());   
+       setServiceStatus(START_FAILED);
     }
     return initialized_;
 }
@@ -147,14 +154,13 @@ bool WebcamService::stopService()
         // Stop camera capture task
 
         
-        service_status_ = STOPPED;
-        status_timestamp_ = millis();
+        setServiceStatus(STOPPED);
 #ifdef VERBOSE_DEBUG
-        logger->debug(getServiceName() + " " + FPSTR(ServiceInterfaceConsts::msg_stop_done));
+        logger->debug(getServiceName() + " " + getStatusString());
 #endif
         return true;
     }
-    logger->error(getServiceName() + " " + std::string(ServiceInterfaceConsts::msg_stop_failed));
+    logger->error(getServiceName() + " " + getStatusString());
     return false;
 }
 
@@ -196,7 +202,7 @@ camera_fb_t* WebcamService::captureSnapshot()
 
     if (!fb) {
 #ifdef VERBOSE_DEBUG
-        Serial.println(FPSTR(WebcamConsts::webcam_msg_camera_capture_failed));
+        logger->debug(fpstr_to_string(FPSTR(WebcamConsts::webcam_msg_camera_capture_failed)));
 #endif
         return nullptr;
     }
@@ -204,11 +210,93 @@ camera_fb_t* WebcamService::captureSnapshot()
     return fb;
 }
 
+/**
+ * @brief Handle MJPEG streaming request
+ * @details Continuously captures frames and sends them as multipart/x-mixed-replace stream
+ *          Each frame is sent with proper MIME boundaries for MJPEG protocol
+ */
+void WebcamService::handleStream() {
+    logger->info("Handling streaming request for " + getServiceName() + "...");  
+    if (!initialized_) {
+        webserver.send(503, RoutesConsts::mime_plain_text, FPSTR(WebcamConsts::webcam_msg_not_initialized));
+        return;
+    }
+    
+    // Set streaming flag to block snapshot requests
+    streaming_active_ = true;
+    
+    // Send multipart stream headers
+    webserver.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    webserver.send(200, FPSTR(WebcamConsts::webcam_mime_multipart), "");
+    
+    // Continuous streaming loop
+    while (webserver.client().connected()) {
+        camera_fb_t *fb = captureSnapshot();
+        if (!fb) {
+            delay(WebcamConsts::webcam_stream_delay_ms);
+            continue;
+        }
+        
+        // Validate frame buffer
+        if (!fb->buf || fb->len == 0) {
+            esp_camera_fb_return(fb);
+            delay(WebcamConsts::webcam_stream_delay_ms);
+            continue;
+        }
+        
+        uint8_t *jpg_buf = nullptr;
+        size_t jpg_len = 0;
+        bool needs_free = false;
+        
+        // Check for valid JPEG (magic bytes 0xFF 0xD8)
+        bool is_valid_jpeg = (fb->len >= 2 && fb->buf[0] == 0xFF && fb->buf[1] == 0xD8);
+        
+        if (is_valid_jpeg) {
+            jpg_buf = fb->buf;
+            jpg_len = fb->len;
+        } else {
+            // Convert to JPEG
+            bool conversion_ok = frame2jpg(fb, 80, &jpg_buf, &jpg_len);
+            if (!conversion_ok || !jpg_buf || jpg_len == 0) {
+                esp_camera_fb_return(fb);
+                if (jpg_buf) free(jpg_buf);
+                delay(WebcamConsts::webcam_stream_delay_ms);
+                continue;
+            }
+            needs_free = true;
+        }
+        
+        // Send multipart boundary and frame
+        webserver.sendContent(FPSTR(WebcamConsts::webcam_boundary_start));
+        webserver.sendContent(String(jpg_len));
+        webserver.sendContent(FPSTR(WebcamConsts::webcam_boundary_end));
+        webserver.sendContent(reinterpret_cast<const char*>(jpg_buf), jpg_len);
+        
+        // Cleanup
+        if (needs_free && jpg_buf) {
+            free(jpg_buf);
+        }
+        esp_camera_fb_return(fb);
+        
+        // Small delay to control frame rate
+        delay(WebcamConsts::webcam_stream_delay_ms);
+    }
+    
+    // Clear streaming flag to allow snapshots again
+    streaming_active_ = false;
+    logger->info("Stream ended for " + getServiceName());
+}
 void WebcamService::handleSnapshot()
 {
     logger->info("Handling snapshot request for " + getServiceName() + "...");  
     if (!initialized_) {
         webserver.send(503, RoutesConsts::mime_plain_text, FPSTR(WebcamConsts::webcam_msg_not_initialized));
+        return;
+    }
+    
+    // Reject snapshot if streaming is active
+    if (streaming_active_) {
+        webserver.send(409, RoutesConsts::mime_plain_text, FPSTR(WebcamConsts::webcam_msg_streaming_active));
         return;
     }
 
@@ -279,7 +367,7 @@ void WebcamService::handleStatus()
     
     const char* status_str = "unknown";
     switch (service_status_) {
-        case ServiceStatus::INIT_FAILED: status_str = "init failed"; break;
+        case ServiceStatus::INITIALIZED_FAILED: status_str = "init failed"; break;
         case ServiceStatus::START_FAILED: status_str = "start failed"; break;
         case ServiceStatus::STARTED: status_str = "started"; break;
         case ServiceStatus::STOPPED: status_str = "stopped"; break;
@@ -340,28 +428,40 @@ bool WebcamService::registerRoutes()
     snapshotOk.schema = "{\"type\":\"string\",\"format\":\"binary\",\"description\":\"JPEG image data\"}";
     snapshotResponses.push_back(snapshotOk);
     snapshotResponses.push_back(OpenAPIResponse(503, WebcamConsts::webcam_resp_camera_not_init));
+    snapshotResponses.push_back(createServiceNotStartedResponse());
     logger->info("Add "+path+" route");
     registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get, 
                                       WebcamConsts::webcam_desc_snapshot,
                                       WebcamConsts::webcam_tag, false, {}, snapshotResponses));
-    webserver.on(path.c_str(), HTTP_GET, [this]() { handleSnapshot(); });
+    webserver.on(path.c_str(), HTTP_GET, [this]() { 
+        if (!checkServiceStarted()) return;
+        handleSnapshot(); 
+    });
 
     // Status endpoint - returns JSON with camera info
-    path = getPath(WebcamConsts::webcam_action_status);
+    registerServiceStatusRoute(WebcamConsts::webcam_tag, this);
+
+    // Stream endpoint - returns MJPEG stream
+    path = getPath(WebcamConsts::webcam_action_stream);
 #ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
-        logger->info("Add "+path+" route");
-    std::vector<OpenAPIResponse> statusResponses;
-    OpenAPIResponse statusOk(200, WebcamConsts::webcam_resp_status_ok);
-    statusOk.schema = "{\"type\":\"object\",\"properties\":{\"initialized\":{\"type\":\"boolean\",\"description\":\"Whether camera is initialized\"},\"status\":{\"type\":\"string\",\"enum\":[\"ready\",\"sensor_error\",\"not_initialized\"]},\"settings\":{\"type\":\"object\",\"properties\":{\"framesize\":{\"type\":\"integer\",\"description\":\"Frame size code (0-13)\"},\"framesize_name\":{\"type\":\"string\",\"description\":\"Frame size name (e.g., SVGA, VGA)\"},\"quality\":{\"type\":\"integer\",\"description\":\"JPEG quality (0-63, lower is better)\"},\"brightness\":{\"type\":\"integer\",\"description\":\"Brightness level (-2 to 2)\"},\"contrast\":{\"type\":\"integer\",\"description\":\"Contrast level (-2 to 2)\"},\"saturation\":{\"type\":\"integer\",\"description\":\"Saturation level (-2 to 2)\"}}}}}";
-    statusOk.example = "{\"initialized\":true,\"status\":\"ready\",\"settings\":{\"framesize\":9,\"framesize_name\":\"SVGA\",\"quality\":12,\"brightness\":0,\"contrast\":0,\"saturation\":0}}";
-    statusResponses.push_back(statusOk);
+    logger->info("Add "+path+" route");
+    std::vector<OpenAPIResponse> streamResponses;
+    OpenAPIResponse streamOk(200, WebcamConsts::webcam_resp_stream_ok);
+    streamOk.contentType = WebcamConsts::webcam_mime_multipart;
+    streamOk.schema = "{\"type\":\"string\",\"format\":\"binary\",\"description\":\"Continuous MJPEG video stream\"}";
+    streamResponses.push_back(streamOk);
+    streamResponses.push_back(OpenAPIResponse(503, WebcamConsts::webcam_resp_camera_not_init));
+    streamResponses.push_back(createServiceNotStartedResponse());
     
     registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get, 
-                                      WebcamConsts::webcam_desc_status,
-                                      WebcamConsts::webcam_tag, false, {}, statusResponses));
-    webserver.on(path.c_str(), HTTP_GET, [this]() { handleStatus(); });
+                                      WebcamConsts::webcam_desc_stream,
+                                      WebcamConsts::webcam_tag, false, {}, streamResponses));
+    webserver.on(path.c_str(), HTTP_GET, [this]() { 
+        if (!checkServiceStarted()) return;
+        handleStream(); 
+    });
 
     registerSettingsRoutes("Webcam", this);
 

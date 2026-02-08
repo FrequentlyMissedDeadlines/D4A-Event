@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Servo Control - K10 Bot</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    .servo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .servo-card {
+      padding: 20px;
+      border-radius: 8px;
+      border: 2px solid #444;
+    }
+    .servo-card.type-0 {
+      background: #ffffff;
+      color: #333;
+    }
+    .servo-card.type-1 {
+      background: #90EE90;
+      color: #1a1a1a;
+    }
+    .servo-card.type-2 {
+      background: #cccccc;
+      color: #1a1a1a;
+    }
+    .servo-card.type-3 {
+      background: #666666;
+      color: #ffffff;
+    }
+    .servo-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #444;
+    }
+    .servo-title {
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .servo-card.type-0 .servo-title {
+      color: #333;
+    }
+    .servo-card.type-1 .servo-title,
+    .servo-card.type-2 .servo-title,
+    .servo-card.type-3 .servo-title {
+      color: #000;
+    }
+    .servo-status {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      background: rgba(0,0,0,0.2);
+      color: #000;
+      font-weight: bold;
+    }
+    .servo-card.type-0 .servo-status {
+      background: #e0e0e0;
+      color: #666;
+    }
+    .servo-card.type-3 .servo-status {
+      color: #fff
+      padding: 4px 8px;
+      border-radius: 3px;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .servo-card.type-0 .control-label {
+      color: #666;
+    }
+    .servo-card.type-1 .control-label,
+    .servo-card.type-2 .control-label {
+      color: #333;
+    }
+    .servo-card.type-3 .control-label {
+      color: #e0e0e0}
+    .servo-status.attached {
+      background: #4CAF50;
+    }
+    .control-group {
+      margin: 15px 0;
+    }
+    .control-label {
+      display: block;
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+      font-size: 16px;
+    }
+    .servo-card.type-0 .slider-value {
+      color: #333;
+    }
+    .servo-card.type-1 .slider-value,
+    .servo-card.type-2 .slider-value {
+      color: #000;
+    }
+    .servo-card.type-3 .slider-value {
+      color: #fff}
+    .slider-container input[type="range"] {
+      flex: 1;
+    }
+    .slider-value {
+      min-width: 50px;
+      text-align: center;
+      font-weight: bold;
+      color: #4CAF50;
+      font-size: 16px;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .button-group button {
+      flex: 1;
+    }
+    .btn-detach {
+      background: #f44336;
+    }
+    .btn-detach:hover {
+      background: #d32f2f;
+    }
+    .btn-apply {
+      background: #2196F3;
+    }
+    .btn-apply:hover {
+      background: #1976D2;
+    }
+    input[type="range"], select {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+    .servo-card.type-0 input, .servo-card.type-0 select {
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    .servo-card.type-1 input, .servo-card.type-1 select {
+      background-color: #fff;
+      color: #333;
+    }
+    .servo-card.type-2 input, .servo-card.type-2 select {
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    .servo-card.type-3 input, .servo-card.type-3 select {
+      background-color: #555;
+      color: #fff;
+    }
+    .global-controls {
+      background: white;
+      padding: 20px;
+      margin: 15px 0;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .global-button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .global-button-group button {
+      flex: 1;
+      min-width: 150px;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .status-indicator.active {
+      background: #4CAF50;
+      box-shadow: 0 0 8px #4CAF50;
+    }
+    .status-indicator.inactive {
+      background: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1 id="pageTitle">🔧 Servo Control Panel <span id="titleStatus" style="font-size: 0.6em; color: #999;"></span></h1>
+  
+  <div class="panel">
+    <a href="/" class="btn">← Back to Home</a>
+    <button onclick="refreshAllStatus()" class="btn">🔄 Refresh Status</button>
+  </div>
+
+  <div class="global-controls">
+    <h2>Global Controls</h2>
+    <div class="global-button-group">
+      <button onclick="stopAllServos()" class="btn">⏹️ Stop All Servos</button>
+      <button onclick="setAllToMiddle()" class="btn">↔️ All Servos to Middle (90°)</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Servo Channels</h2>
+    <div class="servo-grid" id="servoGrid">
+      <!-- Servo cards will be generated here -->
+    </div>
+  </div>
+
+  <script>
+    const servos = [
+      { channel: 0, type: 0, value: 90 },
+      { channel: 1, type: 0, value: 90 },
+      { channel: 2, type: 0, value: 90 },
+      { channel: 3, type: 0, value: 90 },
+      { channel: 4, type: 0, value: 90 },
+      { channel: 5, type: 0, value: 90 }
+    ];
+
+    const servoTypes = {
+      0: { name: 'Not Connected', label: 'Detached' },
+      1: { name: 'Rotational', label: 'Continuous Rotation' },
+      2: { name: 'Angular 180', label: 'Angular 180°' },
+      3: { name: 'Angular 270', label: 'Angular 270°' }
+    };
+
+    function createServoCard(servo) {
+      const isAttached = servo.type !== 0;
+      const typeInfo = servoTypes[servo.type];
+      
+      return `
+        <div class="servo-card type-${servo.type}" id="servo-${servo.channel}">
+          <div class="servo-header">
+            <div class="servo-title">
+              <span class="status-indicator ${isAttached ? 'active' : 'inactive'}"></span>
+              S${servo.channel}
+            </div>
+            <div class="servo-status ${isAttached ? 'attached' : ''}">${typeInfo.label}</div>
+          </div>
+
+          ${!isAttached ? `
+            <div class="control-group">
+              <label class="control-label">Attach Servo Type:</label>
+              <select id="type-${servo.channel}" class="param-input">
+                <option value="1">Continuous Rotation</option>
+                <option value="2">Angular 180°</option>
+                <option value="3">Angular 270°</option>
+              </select>
+            </div>
+            <div class="button-group">
+              <button onclick="attachServo(${servo.channel})" class="btn">🔗 Attach Servo</button>
+            </div>
+          ` : ''}
+
+          ${isAttached && servo.type === 1 ? `
+            <div class="control-group">
+              <label class="control-label">Speed (-100 to +100):</label>
+              <div class="slider-container">
+                <input type="range" id="speed-${servo.channel}" min="-100" max="100" value="${servo.value}" 
+                       oninput="updateSliderValue(${servo.channel}, this.value, 'speed')">
+                <span class="slider-value" id="speed-value-${servo.channel}">${servo.value}</span>
+              </div>
+            </div>
+            <div class="button-group">
+              <button onclick="setServoSpeed(${servo.channel})" class="btn btn-apply">▶ Apply Speed</button>
+              <button onclick="detachServo(${servo.channel})" class="btn btn-detach">🔪 Detach</button>
+            </div>
+          ` : ''}
+
+          ${isAttached && (servo.type === 2 || servo.type === 3) ? `
+            <div class="control-group">
+              <label class="control-label">Angle (0° to ${servo.type === 2 ? '180' : '270'}°):</label>
+              <div class="slider-container">
+                <input type="range" id="angle-${servo.channel}" min="0" max="${servo.type === 2 ? '180' : '270'}" 
+                       value="${servo.value}" oninput="updateSliderValue(${servo.channel}, this.value, 'angle')">
+                <span class="slider-value" id="angle-value-${servo.channel}">${servo.value}°</span>
+              </div>
+            </div>
+            <div class="button-group">
+              <button onclick="setServoAngle(${servo.channel})" class="btn btn-apply">▶ Apply Angle</button>
+              <button onclick="detachServo(${servo.channel})" class="btn btn-detach">🔪 Detach</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderServos() {
+      const grid = document.getElementById('servoGrid');
+      grid.innerHTML = servos.map(createServoCard).join('');
+    }
+
+    function updateSliderValue(channel, value, type) {
+      const valueDisplay = document.getElementById(`${type}-value-${channel}`);
+      if (valueDisplay) {
+        valueDisplay.textContent = type === 'angle' ? `${value}°` : value;
+      }
+    }
+
+    async function apiCall(endpoint, method = 'GET', body = null) {
+      const options = {
+        method: method,
+        headers: { 'Content-Type': 'application/json' }
+      };
+      if (body) {
+        options.body = JSON.stringify(body);
+      }
+      
+      try {
+        const response = await fetch(endpoint, options);
+        const data = await response.json();
+        return { ok: response.ok, data };
+      } catch (error) {
+        console.error('API call failed:', error);
+        return { ok: false, error: error.message };
+      }
+    }
+
+    async function attachServo(channel) {
+      const typeSelect = document.getElementById(`type-${channel}`);
+      const connection = parseInt(typeSelect.value);
+      
+      const result = await apiCall('/api/servos/v1/attachServo', 'POST', { channel, connection });
+      
+      if (result.ok) {
+        servos[channel].type = connection;
+        servos[channel].value = connection === 1 ? 0 : 90; // Default: 0 speed or 90° angle
+        renderServos();
+      } else {
+        alert(`Failed to attach servo ${channel}`);
+      }
+    }
+
+    async function detachServo(channel) {
+      const result = await apiCall('/api/servos/v1/attachServo', 'POST', { channel, connection: 0 });
+      
+      if (result.ok) {
+        servos[channel].type = 0;
+        servos[channel].value = 90;
+        renderServos();
+      } else {
+        alert(`Failed to detach servo ${channel}`);
+      }
+    }
+
+    async function setServoAngle(channel) {
+      const angleInput = document.getElementById(`angle-${channel}`);
+      const angle = parseInt(angleInput.value);
+      
+      const result = await apiCall('/api/servos/v1/setServoAngle', 'POST', { channel, angle });
+      
+      if (result.ok) {
+        servos[channel].value = angle;
+      } else {
+        alert(`Failed to set servo ${channel} angle`);
+      }
+    }
+
+    async function setServoSpeed(channel) {
+      const speedInput = document.getElementById(`speed-${channel}`);
+      const speed = parseInt(speedInput.value);
+      
+      const result = await apiCall('/api/servos/v1/setServoSpeed', 'POST', { channel, speed });
+      
+      if (result.ok) {
+        servos[channel].value = speed;
+      } else {
+        alert(`Failed to set servo ${channel} speed`);
+      }
+    }
+
+    async function stopAllServos() {
+      const result = await apiCall('/api/servos/v1/stopAll', 'POST');
+      
+      if (result.ok) {
+        // Update all rotational servos to 0 speed
+        servos.forEach(servo => {
+          if (servo.type === 1) {
+            servo.value = 0;
+          }
+        });
+        renderServos();
+        alert('All servos stopped');
+      } else {
+        alert('Failed to stop servos');
+      }
+    }
+
+    async function setAllToMiddle() {
+      const result = await apiCall('/api/servos/v1/setAllServoAngle', 'POST', { angle: 90 });
+      
+      if (result.ok) {
+        // Update all angular servos to 90°
+        servos.forEach(servo => {
+          if (servo.type === 2 || servo.type === 3) {
+            servo.value = 90;
+          }
+        });
+        renderServos();
+      } else {
+        alert('Failed to set servos to middle position');
+      }
+    }
+
+    async function refreshAllStatus() {
+      try {
+        // Check service status first
+        const statusResult = await apiCall('/api/servos/v1/serviceStatus', 'GET');
+        const titleStatus = document.getElementById('titleStatus');
+        
+        if (statusResult.ok && statusResult.data.status) {
+          titleStatus.textContent = `[${statusResult.data.status}]`;
+          titleStatus.style.color = statusResult.data.status === 'started' ? '#4CAF50' : '#FFA500';
+        }
+        
+        // Get all servo status
+        const result = await apiCall('/api/servos/v1/getAllStatus', 'GET');
+        
+        if (result.ok && result.data.servos) {
+          result.data.servos.forEach((servoStatus, index) => {
+            if (index < servos.length) {
+              // Map status string to type number
+              const statusMap = {
+                'Not Connected': 0,
+                'Rotational': 1,
+                'Angular 180': 2,
+                'Angular 270': 3
+              };
+              servos[index].type = statusMap[servoStatus.status] || 0;
+            }
+          });
+          renderServos();
+          console.log('Status refreshed:', result.data);
+        }
+      } catch (error) {
+        console.error('Failed to refresh status:', error);
+        const titleStatus = document.getElementById('titleStatus');
+        if (titleStatus) {
+          titleStatus.textContent = '[Error]';
+          titleStatus.style.color = '#f44336';
+        }
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      renderServos();
+      refreshAllStatus();
+    });
+  </script>
+</body>
+</html>

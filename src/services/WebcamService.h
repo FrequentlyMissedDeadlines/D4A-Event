@@ -13,11 +13,9 @@
  * @class WebcamService
  * @brief Service for managing ESP32 camera operations
  */
-class WebcamService : public IsServiceInterface, public IsOpenAPIInterface
+class WebcamService : public IsOpenAPIInterface
 {
 public:
-    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
-
     /**
      * @brief Initialize the camera hardware
      * @return true if successful, false otherwise
@@ -63,16 +61,20 @@ public:
     bool saveSettings() override;
     bool loadSettings() override;
 
+
 private:
     bool initialized_;
-    ServiceStatus service_status_ = STOP_FAILED;
-    unsigned long status_timestamp_ = 0;
+
+    volatile bool streaming_active_ = false;
 
     /**
      * @brief Handle snapshot HTTP request
      */
     void handleSnapshot();
-
+    /**
+     * @brief Handle streaming HTTP request
+     */
+    void handleStream();
     /**
      * @brief Handle camera status HTTP request
      */

@@ -14,23 +14,31 @@
 #include <stdio.h>
 #include <string.h>
 #include <vector>
+#include "../services/UDPService.h"
+#include "../services/HTTPService.h"
+#include <WebServer.h>
 
-constexpr int MAX_IP_LEN = 15;
-constexpr int MAX_NETWORK_LEN = 24;   // adjust as needed
-constexpr int OUTPUT_LEN = 40;
-constexpr int LINE_HEIGHT = 10;
-constexpr int CHAR_WIDTH = 6;
+namespace UTB2026Consts
+{
+    constexpr int max_ip_len = 15;
+    constexpr int max_network_len = 24;
+    constexpr int output_len = 40;
+    constexpr int line_height = 10;
+    constexpr int char_width = 6;
+    constexpr uint16_t color_error = TFT_RED;
+    constexpr uint16_t color_warning = TFT_YELLOW;
+    constexpr uint16_t color_info = TFT_WHITE;
+    constexpr uint16_t color_debug = TFT_LIGHTGREY;
+}
+
 extern TFT_eSPI tft;
 
 
+extern WebServer webserver;
+extern UDPService udp_service;
+extern HTTPService http_service;
+extern ServoService servo_service;
 
-ServoInfo servos[5] = {
-    ServoInfo(NOT_CONNECTED, 0),
-    ServoInfo(NOT_CONNECTED, 0),
-    ServoInfo(NOT_CONNECTED, 0),
-    ServoInfo(NOT_CONNECTED, 0),
-    ServoInfo(NOT_CONNECTED, 0)
-    };
 
 const int R_OUTER = 24; // * - 3 strings, len 60: strin 240/num/2 servos per row
 
@@ -84,16 +92,16 @@ std::string format_with_equal_spacing(const std::vector<std::string> &values, in
 }
 
 void format_networkInfoString(const char *network, const char *ip, char *output, int total_width) {
-    char netbuf[MAX_NETWORK_LEN + 1];
-    char ipbuf[MAX_IP_LEN + 1];
+    char netbuf[UTB2026Consts::max_network_len + 1];
+    char ipbuf[UTB2026Consts::max_ip_len + 1];
 
     // Truncate network name if too long
-    strncpy(netbuf, network, MAX_NETWORK_LEN);
-    netbuf[MAX_NETWORK_LEN] = '\0';
+    strncpy(netbuf, network, UTB2026Consts::max_network_len);
+    netbuf[UTB2026Consts::max_network_len] = '\0';
 
     // Truncate IP if too long
-    strncpy(ipbuf, ip, MAX_IP_LEN);
-    ipbuf[MAX_IP_LEN] = '\0';
+    strncpy(ipbuf, ip, UTB2026Consts::max_ip_len);
+    ipbuf[UTB2026Consts::max_ip_len] = '\0';
 
     // Calculate space padding
     int net_len = strlen(netbuf);
@@ -104,7 +112,7 @@ void format_networkInfoString(const char *network, const char *ip, char *output,
     if (spaces < 1) spaces = 1;
 
     // Build final string
-    snprintf(output, OUTPUT_LEN + total_width, "%s%*s%s", netbuf, spaces, "", ipbuf);
+    snprintf(output, UTB2026Consts::output_len + total_width, "%s%*s%s", netbuf, spaces, "", ipbuf);
 }
 
 
@@ -141,8 +149,8 @@ void UTB2026::update_servo(const char &number, int &value, ServoConnection &stat
     if (number < 1 || number > 5)
     { return;
     }
-    servos[number - 1].setValue(value);
-    servos[number - 1].connectionStatus = status;
+    // servos[number - 1].setValue(value);
+    // servos[number - 1].connectionStatus = status;
 };
 
 std::map<std::string, std::string> UTB2026::get_infos()
@@ -177,42 +185,42 @@ void UTB2026::draw_servos() {
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextDatum(TL_DATUM);
     
-    std::string output = format_with_equal_spacing(servoLabels, OUTPUT_LEN);
-    tft.setCursor(0, LINE_HEIGHT * line++);
+    std::string output = format_with_equal_spacing(servoLabels, UTB2026Consts::output_len);
+    tft.setCursor(0, UTB2026Consts::line_height * line++);
     tft.print(output.c_str());
     
     // Build status strings
     std::vector<std::string> statusStrings;
     for (char i = 0; i < 5; i++) {
-        switch (servos[i].connectionStatus) {
-            case ROTATIONAL:
-                statusStrings.push_back("R360");
-                break;
-            case ANGULAR_180:
-                statusStrings.push_back("A180");
-                break;
-            case ANGULAR_270:
-                statusStrings.push_back("A270");
-                break;
-            default:
+        // switch (servos[i].connectionStatus) {
+        //     case ROTATIONAL:
+        //         statusStrings.push_back("R360");
+        //         break;
+        //     case ANGULAR_180:
+        //         statusStrings.push_back("A180");
+        //         break;
+        //     case ANGULAR_270:
+        //         statusStrings.push_back("A270");
+        //         break;
+        //     default:
                 statusStrings.push_back("----");
                 break;
-        }
+        // }
     }
-    output = format_with_equal_spacing(statusStrings, OUTPUT_LEN);
-    tft.setCursor(0, LINE_HEIGHT * line++);
+    output = format_with_equal_spacing(statusStrings, UTB2026Consts::output_len);
+    tft.setCursor(0, UTB2026Consts::line_height * line++);
     tft.print(output.c_str());
 
     // Build value strings
-    std::vector<std::string> valueString;
-    for (char i = 0; i < 5; i++) {
-        char buf[8];
-        snprintf(buf, sizeof(buf), "%4d", servos[i].value);
-        valueString.push_back(buf);
-    }
-    output = format_with_equal_spacing(valueString, OUTPUT_LEN);
-    tft.setCursor(0, LINE_HEIGHT * line++);
-    tft.print(output.c_str());
+    // std::vector<std::string> valueString;
+    // for (char i = 0; i < 5; i++) {
+    //     char buf[8];
+    //     snprintf(buf, sizeof(buf), "%4d", servos[i].value);
+    //     valueString.push_back(buf);
+    // }
+    // output = format_with_equal_spacing(valueString, OUTPUT_LEN);
+    // tft.setCursor(0, LINE_HEIGHT * line++);
+    // tft.print(output.c_str());
 };
 
 void UTB2026::draw_network_info() {
@@ -221,19 +229,19 @@ void UTB2026::draw_network_info() {
     tft.setTextDatum(TL_DATUM);
     char line=0;
 
-    std::string wifi_name = UTB2026::get_info(KEY_WIFI_NAME).substr(0,MAX_NETWORK_LEN);
-    std::string ip_addr = UTB2026::get_info(KEY_IP_ADDRESS).substr(0,MAX_IP_LEN);
+    std::string wifi_name = UTB2026::get_info(KEY_WIFI_NAME).substr(0,UTB2026Consts::max_network_len);
+    std::string ip_addr = UTB2026::get_info(KEY_IP_ADDRESS).substr(0,UTB2026Consts::max_ip_len);
     
     std::vector<std::string> wifivalues = {wifi_name, ip_addr};
-    std::string output = format_with_equal_spacing(wifivalues, OUTPUT_LEN);
-    tft.setCursor(0* CHAR_WIDTH,LINE_HEIGHT*line++);
+    std::string output = format_with_equal_spacing(wifivalues, UTB2026Consts::output_len);
+    tft.setCursor(0* UTB2026Consts::char_width,UTB2026Consts::line_height*line++);
     tft.print(output.c_str());
     
-    tft.setCursor(0,LINE_HEIGHT*line++);
+    tft.setCursor(0,UTB2026Consts::line_height*line++);
     std::vector<std::string> udplabels = {KEY_UDP_STATE, KEY_UDP_PORT, KEY_UDP_IN, KEY_UDP_DROP};
-    std::string textline = format_with_equal_spacing(udplabels, 40);
+    std::string textline = format_with_equal_spacing(udplabels, UTB2026Consts::output_len);
     tft.print(textline.c_str());
-    tft.setCursor(0,LINE_HEIGHT*line++);
+    tft.setCursor(0,UTB2026Consts::line_height*line++);
     
     std::string state = UTB2026::get_info(KEY_UDP_STATE, "?");
     std::string port = UTB2026::get_info(KEY_UDP_PORT, "?");
@@ -241,7 +249,7 @@ void UTB2026::draw_network_info() {
     std::string drop = std::to_string(UTB2026::get_counter(KEY_UDP_DROP));
     
     std::vector<std::string> udpvalues = {state, port, in, drop};
-    textline = format_with_equal_spacing(udpvalues, 40);
+    textline = format_with_equal_spacing(udpvalues, UTB2026Consts::output_len   );
     
     tft.print(textline.c_str());
 
@@ -261,11 +269,107 @@ void UTB2026::draw_network_info() {
     // line 2 : HTTP: [status] [port] Req:[req]
 };
 
+void UTB2026::add_logger_view(RollingLogger* logger, int x1, int y1, int x2, int y2, uint16_t text_color, uint16_t bg_color)
+{
+    logger_view view;
+    view.logger_instance = logger;
+    view.vp_x = x1;
+    view.vp_y = y1;
+    view.vp_width = x2 - x1;
+    view.vp_height = y2 - y1;
+    view.text_color = text_color;
+    view.bg_color = bg_color;
+    logger_views.push_back(view);
+}
+
+void UTB2026::draw_logger()
+{
+    for (const auto& view : logger_views)
+    {
+        if (view.logger_instance == nullptr)
+            continue;
+
+        tft.setViewport(view.vp_x, view.vp_y, view.vp_width, view.vp_height);
+        tft.fillRect(view.vp_x, view.vp_y, view.vp_width, view.vp_height, view.bg_color);
+
+        const auto& log_rows = view.logger_instance->get_log_rows();
+        int max_rows = view.logger_instance->get_max_rows();
+        int n_rows = log_rows.size();
+        int start_index = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+        
+        for (int i = 0; i < max_rows; ++i)
+        {
+            int u = start_index + i;
+            if (u >= 0 && u < n_rows)
+            {
+                const auto& line = log_rows[u];
+                
+                // Use custom text color if different from background, otherwise use log-level colors
+                if (view.text_color != view.bg_color)
+                {
+                    tft.setTextColor(view.text_color);
+                }
+                else
+                {
+                    // Set color based on log level
+                    switch (line.first)
+                    {
+                    case RollingLogger::DEBUG:
+                        tft.setTextColor(UTB2026Consts::color_debug);
+                        break;
+                    case RollingLogger::INFO:
+                        tft.setTextColor(UTB2026Consts::color_info);
+                        break;
+                    case RollingLogger::WARNING:
+                        tft.setTextColor(UTB2026Consts::color_warning);
+                        break;
+                    case RollingLogger::ERROR:
+                        tft.setTextColor(UTB2026Consts::color_warning);
+                        break;
+                    default:
+                        tft.setTextColor(UTB2026Consts::color_info);
+                        break;
+                    }
+                }
+                
+#ifdef VERBOSE_DEBUG
+                const char *level_name = "?";
+                switch (line.first)
+                {
+                case RollingLogger::DEBUG:
+                    level_name = "d";
+                    break;
+                case RollingLogger::INFO:
+                    level_name = "i";
+                    break;
+                case RollingLogger::WARNING:
+                    level_name = "w";
+                    break;
+                case RollingLogger::ERROR:
+                    level_name = "e";
+                    break;
+                case RollingLogger::TRACE:
+                    level_name = "t";
+                    break;
+                }
+                tft.setCursor(view.vp_x, view.vp_y + i * LINE_HEIGHT);
+                tft.print(level_name);
+                tft.print("|");
+#else
+                tft.setCursor(view.vp_x, view.vp_y + i * UTB2026Consts::line_height);
+#endif
+                tft.print(line.second.c_str());
+            }
+        }
+    }
+}
+
 void UTB2026::draw_all()
 
 {   tft.setViewport(0, 0, 240, 80);
     tft.fillScreen(TFT_BROWN);
     draw_network_info();
     draw_servos();
+    draw_logger();
 };
 

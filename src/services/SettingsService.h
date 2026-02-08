@@ -30,13 +30,11 @@ struct Setting
  * @class SettingsService
  * @brief Service for managing persistent settings using ESP32 Preferences
  */
-class SettingsService : public IsServiceInterface, public IsOpenAPIInterface
+class SettingsService : public IsOpenAPIInterface
 {
 public:
     SettingsService();
     ~SettingsService();
-    
-    IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
     
     /**
      * @brief Initialize the settings service
@@ -73,6 +71,8 @@ public:
      * @return Service subpath
      */
     std::string getServiceSubPath() override;
+    
+
     
     /**
      * @brief Get a single setting value
@@ -125,8 +125,7 @@ public:
      */
     bool clearDomain(const std::string& domain);
 
-private:
-    Preferences preferences_;
+private:    
     bool initialized_;
     
     /**

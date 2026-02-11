@@ -410,7 +410,7 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& sta
         
         if (body.isEmpty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -419,7 +419,7 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& sta
         
         if (error || !doc[ServoConsts::servo_channel].is<uint8_t>() || !doc[ServoConsts::servo_angle].is<uint16_t>())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
@@ -428,17 +428,17 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& sta
 
         if (angle > 360 || ch > 7)
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
             return;
         }
 
         if (setServoAngle(ch, angle))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_angle).c_str());
+            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_angle));
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_angle).c_str());
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_angle));
         }
     });
 
@@ -467,7 +467,7 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& sta
         
         if (body.isEmpty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -476,7 +476,7 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& sta
         
         if (error || !doc[ServoConsts::servo_channel].is<int>() || !doc[ServoConsts::servo_speed].is<int>())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -485,17 +485,17 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& sta
         
         if (channel > 7 || speed < -100 || speed > 100)
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
             return;
         }
         
         if (this->setServoSpeed(channel, speed))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_speed).c_str());
+            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_speed));
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_speed).c_str());
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_speed));
         }
     });
 
@@ -523,7 +523,7 @@ bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse>& standard_
         }
         else
         {
-            ResponseHelper::sendError(ResponseHelperConsts::OPERATION_FAILED, ServoConsts::action_stop_all);
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, ServoConsts::action_stop_all);
         }
     });
 
@@ -557,7 +557,7 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standar
         
         if (!webserver.hasArg(ServoConsts::servo_channel))
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
@@ -565,7 +565,7 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standar
         
         if (channel > 7)
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
             return;
         }
         
@@ -626,7 +626,7 @@ bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& stand
         
         if (body.isEmpty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -635,7 +635,7 @@ bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& stand
         
         if (error || !doc[ServoConsts::servo_angle].is<uint16_t>())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
@@ -643,17 +643,17 @@ bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& stand
         
         if (angle > 360)
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
             return;
         }
         
         if (setAllServoAngle(angle))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_all_angle).c_str());
+            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_all_angle));
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_all_angle).c_str());
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_all_angle));
         }
     });
 
@@ -682,7 +682,7 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& stand
         
         if (body.isEmpty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -691,7 +691,7 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& stand
         
         if (error || !doc[ServoConsts::servo_speed].is<int8_t>())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
@@ -699,17 +699,17 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& stand
         
         if (speed < -100 || speed > 100)
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
             return;
         }
         
         if (setAllServoSpeed(speed))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_all_speed).c_str());
+            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_all_speed));
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_all_speed).c_str());
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_all_speed));
         }
     });
 
@@ -740,7 +740,7 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
         
         if (body.isEmpty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -748,7 +748,7 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
         DeserializationError error = deserializeJson(doc, body.c_str());
         if (error || !doc[ServoConsts::servos].is<JsonArray>())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
@@ -766,17 +766,17 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
 
         if (ops.empty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
         if (setServosSpeedMultiple(ops))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_servos_speed_multiple).c_str());
+            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_servos_speed_multiple));
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_servos_speed_multiple).c_str());
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_servos_speed_multiple));
         }
     });
 
@@ -807,7 +807,7 @@ bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIRespo
         
         if (body.isEmpty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -815,7 +815,7 @@ bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIRespo
         DeserializationError error = deserializeJson(doc, body.c_str());
         if (error || !doc[ServoConsts::servos].is<JsonArray>())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
@@ -833,17 +833,17 @@ bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIRespo
 
         if (ops.empty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
 
         if (setServosAngleMultiple(ops))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_set_servos_angle_multiple).c_str());
+            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_servos_angle_multiple));
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_set_servos_angle_multiple).c_str());
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_servos_angle_multiple));
         }
     });
 
@@ -874,7 +874,7 @@ bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse>& stand
         
         if (body.isEmpty())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -883,7 +883,7 @@ bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse>& stand
         
         if (error || !doc[ServoConsts::servo_channel].is<uint8_t>() || !doc[ServoConsts::connection].is<uint8_t>())
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_params).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
             return;
         }
         
@@ -892,18 +892,18 @@ bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse>& stand
         
         if (channel > 7 || connection > 3)
         {
-            webserver.send(422, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, RoutesConsts::msg_invalid_values).c_str());
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
             return;
         }
         
         ServoConnection servo_connection = static_cast<ServoConnection>(connection);
         if (attachServo(channel, servo_connection))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_attach_servo).c_str());
+            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_attach_servo));
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_attach_servo).c_str());
+            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_attach_servo));
         }
     });
 

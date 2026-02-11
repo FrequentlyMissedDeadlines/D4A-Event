@@ -1,4 +1,5 @@
 #include "../sensor/K10sensorsService.h"
+#include "../ResponseHelper.h"
 #include <WebServer.h>
 #include <inttypes.h>
 #include <cstdio>
@@ -106,18 +107,16 @@ bool K10SensorsService::registerRoutes()
     // Check if AHT20 initialization failed
     if (initResult != 0)
     {
-      webserver.send(503, RoutesConsts::mime_json, 
-        this->getResultJsonString(RoutesConsts::result_err, 
-          fpstr_to_string(FPSTR(K10SensorsConsts::msg_failed_init_aht20))).c_str());
+      ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
+        fpstr_to_string(FPSTR(K10SensorsConsts::msg_failed_init_aht20)).c_str());
       return;
     }
     
     // Check if sensor is ready
     if (!sensorReady())
     {
-      webserver.send(503, RoutesConsts::mime_json, 
-        this->getResultJsonString(RoutesConsts::result_err, 
-          fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready_init))).c_str());
+      ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
+        fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready_init)).c_str());
       return;
     }
     
@@ -129,9 +128,8 @@ bool K10SensorsService::registerRoutes()
     }
     catch (...)
     {
-      webserver.send(503, RoutesConsts::mime_json, 
-        this->getResultJsonString(RoutesConsts::result_err, 
-          fpstr_to_string(FPSTR(K10SensorsConsts::msg_get_sensor_failed))).c_str());
+      ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
+        fpstr_to_string(FPSTR(K10SensorsConsts::msg_get_sensor_failed)).c_str());
     }
   });
 

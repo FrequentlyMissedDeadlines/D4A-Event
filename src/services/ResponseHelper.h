@@ -14,7 +14,12 @@
 // Forward declaration
 extern WebServer webserver;
 
-namespace ResponseHelperConsts {
+/**
+ * @class ResponseHelper
+ * @brief Centralized HTTP response helper for JSON serialization and error handling
+ */
+class ResponseHelper {
+public:
     // Error types as HTTP status codes
     enum ErrorType {
         BAD_REQUEST = 400,
@@ -24,14 +29,7 @@ namespace ResponseHelperConsts {
         OPERATION_FAILED = 456,    // Server error: operation failed
         SERVICE_UNAVAILABLE = 503  // Service not ready
     };
-}
 
-/**
- * @class ResponseHelper
- * @brief Centralized HTTP response helper for JSON serialization and error handling
- */
-class ResponseHelper {
-public:
     /**
      * @brief Send JSON response with pre-built JsonDocument
      * @param statusCode HTTP status code
@@ -58,6 +56,20 @@ public:
     }
     
     /**
+     * @brief Send JSON success response with __FlashStringHelper* message
+     * @param message Success message from FPSTR/F() macro
+     * @param statusCode HTTP status code (default 200)
+     */
+    static void sendSuccess(const __FlashStringHelper* message, int statusCode = 200) {
+        JsonDocument doc;
+        doc["result"] = "ok";
+        if (message) {
+            doc["message"] = message;
+        }
+        sendJsonResponse(statusCode, doc);
+    }
+    
+    /**
      * @brief Send JSON success response with custom data
      * @param statusCode HTTP status code
      * @param doc JsonDocument with custom success data
@@ -71,7 +83,7 @@ public:
      * @param errorType HTTP error status code
      * @param message Error message (PROGMEM)
      */
-    static void sendError(ResponseHelperConsts::ErrorType errorType, const char* message) {
+    static void sendError(ErrorType errorType, const char* message) {
         JsonDocument doc;
         doc["error"] = message;
         doc["result"] = "error";
@@ -83,7 +95,7 @@ public:
      * @param errorType HTTP error status code
      * @param message Error message from FPSTR/F() macro
      */
-    static void sendError(ResponseHelperConsts::ErrorType errorType, const __FlashStringHelper* message) {
+    static void sendError(ErrorType errorType, const __FlashStringHelper* message) {
         JsonDocument doc;
         doc["error"] = message;
         doc["result"] = "error";
@@ -95,7 +107,7 @@ public:
      * @param errorType HTTP error status code
      * @param message Error message as std::string
      */
-    static void sendError(ResponseHelperConsts::ErrorType errorType, const std::string& message) {
+    static void sendError(ErrorType errorType, const std::string& message) {
         sendError(errorType, message.c_str());
     }
     
@@ -132,19 +144,19 @@ public:
         String body = webserver.arg("plain");
         
         if (body.isEmpty()) {
-            ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, "Empty request body");
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, "Empty request body");
             return false;
         }
         
         DeserializationError error = deserializeJson(doc, body.c_str());
         if (error) {
             std::string errorMsg = std::string("Invalid JSON: ") + error.c_str();
-            ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, errorMsg);
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, errorMsg);
             return false;
         }
         
         if (validator && !validator(doc)) {
-            ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, 
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, 
                                      "Invalid payload schema");
             return false;
         }
@@ -174,7 +186,7 @@ public:
         if (!webserver.hasArg(paramName)) {
             std::string msg = errorMessage ? std::string(errorMessage) 
                                           : std::string("Missing parameter: ") + paramName;
-            ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, msg);
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
             return "";
         }
         
@@ -183,7 +195,7 @@ public:
         if (validator && !validator(value)) {
             std::string msg = errorMessage ? std::string(errorMessage)
                                           : std::string("Invalid ") + paramName;
-            ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, msg);
+            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
             return "";
         }
         
@@ -204,10 +216,10 @@ public:
     {
         if (!webserver.hasArg(paramName)) {
             if (errorMessage) {
-                ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, errorMessage);
+                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, errorMessage);
             } else {
                 std::string msg = std::string("Missing parameter: ") + paramName;
-                ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, msg);
+                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
             }
             return "";
         }
@@ -216,10 +228,10 @@ public:
         
         if (validator && !validator(value)) {
             if (errorMessage) {
-                ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, errorMessage);
+                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, errorMessage);
             } else {
                 std::string msg = std::string("Invalid ") + paramName;
-                ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS, msg);
+                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
             }
             return "";
         }
@@ -252,7 +264,7 @@ public:
     static bool ensureServiceRunning(IsServiceInterface* service, const char* serviceName) {
         if (!service || !service->isServiceStarted()) {
             std::string msg = std::string(serviceName) + " service not initialized";
-            ResponseHelper::sendError(ResponseHelperConsts::SERVICE_UNAVAILABLE, msg);
+            ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE, msg);
             return false;
         }
         return true;

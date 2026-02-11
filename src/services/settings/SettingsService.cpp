@@ -46,17 +46,6 @@ static SettingsService* g_settingsServiceInstance = nullptr;
 // External reference to global webserver
 extern WebServer webserver;
 
-// Helper function to create JSON error response from PROGMEM string
-static inline String createJsonError(const __FlashStringHelper* msg)
-{
-    String result;
-    result.reserve(64);
-    result += FPSTR(SettingsConsts::json_error_prefix);
-    result += msg;
-    result += FPSTR(SettingsConsts::json_error_suffix);
-    return result;
-}
-
 SettingsService::SettingsService() 
 {
     g_settingsServiceInstance = this;
@@ -321,7 +310,7 @@ void SettingsService::handlePostSettings()
             doc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
             ResponseHelper::sendJsonResponse(200, doc);
         } else {
-            ResponseHelper::sendError(ResponseHelperConsts::SERVICE_UNAVAILABLE, 
+            ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE, 
                                      FPSTR(SettingsConsts::msg_operation_failed));
         }
     } else if (webserver.hasArg("plain")) {
@@ -347,11 +336,11 @@ void SettingsService::handlePostSettings()
             responseDoc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
             ResponseHelper::sendJsonResponse(200, responseDoc);
         } else {
-            ResponseHelper::sendError(ResponseHelperConsts::SERVICE_UNAVAILABLE,
+            ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
                                      FPSTR(SettingsConsts::msg_operation_failed));
         }
     } else {
-        ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS,
+        ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS,
                                  FPSTR(RoutesConsts::msg_invalid_request));
     }
 }

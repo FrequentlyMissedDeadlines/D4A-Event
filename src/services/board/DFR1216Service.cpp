@@ -11,6 +11,7 @@
 
 #include "DFR1216Service.h"
 #include "../FlashStringHelper.h"
+#include "../ResponseHelper.h"
 #include <WebServer.h>
 #include <pgmspace.h>
 #include <ArduinoJson.h>
@@ -72,20 +73,6 @@ namespace DFR1216Consts
     constexpr const char resp_status_example[] PROGMEM = "{\"message\":\"DFR1216Service\",\"status\":\"started\"}";
 }
 
-/**
- * @brief Helper function to create JSON error response
- * @param msg Error message as PROGMEM pointer
- * @return Error JSON string
- */
-static inline String create_error_json(const __FlashStringHelper *msg)
-{
-    String result;
-    result.reserve(64);
-    result += FPSTR(DFR1216Consts::json_error);
-    result += msg;
-    result += "}";
-    return result;
-}
 
 bool DFR1216Service::initializeService()
 {
@@ -296,8 +283,8 @@ void DFR1216Service::handle_set_servo_angle()
     if (!webserver.hasArg("channel") ||
         !webserver.hasArg("angle"))
     {
-        webserver.send(422, RoutesConsts::mime_json,
-                       create_error_json(FPSTR(DFR1216Consts::msg_missing_servo_params)));
+        ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, 
+                                 FPSTR(DFR1216Consts::msg_missing_servo_params));
         return;
     }
 
@@ -310,15 +297,12 @@ void DFR1216Service::handle_set_servo_angle()
         doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
         doc[FPSTR(DFR1216Consts::json_channel)] = channel;
         doc[FPSTR(DFR1216Consts::json_angle)] = angle;
-
-        std::string response;
-        serializeJson(doc, response);
-        webserver.send(200, RoutesConsts::mime_json, response.c_str());
+        ResponseHelper::sendJsonResponse(200, doc);
     }
     else
     {
-        webserver.send(456, RoutesConsts::mime_json,
-                       create_error_json(FPSTR(RoutesConsts::resp_operation_failed)));
+        ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, 
+                                 FPSTR(RoutesConsts::resp_operation_failed));
     }
 }
 
@@ -331,8 +315,8 @@ void DFR1216Service::handle_set_motor_speed()
     if (!webserver.hasArg("motor") ||
         !webserver.hasArg("speed"))
     {
-        webserver.send(422, RoutesConsts::mime_json,
-                       create_error_json(FPSTR(DFR1216Consts::msg_missing_motor_params)));
+        ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, 
+                                 FPSTR(DFR1216Consts::msg_missing_motor_params));
         return;
     }
 
@@ -345,15 +329,12 @@ void DFR1216Service::handle_set_motor_speed()
         doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
         doc[FPSTR(DFR1216Consts::json_motor)] = motor;
         doc[FPSTR(DFR1216Consts::json_speed)] = speed;
-
-        std::string response;
-        serializeJson(doc, response);
-        webserver.send(200, RoutesConsts::mime_json, response.c_str());
+        ResponseHelper::sendJsonResponse(200, doc);
     }
     else
     {
-        webserver.send(456, RoutesConsts::mime_json,
-                       create_error_json(FPSTR(RoutesConsts::resp_operation_failed)));
+        ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, 
+                                 FPSTR(RoutesConsts::resp_operation_failed));
     }
 }
 

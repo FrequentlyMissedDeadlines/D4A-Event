@@ -10,28 +10,51 @@
 #include <WiFi.h>
 #include <freertos/task.h>
 #include <TFT_eSPI.h>
-#include "services/WiFiService.h"
+
 #include <WebServer.h>
 #include <AsyncUDP.h>
 #include <LittleFS.h>
 #include <SPIFFS.h>
 #include <FFat.h>
 #include <unihiker_k10.h>
-#include "services/BoardInfoService.h"
-#include "services/WebcamService.h"
-#include "services/ServoService.h"
-#include "services/UDPService.h"
-#include "services/HTTPService.h"
-#include "services/SettingsService.h"
-#include "services/K10sensorsService.h"
 #include "services/RollingLogger.h"
-#include "services/RollingLoggerService.h"
-#include "services/MusicService.h"
+#include "services/board/BoardInfoService.h"
+#include "services/camera/K10CamService.h"
+#include "services/servo/ServoService.h"
+#include "services/udp/UDPService.h"
+#include "services/http/HTTPService.h"
+#include "services/settings/SettingsService.h"
+#include "services/sensor/K10sensorsService.h"
+#include "services/log/RollingLoggerService.h"
+#include "services/music/MusicService.h"
+#include "services/wifi/WiFiService.h"
 #include "ui/utb2026.h"
 
 
 #define LOAD_FONT8N // TFT font - special case for library config
 #define VERBOSE_DEBUG // Enable verbose debug logging
+
+// Main application constants
+namespace MainConsts
+{
+  constexpr const char msg_http_task_started[] PROGMEM = "HTTP server task started";
+  constexpr const char msg_webserver_running[] PROGMEM = "WebServer task running...";
+  constexpr const char msg_service[] PROGMEM = "Service ";
+  constexpr const char msg_start_failed[] PROGMEM = " start failed.";
+  constexpr const char msg_started[] PROGMEM = " started.";
+  constexpr const char msg_initialize_failed[] PROGMEM = " initialize failed.";
+  constexpr const char msg_openapi_registered[] PROGMEM = "OpenAPI registered ";
+  constexpr const char msg_register_failed[] PROGMEM = "registerOpenAPIService failed for ";
+  constexpr const char msg_no_openapi[] PROGMEM = "No OpenAPI for ";
+  constexpr const char msg_starting_services[] PROGMEM = "Starting services...";
+  constexpr const char msg_fatal_wifi_failed[] PROGMEM = "FATAL : WiFi failed to start.";
+  constexpr const char msg_failed_udp[] PROGMEM = "Failed to start UDP service";
+  constexpr const char msg_failed_webserver[] PROGMEM = "Failed to start webserver";
+  constexpr const char msg_bot_started[] PROGMEM = "Bot ";
+  constexpr const char msg_udp_port[] PROGMEM = "UDP port:";
+  constexpr const char str_serial_init_display[] PROGMEM = "[INIT] Display initialized";
+}
+
 namespace
 {
   constexpr uint16_t web_port = 80;
@@ -70,7 +93,7 @@ SettingsService settings_service = SettingsService();
 K10SensorsService k10sensors_service = K10SensorsService();
 BoardInfoService board_info = BoardInfoService();
 ServoService servo_service = ServoService();
-WebcamService webcam_service = WebcamService();
+K10CamService webcam_service = K10CamService();
 RollingLogger debug_logger = RollingLogger();
 RollingLogger app_info_logger = RollingLogger();
 RollingLoggerService rolling_logger_service = RollingLoggerService();
@@ -124,7 +147,7 @@ void task_DISPLAY(void *pvParameters)
  */
 void task_HTTP_SVR(void *pvParameters)
 {
-  debug_logger.info("HTTP server task started");
+  debug_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_http_task_started)));
   int loop_count = 0;
   for (;;)
   {
@@ -132,7 +155,7 @@ void task_HTTP_SVR(void *pvParameters)
     loop_count++;
     if (loop_count % 1000 == 0)
     {
-      debug_logger.trace("WebServer task running...");
+      debug_logger.trace(fpstr_to_string(FPSTR(MainConsts::msg_webserver_running)));
     }
     // Very short delay to allow other tasks to run
     vTaskDelay(web_server_task_delay_ticks);
@@ -154,27 +177,34 @@ namespace
     unihiker.rgb->write(0, 32, 0, 0); // pixel0 = red
 
 #ifdef VERBOSE_DEBUG
-    debug_logger.debug("Service " + service.getServiceName());
+    debug_logger.debug(fpstr_to_string(FPSTR(MainConsts::msg_service)) + service.getServiceName());
 #endif
     service.setLogger(&debug_logger);
+    
+    // Attach settings service if this is not the settings service itself
+    if (&service != static_cast<IsServiceInterface*>(&settings_service))
+    {
+      service.setSettingsService(&settings_service);
+    }
+    
     if (service.initializeService())
     {
       unihiker.rgb->write(0, 32, 32, 0); // pixel0 = red
       if (!service.startService())
       {
-        app_info_logger.error(service.getServiceName() + " start failed.");
+        app_info_logger.error(service.getServiceName() + fpstr_to_string(FPSTR(MainConsts::msg_start_failed)));
       }
       else
       {
         unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
 #ifdef VERBOSE_DEBUG
-        app_info_logger.debug(service.getServiceName() + " started.");
+        app_info_logger.debug(service.getServiceName() + fpstr_to_string(FPSTR(MainConsts::msg_started)));
 #endif
       }
     }
     else
     {
-      app_info_logger.error(service.getServiceName() + " initialize failed.");
+      app_info_logger.error(service.getServiceName() + fpstr_to_string(FPSTR(MainConsts::msg_initialize_failed)));
     }
 
     // Register OpenAPI routes if the service implements IsOpenAPIInterface
@@ -185,19 +215,19 @@ namespace
       try
       {
 #ifdef VERBOSE_DEBUG
-        debug_logger.info("OpenAPI registered " + service.getServiceName());
+        debug_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_openapi_registered)) + service.getServiceName());
 #endif
         http_service.registerOpenAPIService(openapi);
       }
       catch (const std::exception &e)
       {
-        debug_logger.error("registerOpenAPIService failed for " + service.getServiceName());
+        debug_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_register_failed)) + service.getServiceName());
       }
     }
     else
     {
 #ifdef VERBOSE_DEBUG
-      debug_logger.debug("No OpenAPI for " + service.getServiceName());
+      debug_logger.debug(fpstr_to_string(FPSTR(MainConsts::msg_no_openapi)) + service.getServiceName());
 #endif
     }
     unihiker.rgb->write(0, 0, 0, 0); // pixel0 = red
@@ -265,16 +295,10 @@ void setup()
 {
   // Small delay to ensure system stabilizes
   delay(500);
-#ifdef SERIAL_DEBUG
-  Serial.begin(serial_baud);
-#endif
   unihiker.begin();
   unihiker.initScreen(2, 30);
   unihiker.creatCanvas();
   unihiker.setScreenBackground(TFT_BLACK);
-#ifdef SERIAL_DEBUG
-  Serial.println("[INIT] Display initialized");
-#endif
 
   unihiker.rgb->write(0, 0, 0, 0);
   unihiker.rgb->write(1, 0, 0, 0);
@@ -294,10 +318,10 @@ void setup()
 
 
 
-  debug_logger.info("Starting services...");
+  debug_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_starting_services)));
   if (!start_service(wifi_service))
   {
-    app_info_logger.error("FATAL : WiFi failed to start.");
+    app_info_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_fatal_wifi_failed)));
   
     return;
   }  
@@ -318,7 +342,7 @@ void setup()
   }
   else
   {
-    app_info_logger.error("Failed to start UDP service");
+    app_info_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_failed_udp)));
   }
 
   if (start_service(http_service))
@@ -327,7 +351,7 @@ void setup()
   }
   else
   {
-    app_info_logger.error("Failed to start webserver");
+    app_info_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_failed_webserver)));
   }
 
 
@@ -339,9 +363,9 @@ void setup()
   unihiker.rgb->write(1, 0, 0, 0);
   unihiker.rgb->write(2, 0, 0, 0);
 
-  app_info_logger.info("Bot "+wifi_service.getHostname()+" started.");
-  app_info_logger.info(wifi_service.getIP() + " " + wifi_service.getSSID());
-  app_info_logger.info("UDP port:" + std::to_string(udp_service.getPort()));
+  app_info_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_bot_started)) + wifi_service.getHostname() + fpstr_to_string(FPSTR(MainConsts::msg_started)));
+  app_info_logger.info(wifi_service.getIP() + fpstr_to_string(FPSTR(RoutesConsts::str_space)) + wifi_service.getSSID());
+  app_info_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_udp_port)) + std::to_string(udp_service.getPort()));
   
 }
 

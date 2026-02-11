@@ -81,10 +81,37 @@ It also expose a UDP service that should received commands from a user remote co
 - Multiple servo control operations (individual, all, or batch)
 - Uses DFRobot_UnihikerExpansion controller
 
-#### 6. **WebcamService** (`/api/webcam/v1/*`)
+#### 6. **K10CamService** (`/api/cam/v1`)
 - Camera snapshot capture
 - Streaming capabilities
 - Image quality configuration
+
+#### 7. **SettingsService** (`/api/settings/v1`)
+- Persistent configuration storage
+- Service settings load/save
+- Configuration persistence via EEPROM/NVS
+
+#### 8. **DFR1216Service** 
+- DFRobot Unihiker expansion board support
+- I2C communication with expansion modules
+- Multi-sensor integration
+
+#### 9. **RollingLoggerService** (`/api/logs/v1`)
+- HTTP endpoint for accessing application logs
+- Log level configuration
+- Real-time log streaming
+- Historical log queries
+
+#### 10. **MusicService** (`/api/music/v1`)
+- Audio playback control
+- Music file management
+- Volume control
+- Playback state management
+
+#### 11. **RemoteControlService** 
+- Remote device control integration
+- Command processing
+- Response handling
 
 
 ### Support Components
@@ -109,11 +136,13 @@ It also expose a UDP service that should received commands from a user remote co
 - Parameter and response schema definition
 - Authentication flag support
 
-### Web Interface Files (in `data/www/`)
+### Web Interface Files (in `data/`)
 - `index.html` - Main landing page
-- `HTTPService.html` / `HTTPService.js` - HTTP service testing interface
-- `WebcamService.html` / `WebcamService.js` - Webcam control interface
-- `ServoService.html` / `ServoService.js` - Servo control interface
+- `CamService.html` - Camera control interface
+- `ServoService.html` - Servo control interface
+- `MusicService.html` - Music service interface
+- `LogService.html` - Logging interface
+- `MetricService.html` - Metrics interface
 - `style.css` - Common styles
 
 ---
@@ -217,13 +246,12 @@ build_flags = -std=c++17         # Enable C++17 features
 
 # Embed web files into firmware
 board_build.embed_txtfiles =
-    data/HTTPService.html  
-    data/HTTPService.js  
     data/index.html  
-    data/WebcamService.html  
-    data/WebcamService.js  
+    data/CamService.html  
     data/ServoService.html  
-    data/ServoService.js  
+    data/MusicService.html
+    data/LogService.html
+    data/MetricService.html  
     data/style.css
 
 # External libraries

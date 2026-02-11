@@ -1,0 +1,786 @@
+#include "HTTPService.h"
+#include "../FlashStringHelper.h"
+/**
+ * @file HTTPService.cpp
+ * @brief Implementation for HTTP web server integration
+ * @details Exposed routes:
+ *          - GET / - Home page with service dashboard
+ *          - GET /api/docs - OpenAPI documentation page
+ *          - GET /api/openapi.json - Dynamic OpenAPI specification
+ *          Static files (HTML, CSS, JS) served from LittleFS filesystem
+ */
+
+#include <Arduino.h>
+#include <esp_system.h>
+#include <esp_camera.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <unihiker_k10.h>
+#include <pgmspace.h>
+#include <FS.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
+#include <esp_partition.h>
+#include <sstream>
+#include <algorithm>
+#include "../RollingLogger.h"
+#include "../IsOpenAPIInterface.h"
+
+// Forward declarations for external variables from main.cpp
+std::string master_IP;
+std::string master_TOKEN;
+
+extern UNIHIKER_K10 unihiker;
+
+
+// static const char HOME_HTML_ROUTE_ITEM[] PROGMEM = "      <li>\n        <span class=\"method method-%s\">%s</span>\n        <a href=\"%s\" class=\"path\">%s</a>\n        <div style=\"margin-left: 50px; color: #666; font-size: 13px;\">%s</div>\n      </li>\n";
+// static const char HOME_HTML_TAIL[] PROGMEM = "    </ul>\n  </div>\n</body>\n</html>\n";
+
+// File paths for API test page templates (stored in LittleFS)
+static const char path_api_test_head[] PROGMEM = "/api_test_head.html";
+static const char path_api_test_tail[] PROGMEM = "/api_test_tail.html";
+
+
+bool HTTPService::startService()
+{
+  if (logger)
+    logger->info("Starting HTTP service...");
+
+  // Initialize LittleFS on partition 'model' (from large_spiffs_16MB.csv)
+  // The partition table defines: model, data, spiffs, 0x510000, 4563k
+  // PlatformIO uploadfs uploads to this partition when board_build.filesystem = littlefs
+  bool mounted = LittleFS.begin(false, "/littlefs", 10, "voice_data") ;
+  
+  if (!mounted)
+  {
+      if (logger) logger->error("Failed to mount LittleFS  'voice_data'");
+      setServiceStatus(START_FAILED);
+      return false;
+  }
+  
+  if (logger)
+  {
+    logger->info("LittleFS mounted successfully");
+    // Debug: List files in LittleFS
+    listFilesInFS(LittleFS, "/");
+  }
+
+  // Register base routes but don't start server yet (services need to register first)
+  try{
+  
+  webserver.begin();
+  }
+  catch (const std::exception &e)
+  {
+    setServiceStatus(START_FAILED);
+    logger->error(std::string("Failed webserver.begin ") + e.what());
+    return false;
+  }
+
+  setServiceStatus(STARTED );
+
+  
+  if (logger)
+    logger->info("WebServer started");
+  
+  
+#ifdef VERBOSE_DEBUG
+  logger->debug(getServiceName() + " "  + getStatusString());   
+#endif
+  return true;
+}
+
+bool HTTPService::stopService()
+{
+  try
+  {
+    if (isServiceStarted())
+    {
+      webserver.stop();
+      setServiceStatus(STOPPED);
+    }
+    LittleFS.end();
+    setServiceStatus(STOPPED);
+
+#ifdef VERBOSE_DEBUG
+    logger->debug(getServiceName() + " " + getStatusString());
+#endif
+    return true;
+  }
+  catch (const std::exception &e)
+  {
+          setServiceStatus(STOP_FAILED);
+
+    logger->error(std::string(e.what()));
+  }
+  logger->error(getServiceName() + " " + getStatusString());
+  return false;
+}
+
+void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
+{
+  if (service)
+  {
+    openAPIServices.push_back(service);
+#ifdef VERBOSE_DEBUG
+    if (logger)
+      logger->debug("Registered services #" + std::to_string(openAPIServices.size()) + ": " + std::to_string(service->getOpenAPIRoutes().size()));
+#endif
+  }
+}
+
+/**
+ * Handle home page request with route listing
+ */
+void HTTPService::handleHomeClient(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+  //redirect root to index.html
+  webserver->sendHeader("Location", "/index.html");
+  webserver->send(302, "text/plain", "Redirecting to home page...");
+}
+
+/**
+ * @brief Read file content from LittleFS into a string
+ * @param path Path to the file in LittleFS
+ * @return File content as string, empty string on failure
+ */
+std::string HTTPService::readFileToString(const char *path)
+{
+  if (!LittleFS.exists(path))
+  {
+    if (logger)
+    {
+      logger->warning(std::string("Template not found: ") + path);
+    }
+    return "";
+  }
+
+  File file = LittleFS.open(path, "r");
+  if (!file || file.isDirectory())
+  {
+    if (logger)
+    {
+      logger->warning(std::string("Cannot read template: ") + path);
+    }
+    if (file)
+      file.close();
+    return "";
+  }
+
+  size_t file_size = file.size();
+  std::string content;
+  content.reserve(file_size);
+
+  constexpr size_t kBufferSize = 512;
+  char buffer[kBufferSize];
+  while (file.available())
+  {
+    size_t bytes_read = file.readBytes(buffer, kBufferSize);
+    content.append(buffer, bytes_read);
+  }
+
+  file.close();
+  return content;
+}
+
+/**
+ * Handle test page request with interactive forms for all routes
+ */
+void HTTPService::handleTestClient(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+
+  // Read HTML header from LittleFS
+  std::string html_head = readFileToString(path_api_test_head);
+  if (html_head.empty())
+  {
+    webserver->send(500, RoutesConsts::mime_plain_text, "Template file not found");
+    return;
+  }
+
+  std::stringstream ss;
+  ss << html_head;
+
+  // Generate forms for each route
+  int formId = 0;
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    for (const auto &route : routes)
+    {
+      ss << "    <div class=\"route-container\">\n";
+      ss << "      <div class=\"route-header\">\n";
+      ss << "        <span class=\"method method-" << route.method << "\">" << route.method << "</span>\n";
+      ss << "        <span class=\"path\">" << route.path << "</span>\n";
+      ss << "      </div>\n";
+      ss << "      <div class=\"description\">" << route.description << "</div>\n";
+      ss << "      <form id=\"form" << formId << "\" onsubmit=\"return testRoute(" << formId << ", '"
+         << route.method << "', '" << route.path << "')\">\n";
+
+      // Add input fields for parameters
+      for (const auto &param : route.parameters)
+      {
+        ss << "        <div class=\"param-group\">\n";
+        ss << "          <label class=\"param-label\">" << param.name;
+        if (param.required)
+          ss << " <span style=\"color:red;\">*</span>";
+        ss << " (" << param.in << ", " << param.type << ")</label>\n";
+        ss << "          <input type=\"text\" class=\"param-input\" name=\"" << param.name
+           << "\" data-param-in=\"" << param.in << "\" placeholder=\"" << param.description;
+        if (!param.example.empty())
+          ss << " (e.g., " << param.example << ")";
+        ss << "\"";
+        if (!param.defaultValue.empty())
+          ss << " value=\"" << param.defaultValue << "\"";
+        if (param.required)
+          ss << " required";
+        ss << ">\n";
+        ss << "        </div>\n";
+      }
+
+      ss << "        <button type=\"submit\" class=\"btn btn-primary\">Send " << route.method << " Request</button>\n";
+      ss << "      </form>\n";
+      ss << "      <div class=\"response-area\" id=\"response" << formId << "\">\n";
+      ss << "        <h4>Response:</h4>\n";
+      ss << "        <div class=\"response-content\" id=\"responseContent" << formId << "\"></div>\n";
+      ss << "      </div>\n";
+      ss << "    </div>\n";
+
+      formId++;
+    }
+  }
+
+  // Read JavaScript/HTML tail from LittleFS
+  std::string html_tail = readFileToString(path_api_test_tail);
+  if (html_tail.empty())
+  {
+    webserver->send(500, RoutesConsts::mime_plain_text, "Template tail file not found");
+    return;
+  }
+  ss << html_tail;
+
+  std::string html_content = ss.str();
+  webserver->send_P(200, "text/html; charset=utf-8", html_content.c_str());
+}
+
+/**
+ * Handle OpenAPI spec request
+ */
+void HTTPService::handleOpenAPIRequest(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+
+  JsonDocument doc;
+
+  // OpenAPI 3.0.0 header
+  doc["openapi"] = "3.0.0";
+  doc["info"]["title"] = "K10 Bot API";
+  doc["info"]["version"] = "1.0.0";
+  doc["info"]["description"] = "REST API for K10 Bot services";
+  doc["info"]["contact"]["name"] = "aMaker club";
+  doc["info"]["contact"]["url"] = "https://amadeus.atlassian.net/wiki/spaces/aMaker";
+  doc["info"]["contact"]["email"] = "";
+  doc["info"]["contact"]["description"] = "For support, contact Thierry.";
+
+  JsonObject paths = doc["paths"].to<JsonObject>();
+#ifdef VERBOSE_DEBUG
+  logger->debug("Generating OpenAPI services: " + std::to_string(openAPIServices.size()));
+#endif
+  // Aggregate all routes from registered OpenAPI services
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+#ifdef VERBOSE_DEBUG
+    logger->debug("Generating OpenAPI routes:  " + std::to_string(routes.size()));
+#endif
+    for (const auto &route : routes)
+    {
+      // Create path object if it doesn't exist
+      JsonObject pathObj = paths[route.path.c_str()].to<JsonObject>();
+
+      // Create method object
+      std::string methodLower = route.method;
+      // Convert to lowercase for OpenAPI spec
+      for (char &c : methodLower)
+        c = tolower(c);
+
+      JsonObject methodObj = pathObj[methodLower.c_str()].to<JsonObject>();
+      methodObj["summary"] = route.summary.empty() ? route.description.c_str() : route.summary.c_str();
+      methodObj["description"] = route.description.c_str();
+
+      // Add tags if available
+      if (!route.tags.empty())
+      {
+        JsonArray tagsArr = methodObj["tags"].to<JsonArray>();
+        for (const auto &tag : route.tags)
+        {
+          tagsArr.add(tag.c_str());
+        }
+      }
+
+      // Add deprecated flag if set
+      if (route.deprecated)
+      {
+        methodObj["deprecated"] = true;
+      }
+
+      // Add parameters
+      if (!route.parameters.empty())
+      {
+        JsonArray paramsArr = methodObj["parameters"].to<JsonArray>();
+        for (const auto &param : route.parameters)
+        {
+          JsonObject paramObj = paramsArr.add<JsonObject>();
+          paramObj["name"] = param.name.c_str();
+          paramObj["in"] = param.in.c_str();
+          paramObj["description"] = param.description.c_str();
+          paramObj["required"] = param.required;
+
+          JsonObject schemaObj = paramObj["schema"].to<JsonObject>();
+          schemaObj["type"] = param.type.c_str();
+
+          if (!param.defaultValue.empty())
+          {
+            schemaObj["default"] = param.defaultValue.c_str();
+          }
+          if (!param.example.empty())
+          {
+            paramObj["example"] = param.example.c_str();
+          }
+        }
+      }
+
+      // Add request body if present
+      if (!route.requestBody.schema.empty())
+      {
+        JsonObject reqBodyObj = methodObj["requestBody"].to<JsonObject>();
+        reqBodyObj["description"] = route.requestBody.description.c_str();
+        reqBodyObj["required"] = route.requestBody.required;
+
+        JsonObject contentObj = reqBodyObj["content"].to<JsonObject>();
+        JsonObject mediaTypeObj = contentObj[route.requestBody.contentType.c_str()].to<JsonObject>();
+
+        // Parse and add schema if it's a JSON string
+        if (!route.requestBody.schema.empty())
+        {
+          mediaTypeObj["schema"] = serialized(route.requestBody.schema.c_str());
+        }
+
+        if (!route.requestBody.example.empty())
+        {
+          mediaTypeObj["example"] = serialized(route.requestBody.example.c_str());
+        }
+      }
+
+      // Add responses
+      JsonObject responses = methodObj["responses"].to<JsonObject>();
+      if (!route.responses.empty())
+      {
+        for (const auto &resp : route.responses)
+        {
+          char statusCodeStr[4];
+          snprintf(statusCodeStr, sizeof(statusCodeStr), "%d", resp.statusCode);
+
+          JsonObject respObj = responses[statusCodeStr].to<JsonObject>();
+          respObj["description"] = resp.description.c_str();
+
+          if (!resp.schema.empty())
+          {
+            JsonObject contentObj = respObj["content"].to<JsonObject>();
+            JsonObject mediaTypeObj = contentObj[resp.contentType.c_str()].to<JsonObject>();
+            mediaTypeObj["schema"] = serialized(resp.schema.c_str());
+
+            if (!resp.example.empty())
+            {
+              mediaTypeObj["example"] = serialized(resp.example.c_str());
+            }
+          }
+        }
+      }
+      else
+      {
+        // Fallback to basic response
+        JsonObject response200 = responses["200"].to<JsonObject>();
+        response200["description"] = "Successful response";
+      }
+
+      if (route.requiresAuth)
+      {
+        JsonArray securityArr = methodObj["security"].to<JsonArray>();
+        JsonObject secObj = securityArr.add<JsonObject>();
+        secObj["bearerAuth"] = JsonArray();
+      }
+    }
+  }
+
+  // Add security schemes if any service requires auth
+  bool hasAuthServices = false;
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    for (const auto &route : routes)
+    {
+      if (route.requiresAuth)
+      {
+        hasAuthServices = true;
+        break;
+      }
+    }
+    if (hasAuthServices)
+      break;
+  }
+
+  if (hasAuthServices)
+  {
+    JsonObject components = doc["components"].to<JsonObject>();
+    JsonObject secSchemes = components["securitySchemes"].to<JsonObject>();
+    JsonObject bearerAuth = secSchemes["bearerAuth"].to<JsonObject>();
+    bearerAuth["type"] = "http";
+    bearerAuth["scheme"] = "bearer";
+    bearerAuth["bearerFormat"] = "token";
+  }
+
+  String output;
+  serializeJson(doc, output);
+  webserver->send(200, RoutesConsts::mime_json, output.c_str());
+}
+
+/**LittleFS
+ * @brief Handle requests without a registered route
+ * @param webserver Pointer to WebServer instance
+ */
+void HTTPService::handleNotFoundClient(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+  String path = webserver->uri();
+  const int queryIndex = path.indexOf('?');
+  if (tryServeLittleFS(webserver))
+  {
+    return;
+  }
+  
+   
+  logger->warning( std::string(path.c_str())+" 404 ");
+  webserver->send(404, RoutesConsts::mime_plain_text, (path + ": Not Found").c_str());
+}
+
+/**
+ * @brief Convert HTTPMethod enum to string representation
+ * @param method HTTP method enum value
+ * @return Method name as C-string
+ */
+static const char *http_method_to_string(HTTPMethod method)
+{
+  switch (method)
+  {
+    case HTTP_GET:     return "GET";
+    case HTTP_POST:    return "POST";
+    case HTTP_PUT:     return "PUT";
+    case HTTP_DELETE:  return "DELETE";
+    case HTTP_PATCH:   return "PATCH";
+    case HTTP_HEAD:    return "HEAD";
+    case HTTP_OPTIONS: return "OPTIONS";
+    default:           return "UNKNOWN";
+  }
+}
+
+void HTTPService::handleClient(WebServer *webserver)
+{
+  if (webserver)
+  {
+    webserver->handleClient();
+  }
+}
+
+/**
+ * @brief Log incoming HTTP request method and URI
+ * @param webserver Pointer to WebServer instance
+ */
+void HTTPService::logRequest(WebServer *webserver)
+{
+  if (webserver && logger)
+  {
+    std::string log_msg = std::string(http_method_to_string(webserver->method())) +
+                          " " + webserver->uri().c_str();
+    logger->info(log_msg);
+  }
+}
+
+bool HTTPService::registerRoutes()
+{
+  // Register OpenAPI routes for HTTPService
+  std::vector<OpenAPIResponse> openApiResponses;
+  OpenAPIResponse openApiOk(200, "OpenAPI specification retrieved successfully");
+  openApiOk.schema = "{\"type\":\"object\",\"properties\":{\"openapi\":{\"type\":\"string\"},\"info\":{\"type\":\"object\"},\"paths\":{\"type\":\"object\"}}}";
+  openApiOk.example = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"K10 Bot API\",\"version\":\"1.0.0\"},\"paths\":{}}";
+  openApiResponses.push_back(openApiOk);
+  openApiResponses.push_back(createServiceNotStartedResponse());
+
+  std::string path = RoutesConsts::path_openapi;
+  registerOpenAPIRoute(OpenAPIRoute(
+      path.c_str(),
+      RoutesConsts::method_get,
+      "Get OpenAPI 3.0.0 specification for all registered services including paths, parameters, request bodies, and response schemas",
+      "OpenAPI",
+      false, {}, openApiResponses));
+
+  webserver.on("/", HTTP_GET, [this]()
+               { 
+                 if (!checkServiceStarted()) return;
+                 this->handleHomeClient(&webserver); 
+               });
+
+  // Test interface endpoint
+  webserver.on("/api/docs", HTTP_GET, [this]()
+               { 
+                 if (!checkServiceStarted()) return;
+                 this->handleTestClient(&webserver); 
+               });
+
+  // OpenAPI specification endpoint
+  webserver.on(path.c_str(), HTTP_GET, [this]()
+               { 
+                 if (!checkServiceStarted()) return;
+                 this->handleOpenAPIRequest(&webserver); 
+               });
+
+  webserver.onNotFound([this]()
+                       { 
+                         if (!checkServiceStarted()) return;
+                         this->handleNotFoundClient(&webserver); 
+                       });
+
+  registerSettingsRoutes("OpenAPI", this);
+
+  return true;
+}
+
+/**
+ * @brief Attempt to serve a file from LittleFS for the current request
+ * @param webserver Pointer to WebServer instance
+ * @return true if a file was found and sent
+ */
+bool HTTPService::tryServeLittleFS(WebServer *webserver)
+{
+  if (!webserver)
+  {
+    return false;
+  }
+
+  String path = webserver->uri();
+  #ifdef VERBOSE_DEBUG
+    
+  logger->debug(std::string("read ") + path.c_str() );
+  #endif
+  
+  // Strip query parameters
+  const int queryIndex = path.indexOf('?');
+  if (queryIndex >= 0)
+  {
+    path = path.substring(0, queryIndex);
+  }
+
+  // Handle directory requests
+  if (path.endsWith("/"))
+  {
+    path += "index.html";
+  }
+
+  // Ensure path starts with /
+  if (!path.startsWith("/"))
+  {
+    path = "/" + path;
+  }
+
+  // Security: block path traversal
+  if (path.indexOf("..") >= 0)
+  {
+    if (logger)
+    {
+      logger->warning("Traversal path blocked!" );
+    }
+    return false;
+  }
+
+  // Check if file exists in LittleFS
+  if (!LittleFS.exists(path))
+  {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " not found.");
+    }
+    return false;
+  }
+
+  // Open and validate file
+  File file = LittleFS.open(path, "r");
+  if (!file || file.isDirectory())
+  {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " not readable.");
+    }
+    if (file)
+      file.close();
+    return false;
+  }
+
+  size_t fileSize = file.size();
+  if (fileSize == 0)
+  {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " is empty.");
+    }
+    file.close();
+    return false;
+  }
+
+  // Get content type and set response headers
+  const String contentType = getContentTypeForPath(path);
+  webserver->setContentLength(fileSize);
+  webserver->send(200, contentType.c_str(), "");
+
+  // Stream file in chunks
+  constexpr size_t kStreamChunkSize = 2048;
+  uint8_t buffer[kStreamChunkSize];
+  size_t bytesRead = 0;
+  
+  while (file.available() && bytesRead < fileSize)
+  {
+    size_t toRead = (fileSize - bytesRead > kStreamChunkSize) ? kStreamChunkSize : (fileSize - bytesRead);
+    size_t readBytes = file.read(buffer, toRead);
+    
+    if (readBytes == 0)
+    {
+      break;
+    }
+    
+    webserver->sendContent(reinterpret_cast<const char *>(buffer), readBytes);
+    bytesRead += readBytes;
+    delay(0); // Feed watchdog
+  }
+
+  file.close();
+  #ifdef VERBOSE_DEBUG
+  if (logger)
+  {
+    logger->debug(std::string(path.c_str()) + " sent.");
+  }
+  #endif
+
+  return true;
+}
+
+/**
+ * @brief Resolve MIME type based on file extension
+ * @param path Request path
+ * @return MIME type string
+ */
+String HTTPService::getContentTypeForPath(const String &path)
+{
+  struct MimeMap
+  {
+    const char *extension;
+    const char *mimeType;
+  };
+
+  static constexpr MimeMap mime_types[] PROGMEM = {
+      {".html", "text/html"},
+      {".htm", "text/html"},
+      {".css", "text/css"},
+      {".js", "application/javascript"},
+      {".json", "application/json"},
+      {".png", "image/png"},
+      {".jpg", "image/jpeg"},
+      {".jpeg", "image/jpeg"},
+      {".svg", "image/svg+xml"},
+      {".ico", "image/x-icon"},
+      {".txt", "text/plain"},
+      {".map", "application/json"},
+      {".woff", "font/woff"},
+      {".woff2", "font/woff2"},
+      {".ttf", "font/ttf"},
+      {".otf", "font/otf"},
+      {".wasm", "application/wasm"}};
+
+  for (const auto &entry : mime_types)
+  {
+    if (path.endsWith(entry.extension))
+    {
+      return String(entry.mimeType);
+    }
+  }
+
+  return String("application/octet-stream");
+}
+
+std::string HTTPService::getServiceName()
+{
+  return "HTTP Service";
+}
+
+std::string HTTPService::getServiceSubPath()
+{
+  return "http/v1";
+}
+
+/**
+ * @brief List all files in LittleFS recursively (for debugging)
+ * @param fs Filesystem to list
+ * @param dirname Directory to start from
+ * @param level Current recursion level
+ */
+void HTTPService::listFilesInFS(fs::FS &fs, const char *dirname, uint8_t levels, uint8_t currentLevel)
+{
+  if (!logger)
+    return;
+  if (currentLevel > levels)
+    return;
+
+  File root = fs.open(dirname);
+  if (!root || !root.isDirectory())
+  {
+    logger->warning("Failed to open directory: " + std::string(dirname));
+    return;
+  }
+
+  File file = root.openNextFile();
+  while (file)
+  {
+    std::string indent = "";
+    for (uint8_t i = 0; i < currentLevel; i++)
+      indent += " ";
+
+    if (file.isDirectory())
+    {
+      logger->info(indent +  std::string(file.name())+"/");
+      if (levels > 0)
+      {
+        listFilesInFS(fs, file.path(), levels , currentLevel + 1);
+      }
+    }
+    else
+    {
+      logger->info(indent + "" + std::string(file.name()) + " (" + std::to_string(file.size()) + "B)");
+    }
+    file = root.openNextFile();
+  }
+}

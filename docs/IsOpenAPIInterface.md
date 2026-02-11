@@ -768,7 +768,7 @@ Study these existing implementations:
 
 - [HTTPService](src/services/HTTPService.cpp) - Web server and OpenAPI aggregation
 - [ServoService](src/services/ServoService.cpp) - Servo control API
-- [WebcamService](src/services/WebcamService.cpp) - Camera streaming API
+- [K10CamService](src/services/camera/K10CamService.cpp) - Camera streaming API
 
 ---
 

@@ -575,7 +575,7 @@ Refer to existing service implementations:
 - [WiFiService](src/services/WiFiService.h) - Network connectivity
 - [HTTPService](src/services/HTTPService.h) - Web server with OpenAPI aggregation
 - [ServoService](src/services/ServoService.h) - Servo motor control with OpenAPI
-- [WebcamService](src/services/WebcamService.h) - Camera frame streaming
+- [K10CamService](src/services/camera/K10CamService.h) - Camera frame streaming
 - [UDPService](src/services/UDPService.h) - UDP communication
 - [SettingsService](src/services/SettingsService.h) - Configuration persistence
 - [DFR1216Service](src/services/DFR1216Service.h) - UniHiker expansion board interface

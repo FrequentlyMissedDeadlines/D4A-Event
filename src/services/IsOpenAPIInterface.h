@@ -25,7 +25,13 @@ namespace RoutesConsts
     constexpr const char message[] PROGMEM = "message";
     constexpr const char mime_json[] PROGMEM = "application/json";
     constexpr const char mime_plain_text[] PROGMEM = "text/plain";
+    constexpr const char mime_image_jpeg[] PROGMEM = "image/jpeg";
+    
+    constexpr const char mime_multipart_x_mixed_replace[] PROGMEM = "multipart/x-mixed-replace; boundary=frame";
+    
     constexpr const char msg_invalid_params[] PROGMEM = "Invalid or missing parameter(s).";
+    constexpr const char msg_invalid_request[] PROGMEM = "Invalid or missing request or query .";
+    constexpr const char msg_invalid_json[] PROGMEM = "Invalid JSON in request body.";
     constexpr const char msg_invalid_values[] PROGMEM = "Invalid parameter(s) values.";
     constexpr const char param_domain[] PROGMEM = "domain";
     constexpr const char param_key[] PROGMEM = "key";
@@ -58,6 +64,14 @@ namespace RoutesConsts
     constexpr const char resp_service_not_started[] PROGMEM = "Service not started";
     // Common JSON schemas stored in PROGMEM
     constexpr const char json_object_result[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}}}";
+    
+    // Common strings used across services
+    constexpr const char str_plus[] PROGMEM = "+";
+    constexpr const char str_space[] PROGMEM = " ";
+    constexpr const char str_colon[] PROGMEM = ": ";
+    constexpr const char str_empty[] PROGMEM = "";
+    constexpr const char str_slash[] PROGMEM = "/";
+    constexpr const char msg_registering[] PROGMEM = "Registering ";
 }
 
 /**
@@ -184,25 +198,22 @@ struct IsOpenAPIInterface : public IsServiceInterface
 {
 public:
     /**
-     * @fn: registerRoutes
-     * @brief: Register HTTP routes with the webserver instance.
-     * @return: true if registration was successful, false otherwise.
+     * @brief Register HTTP routes with the webserver instance.
+     * @return true if registration was successful, false otherwise.
      */
     virtual bool registerRoutes() = 0;
     
     /**
-     * @fn: getServiceSubPath
-     * @brief: Get the service's subpath component used in API routes
-     * @return: Service subpath (e.g., "servos/v1", "sensors/v1")
+     * @brief Get the service's subpath component used in API routes
+     * @return Service subpath (e.g., "servos/v1", "sensors/v1")
      */
     virtual std::string getServiceSubPath() = 0;
     
     /**
-     * @fn: getPath
-     * @brief: Construct full API path from service name and final path segment
-     * @param finalpathstring: The final path segment to append
-     * @return: Full path in format /api/<servicename>/<finalpathstring>
-     * @note: Requires implementing class to also implement IsServiceInterface for getSericeName()
+     * @brief Construct full API path from service name and final path segment
+     * @param finalpathstring The final path segment to append
+     * @return Full path in format /api/<servicename>/<finalpathstring>
+     * @note Requires implementing class to also implement IsServiceInterface for getServiceName()
      */
     virtual std::string getPath(const std::string& finalpathstring = "") {
         if (baseServicePath_.empty()) {
@@ -212,9 +223,8 @@ public:
     }
     
     /**
-     * @fn: getOpenAPIRoutes
-     * @brief: Get the OpenAPI route definitions provided by this service
-     * @return: A vector of OpenAPIRoute structures describing the service's endpoints
+     * @brief Get the OpenAPI route definitions provided by this service
+     * @return A vector of OpenAPIRoute structures describing the service's endpoints
      */
     std::vector<OpenAPIRoute> getOpenAPIRoutes()
     {
@@ -281,6 +291,20 @@ protected:
         return OpenAPIResponse(423, RoutesConsts::resp_service_not_started);
     }
 
+    /**
+     * @brief Log route registration path for debugging (only in VERBOSE_DEBUG mode)
+     * @param path The API route path being registered
+     */
+    void logRouteRegistration(const std::string& path)
+    {
+#ifdef VERBOSE_DEBUG
+        if (logger)
+        {
+            logger->debug(fpstr_to_string(FPSTR(RoutesConsts::msg_registering)) + path);
+        }
+#endif
+    }
+
     std::string getResultJsonString(std::string result, std::string message)
     {
         JsonDocument doc = JsonDocument();
@@ -297,7 +321,7 @@ protected:
      */
     bool checkServiceStarted()
     {
-        if (!isStarted())
+        if (!isServiceStarted())
         {
             webserver.send(423, RoutesConsts::mime_json, 
                           getResultJsonString(RoutesConsts::result_err, 

@@ -45,12 +45,15 @@ using UDPMessageHandler = std::function<bool(const std::string& message,
 
 ```cpp
 UDPService* udpService = ...; // Get your UDP service instance
+RollingLogger* logger = ...; // Get your logger instance
 
 // Register a simple handler using a lambda
 int handlerId = udpService->registerMessageHandler(
-    [](const std::string& msg, const IPAddress& ip, uint16_t port) {
-        Serial.printf("Received: %s from %s:%d\n", 
-                      msg.c_str(), ip.toString().c_str(), port);
+    [logger](const std::string& msg, const IPAddress& ip, uint16_t port) {
+        if (logger) {
+            std::string log_msg = std::string("Received: ") + msg + " from " + ip.toString().c_str() + ":" + std::to_string(port);
+            logger->debug(log_msg);
+        }
         return true; // Message handled
     }
 );

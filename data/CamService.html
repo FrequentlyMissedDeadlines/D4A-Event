@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>K10 Camera Control - K10 Bot</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    .webcam-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .mode-selector {
+      background: white;
+      padding: 20px;
+      margin: 15px 0;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .mode-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 15px;
+      border: 2px solid #ddd;
+      background: white;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    .mode-btn:hover {
+      border-color: #4CAF50;
+      transform: translateY(-2px);
+    }
+    .mode-btn.active {
+      background: #4CAF50;
+      color: white;
+      border-color: #4CAF50;
+    }
+    .mode-btn.off {
+      border-color: #f44336;
+    }
+    .mode-btn.off.active {
+      background: #f44336;
+      border-color: #f44336;
+    }
+    .camera-viewport {
+      background: white;
+      padding: 20px;
+      margin: 15px 0;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .camera-image-container {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #f5f5f5;
+      border-radius: 5px;
+      min-height: 480px;
+      position: relative;
+    }
+    .camera-image {
+      max-width: 100%;
+      height: auto;
+      border-radius: 5px;
+      display: none;
+    }
+    .camera-image.visible {
+      display: block;
+    }
+    .placeholder {
+      color: #999;
+      font-size: 18px;
+      text-align: center;
+    }
+    .camera-controls {
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      justify-content: center;
+    }
+    .status-bar {
+      background: #f9f9f9;
+      padding: 10px 20px;
+      margin: 15px 0;
+      border-radius: 5px;
+      border-left: 4px solid #2196F3;
+      font-size: 14px;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    .status-indicator.active {
+      background: #4CAF50;
+      box-shadow: 0 0 8px #4CAF50;
+    }
+    .status-indicator.inactive {
+      background: #999;
+    }
+    .error-message {
+      color: #f44336;
+      background: #ffebee;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 10px 0;
+      display: none;
+    }
+    .error-message.visible {
+      display: block;
+    }
+    .settings-panel {
+      background: white;
+      padding: 20px;
+      margin: 15px 0;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .settings-panel h2 {
+      margin-top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .setting-group {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 5px;
+      border: 1px solid #e0e0e0;
+    }
+    .setting-group h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #666;
+      text-transform: uppercase;
+    }
+    .setting-item {
+      margin: 10px 0;
+    }
+    .setting-item label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+    .setting-item input,
+    .setting-item select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      font-size: 14px;
+    }
+    .setting-item input[type="range"] {
+      margin: 5px 0;
+    }
+    .setting-value {
+      display: inline-block;
+      background: #4CAF50;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-left: 8px;
+    }
+    .settings-actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .toggle-settings {
+      cursor: pointer;
+      color: #2196F3;
+      font-size: 14px;
+    }
+    .success-message {
+      color: #4CAF50;
+      background: #e8f5e9;
+      padding: 10px 15px;
+      border-radius: 5px;
+      margin: 10px 0;
+      display: none;
+      font-size: 14px;
+    }
+    .success-message.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="webcam-container">
+    <h1 id="pageTitle">📷 K10 Camera Control <span id="titleStatus" style="font-size: 0.6em; color: #999;"></span></h1>
+    
+    <div class="panel">
+      <a href="/" class="btn">← Back to Home</a>
+      <button onclick="refreshStatus()" class="btn">🔄 Refresh Status</button>
+      <button onclick="toggleSettings()" class="btn">⚙️ Settings</button>
+    </div>
+
+    <div class="status-bar">
+      <span class="status-indicator inactive" id="statusIndicator"></span>
+      <span id="statusText">Camera status: Loading...</span>
+    </div>
+
+    <div class="mode-selector">
+      <h2>Camera Mode</h2>
+      <div class="mode-buttons">
+        <button class="mode-btn off active" onclick="setMode('off')" id="btnOff">
+          ⏹️ Off
+        </button>
+        <button class="mode-btn" onclick="setMode('snapshot')" id="btnSnapshot">
+          📸 Snapshot
+        </button>
+        <button class="mode-btn" onclick="setMode('stream')" id="btnStream">
+          🎥 Live Stream
+        </button>
+      </div>
+    </div>
+
+    <div class="error-message" id="errorMessage"></div>
+    <div class="success-message" id="successMessage"></div>
+
+    <div class="settings-panel" id="settingsPanel" style="display: none;">
+      <h2>
+        Camera Settings
+        <span class="toggle-settings" onclick="toggleSettings()">✖ Close</span>
+      </h2>
+      
+      <div class="settings-grid">
+        <!-- Image Quality -->
+        <div class="setting-group">
+          <h3>Image Quality</h3>
+          <div class="setting-item">
+            <label>Brightness <span class="setting-value" id="val-brightness">0</span></label>
+            <input type="range" id="brightness" min="-2" max="2" value="0" step="1" oninput="updateSetting('brightness', this.value)">
+          </div>
+          <div class="setting-item">
+            <label>Contrast <span class="setting-value" id="val-contrast">0</span></label>
+            <input type="range" id="contrast" min="-2" max="2" value="0" step="1" oninput="updateSetting('contrast', this.value)">
+          </div>
+        </div>
+
+        <!-- Resolution & Orientation -->
+        <div class="setting-group">
+          <h3>Resolution & Orientation</h3>
+          <div class="setting-item">
+            <label>Frame Size <span class="setting-value" id="val-framesize">5</span></label>
+            <select id="framesize" onchange="updateSetting('framesize', this.value)">
+              <option value="0">96x96 (QQVGA)</option>
+              <option value="1">128x128 (QCIF)</option>
+              <option value="2">176x144 (HQVGA)</option>
+              <option value="3">240x176 (QVGA)</option>
+              <option value="4">240x240</option>
+              <option value="5" selected>320x240 (QVGA)</option>
+              <option value="6">400x296 (CIF)</option>
+              <option value="7">640x480 (VGA)</option>
+              <option value="8">800x600 (SVGA)</option>
+              <option value="9">1024x768 (XGA)</option>
+              <option value="10">1280x720 (HD)</option>
+              <option value="11">1280x1024 (SXGA)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-actions">
+        <button onclick="loadCameraSettings()" class="btn">🔄 Load Settings</button>
+        <button onclick="saveCameraSettings()" class="btn">💾 Save Settings</button>
+      </div>
+    </div>
+          <div class="setting-item">
+            <label>AE Level <span class="setting-value" id="val-ae_level">0</span></label>
+            <input type="range" id="ae_level" min="-2" max="2" value="0" step="1" oninput="updateSetting('ae_level', this.value)">
+          </div>
+          <div class="setting-item">
+            <label>Auto Gain <span class="setting-value" id="val-gain_ctrl">1</span></label>
+            <select id="gain_ctrl" onchange="updateSetting('gain_ctrl', this.value)">
+              <option value="0">Off</option>
+              <option value="1" selected>On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>AGC Gain <span class="setting-value" id="val-agc_gain">0</span></label>
+            <input type="range" id="agc_gain" min="0" max="30" value="0" step="1" oninput="updateSetting('agc_gain', this.value)">
+            <small style="color: #999;">Manual gain (when Auto Gain is Off)</small>
+          </div>
+          <div class="setting-item">
+            <label>Gain Ceiling <span class="setting-value" id="val-gainceiling">0</span></label>
+            <select id="gainceiling" onchange="updateSetting('gainceiling', this.value)">
+              <option value="0">2X</option>
+              <option value="1">4X</option>
+              <option value="2">8X</option>
+              <option value="3">16X</option>
+              <option value="4">32X</option>
+              <option value="5">64X</option>
+              <option value="6">128X</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- White Balance -->
+        <div class="setting-group">
+          <h3>White Balance</h3>
+          <div class="setting-item">
+            <label>Auto White Balance <span class="setting-value" id="val-whitebal">1</span></label>
+            <select id="whitebal" onchange="updateSetting('whitebal', this.value)">
+              <option value="0">Off</option>
+              <option value="1" selected>On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>AWB Gain <span class="setting-value" id="val-awb_gain">1</span></label>
+            <select id="awb_gain" onchange="updateSetting('awb_gain', this.value)">
+              <option value="0">Off</option>
+              <option value="1" selected>On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>WB Mode <span class="setting-value" id="val-wb_mode">0</span></label>
+            <select id="wb_mode" onchange="updateSetting('wb_mode', this.value)">
+              <option value="0" selected>Auto</option>
+              <option value="1">Sunny</option>
+              <option value="2">Cloudy</option>
+              <option value="3">Office</option>
+              <option value="4">Home</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Transform & Effects -->
+        <div class="setting-group">
+          <h3>Transform & Effects</h3>
+          <div class="setting-item">
+            <label>Horizontal Mirror <span class="setting-value" id="val-hmirror">0</span></label>
+            <select id="hmirror" onchange="updateSetting('hmirror', this.value)">
+              <option value="0" selected>Off</option>
+              <option value="1">On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>Vertical Flip <span class="setting-value" id="val-vflip">0</span></label>
+            <select id="vflip" onchange="updateSetting('vflip', this.value)">
+              <option value="0" selected>Off</option>
+              <option value="1">On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>Special Effect <span class="setting-value" id="val-special_effect">0</span></label>
+            <select id="special_effect" onchange="updateSetting('special_effect', this.value)">
+              <option value="0" selected>Normal</option>
+              <option value="1">Negative</option>
+              <option value="2">Grayscale</option>
+              <option value="3">Red Tint</option>
+              <option value="4">Green Tint</option>
+              <option value="5">Blue Tint</option>
+              <option value="6">Sepia</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Image Processing -->
+        <div class="setting-group">
+          <h3>Image Processing</h3>
+          <div class="setting-item">
+            <label>Lens Correction <span class="setting-value" id="val-lenc">1</span></label>
+            <select id="lenc" onchange="updateSetting('lenc', this.value)">
+              <option value="0">Off</option>
+              <option value="1" selected>On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>Gamma Correction <span class="setting-value" id="val-raw_gma">1</span></label>
+            <select id="raw_gma" onchange="updateSetting('raw_gma', this.value)">
+              <option value="0">Off</option>
+              <option value="1" selected>On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>Black Pixel Correction <span class="setting-value" id="val-bpc">0</span></label>
+            <select id="bpc" onchange="updateSetting('bpc', this.value)">
+              <option value="0" selected>Off</option>
+              <option value="1">On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>White Pixel Correction <span class="setting-value" id="val-wpc">1</span></label>
+            <select id="wpc" onchange="updateSetting('wpc', this.value)">
+              <option value="0">Off</option>
+              <option value="1" selected>On</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>Downsize Crop Window <span class="setting-value" id="val-dcw">1</span></label>
+            <select id="dcw" onchange="updateSetting('dcw', this.value)">
+              <option value="0">Off</option>
+              <option value="1" selected>On</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Resolution & Format -->
+        <div class="setting-group">
+          <h3>Resolution & Format</h3>
+          <div class="setting-item">
+            <label>Frame Size <span class="setting-value" id="val-framesize">8</span></label>
+            <select id="framesize" onchange="updateSetting('framesize', this.value)">
+              <option value="0">96x96</option>
+              <option value="1">QQVGA (160x120)</option>
+              <option value="2">QCIF (176x144)</option>
+              <option value="3">HQVGA (240x176)</option>
+              <option value="4">240x240</option>
+              <option value="5">QVGA (320x240)</option>
+              <option value="6">CIF (400x296)</option>
+              <option value="7">HVGA (480x320)</option>
+              <option value="8" selected>VGA (640x480)</option>
+              <option value="9">SVGA (800x600)</option>
+              <option value="10">XGA (1024x768)</option>
+              <option value="11">HD (1280x720)</option>
+              <option value="12">SXGA (1280x1024)</option>
+              <option value="13">UXGA (1600x1200)</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <label>Pixel Format <span class="setting-value" id="val-pixformat">4</span></label>
+            <select id="pixformat" onchange="updateSetting('pixformat', this.value)">
+              <option value="0">RGB565</option>
+              <option value="1">YUV422</option>
+              <option value="2">YUV420</option>
+              <option value="3">GRAYSCALE</option>
+              <option value="4" selected>JPEG</option>
+              <option value="5">RGB888</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Debug & Test -->
+        <div class="setting-group">
+          <h3>Debug & Test</h3>
+          <div class="setting-item">
+            <label>Test Pattern (Colorbar) <span class="setting-value" id="val-colorbar">0</span></label>
+            <select id="colorbar" onchange="updateSetting('colorbar', this.value)">
+              <option value="0" selected>Off</option>
+              <option value="1">On</option>
+            </select>
+            <small style="color: #999;">Displays hardware test pattern</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-actions">
+        <button onclick="loadCameraSettings()" class="btn">🔄 Load Settings</button>
+        <button onclick="saveCameraSettings()" class="btn">💾 Save Settings</button>
+      </div>
+    </div>
+
+    <div class="camera-viewport">
+      <div class="camera-image-container">
+        <img src="" alt="Camera view" class="camera-image" id="cameraImage">
+        <div class="placeholder" id="placeholder">
+          Camera is off. Select a mode to view the camera feed.
+        </div>
+      </div>
+      <div class="camera-controls" id="cameraControls" style="display: none;">
+        <button onclick="captureSnapshot()" class="btn" id="btnCapture">
+          📸 Capture New Snapshot
+        </button>
+        <button onclick="downloadImage()" class="btn" id="btnDownload">
+          💾 Download Image
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'off';
+    let streamCheckInterval = null;
+
+    function setMode(mode) {
+      // Clear any existing intervals
+      if (streamCheckInterval) {
+        clearInterval(streamCheckInterval);
+        streamCheckInterval = null;
+      }
+
+      // Update button states
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(`btn${mode.charAt(0).toUpperCase() + mode.slice(1)}`).classList.add('active');
+
+      currentMode = mode;
+      hideError();
+
+      const image = document.getElementById('cameraImage');
+      const placeholder = document.getElementById('placeholder');
+      const controls = document.getElementById('cameraControls');
+
+      if (mode === 'off') {
+        image.src = '';
+        image.classList.remove('visible');
+        placeholder.style.display = 'block';
+        placeholder.textContent = 'Camera is off. Select a mode to view the camera feed.';
+        controls.style.display = 'none';
+      } else if (mode === 'snapshot') {
+        placeholder.textContent = 'Loading snapshot...';
+        captureSnapshot();
+        controls.style.display = 'flex';
+      } else if (mode === 'stream') {
+        placeholder.style.display = 'none';
+        image.classList.add('visible');
+        image.src = '/api/mycam/v1/stream?' + new Date().getTime();
+        controls.style.display = 'none';
+        
+        // Monitor stream connection
+        streamCheckInterval = setInterval(() => {
+          if (image.naturalWidth === 0) {
+            showError('Stream connection lost. Click Stream again to reconnect.');
+          }
+        }, 5000);
+      }
+    }
+
+    async function captureSnapshot() {
+      const image = document.getElementById('cameraImage');
+      const placeholder = document.getElementById('placeholder');
+      
+      try {
+        placeholder.textContent = 'Capturing snapshot...';
+        
+        // Add timestamp to prevent caching
+        const timestamp = new Date().getTime();
+        const response = await fetch(`/api/mycam/v1/snapshot?t=${timestamp}`);
+        
+        if (response.status === 409) {
+          showError('Cannot capture snapshot while streaming is active. Stop the stream first.');
+          return;
+        }
+        
+        if (!response.ok) {
+          throw new Error(`Failed to capture snapshot: ${response.status} ${response.statusText}`);
+        }
+        
+        const blob = await response.blob();
+        const imageUrl = URL.createObjectURL(blob);
+        
+        image.onload = () => {
+          placeholder.style.display = 'none';
+          image.classList.add('visible');
+          hideError();
+        };
+        
+        image.onerror = () => {
+          showError('Failed to load snapshot image');
+          placeholder.style.display = 'block';
+          placeholder.textContent = 'Failed to load image';
+        };
+        
+        image.src = imageUrl;
+        
+      } catch (error) {
+        console.error('Snapshot error:', error);
+        showError('Failed to capture snapshot: ' + error.message);
+        placeholder.style.display = 'block';
+        placeholder.textContent = 'Failed to capture snapshot';
+      }
+    }
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch('/api/mycam/v1/status');
+        const data = await response.json();
+        
+        const indicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const titleStatus = document.getElementById('titleStatus');
+        
+        if (data.status === 'started') {
+          indicator.classList.add('active');
+          indicator.classList.remove('inactive');
+          statusText.textContent = 'Camera status: Started';
+          titleStatus.textContent = '[Started]';
+          titleStatus.style.color = '#4CAF50';
+          hideError();
+        } else {
+          indicator.classList.remove('active');
+          indicator.classList.add('inactive');
+          statusText.textContent = `Camera status: ${data.status || 'Not ready'}`;
+          titleStatus.textContent = `[${data.status || 'Not ready'}]`;
+          titleStatus.style.color = '#f44336';
+          showError('Camera is not started');
+        }
+        
+      } catch (error) {
+        console.error('Status check failed:', error);
+        document.getElementById('statusText').textContent = 'Camera status: Error fetching status';
+        showError('Failed to get camera status: ' + error.message);
+      }
+    }
+
+    function downloadImage() {
+      const image = document.getElementById('cameraImage');
+      if (!image.src || image.src === '') {
+        showError('No image to download');
+        return;
+      }
+      
+      const link = document.createElement('a');
+      link.href = image.src;
+      link.download = `k10-snapshot-${new Date().getTime()}.jpg`;
+      link.click();
+    }
+
+    function showError(message) {
+      const errorDiv = document.getElementById('errorMessage');
+      errorDiv.textContent = message;
+      errorDiv.classList.add('visible');
+    }
+
+    function hideError() {
+      const errorDiv = document.getElementById('errorMessage');
+      errorDiv.classList.remove('visible');
+    }
+
+    function showSuccess(message) {
+      const successDiv = document.getElementById('successMessage');
+      successDiv.textContent = message;
+      successDiv.classList.add('visible');
+      setTimeout(() => successDiv.classList.remove('visible'), 3000);
+    }
+
+    function toggleSettings() {
+      const panel = document.getElementById('settingsPanel');
+      if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        loadCameraSettings();
+      } else {
+        panel.style.display = 'none';
+      }
+    }
+
+    async function updateSetting(setting, value) {
+      try {
+        // Update display value
+        const valueSpan = document.getElementById(`val-${setting}`);
+        if (valueSpan) {
+          if (typeof value === 'boolean') {
+            valueSpan.textContent = value ? 'On' : 'Off';
+          } else {
+            valueSpan.textContent = value;
+          }
+        }
+        
+        // Map setting to K10CamService API endpoint
+        let endpoint, body;
+        
+        switch(setting) {
+          case 'framesize':
+            endpoint = '/api/mycam/v1/framesize';
+            body = { value: parseInt(value) };
+            break;
+          case 'vflip':
+            endpoint = '/api/mycam/v1/vflip';
+            body = { enabled: value };
+            break;
+          case 'hmirror':
+            endpoint = '/api/mycam/v1/hmirror';
+            body = { enabled: value };
+            break;
+          case 'contrast':
+            endpoint = '/api/mycam/v1/contrast';
+            body = { level: parseInt(value) };
+            break;
+          case 'brightness':
+            endpoint = '/api/mycam/v1/brightness';
+            body = { level: parseInt(value) };
+            break;
+          default:
+            showError(`Setting '${setting}' is not supported by K10CamService`);
+            return;
+        }
+        
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          showSuccess(`${setting} updated to ${value}`);
+        } else {
+          showError(`Failed to update ${setting}: ${data.error || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('Update setting error:', error);
+        showError('Failed to update setting: ' + error.message);
+      }
+    }
+
+    async function loadCameraSettings() {
+      try {
+        const response = await fetch('/api/mycam/v1/status');
+        const data = await response.json();
+        
+        if (data.status === 'started') {
+          // Update framesize
+          const framesizeControl = document.getElementById('framesize');
+          const framesizeValue = document.getElementById('val-framesize');
+          if (framesizeControl && data.framesize !== undefined) {
+            framesizeControl.value = data.framesize;
+            if (framesizeValue) framesizeValue.textContent = data.framesize;
+          }
+          
+          // Update vflip
+          const vflipControl = document.getElementById('vflip');
+          const vflipValue = document.getElementById('val-vflip');
+          if (vflipControl && data.vflip !== undefined) {
+            vflipControl.value = data.vflip ? 'true' : 'false';
+            if (vflipValue) vflipValue.textContent = data.vflip ? 'On' : 'Off';
+          }
+          
+          // Update hmirror
+          const hmirrorControl = document.getElementById('hmirror');
+          const hmirrorValue = document.getElementById('val-hmirror');
+          if (hmirrorControl && data.hmirror !== undefined) {
+            hmirrorControl.value = data.hmirror ? 'true' : 'false';
+            if (hmirrorValue) hmirrorValue.textContent = data.hmirror ? 'On' : 'Off';
+          }
+          
+          // Update contrast
+          const contrastControl = document.getElementById('contrast');
+          const contrastValue = document.getElementById('val-contrast');
+          if (contrastControl && data.contrast !== undefined) {
+            contrastControl.value = data.contrast;
+            if (contrastValue) contrastValue.textContent = data.contrast;
+          }
+          
+          // Update brightness
+          const brightnessControl = document.getElementById('brightness');
+          const brightnessValue = document.getElementById('val-brightness');
+          if (brightnessControl && data.brightness !== undefined) {
+            brightnessControl.value = data.brightness;
+            if (brightnessValue) brightnessValue.textContent = data.brightness;
+          }
+          
+          showSuccess('Settings loaded successfully');
+        } else {
+          showError('Camera not started');
+        }
+      } catch (error) {
+        console.error('Load settings error:', error);
+        showError('Failed to load settings: ' + error.message);
+      }
+    }
+
+    async function saveCameraSettings() {
+      try {
+        const response = await fetch('/api/mycam/v1/settings/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          showSuccess('Settings saved to persistent storage');
+        } else {
+          showError('Failed to save settings: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Save settings error:', error);
+        showError('Failed to save settings: ' + error.message);
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      refreshStatus();
+    });
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (streamCheckInterval) {
+        clearInterval(streamCheckInterval);
+      }
+    });
+  </script>
+</body>
+</html>

@@ -17,6 +17,7 @@
  */
 
 #include "ServoService.h"
+#include "../ResponseHelper.h"
 #include <WebServer.h>
 #include <pgmspace.h>
 #include <ArduinoJson.h>
@@ -26,7 +27,6 @@
 constexpr uint8_t MAX_SERVO_CHANNELS = 8;
 
 DFRobot_UnihikerExpansion_I2C servoController = DFRobot_UnihikerExpansion_I2C();
-
 
 extern SettingsService settings_service;
 
@@ -519,11 +519,11 @@ bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse>& standard_
         
         if (this->setAllServoSpeed(0))
         {
-            webserver.send(200, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_ok, ServoConsts::action_stop_all).c_str());
+            ResponseHelper::sendSuccess(ServoConsts::action_stop_all);
         }
         else
         {
-            webserver.send(456, RoutesConsts::mime_json, getResultJsonString(RoutesConsts::result_err, ServoConsts::action_stop_all).c_str());
+            ResponseHelper::sendError(ResponseHelperConsts::OPERATION_FAILED, ServoConsts::action_stop_all);
         }
     });
 

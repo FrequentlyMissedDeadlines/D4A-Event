@@ -9,6 +9,7 @@
 
 #include "SettingsService.h"
 #include "../FlashStringHelper.h"
+#include "../ResponseHelper.h"
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <pgmspace.h>
@@ -246,36 +247,27 @@ std::string SettingsService::buildSettingsJson(const std::vector<Setting>& setti
 
 void SettingsService::handleGetSettings()
 {
-    if (!g_settingsServiceInstance || !g_settingsServiceInstance->isServiceStarted()) {
-        webserver.send(503, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(SettingsConsts::msg_not_started)));
+    // Check service status
+    if (!ServiceStatusHelper::ensureServiceRunning(g_settingsServiceInstance, "Settings")) {
         return;
     }
     
-    // Check for required domain parameter
-    if (!webserver.hasArg(RoutesConsts::param_domain)) {
-        webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(SettingsConsts::msg_missing_domain)));
-        return;
-    }
-    
-    std::string domain = webserver.arg(RoutesConsts::param_domain).c_str();
-    
-    if (!isValidDomain(domain)) {
-        webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(SettingsConsts::msg_invalid_domain)));
-        return;
-    }
+    // Validate domain parameter
+    std::string domain = ParamValidator::getValidatedParam(
+        RoutesConsts::param_domain,
+        FPSTR(SettingsConsts::msg_missing_domain),
+        [](const std::string& d) { return isValidDomain(d); }
+    );
+    if (domain.empty()) return;
     
     // Check if specific key is requested
     if (webserver.hasArg(RoutesConsts::param_key)) {
-        std::string key = webserver.arg(RoutesConsts::param_key).c_str();
-        
-        if (!isValidKey(key)) {
-            webserver.send(422, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(SettingsConsts::msg_invalid_key)));
-            return;
-        }
+        std::string key = ParamValidator::getValidatedParam(
+            RoutesConsts::param_key,
+            FPSTR(SettingsConsts::msg_invalid_key),
+            [](const std::string& k) { return isValidKey(k); }
+        );
+        if (key.empty()) return;
         
         std::string value = g_settingsServiceInstance->getSetting(domain, key, "");
         
@@ -291,46 +283,35 @@ void SettingsService::handleGetSettings()
         doc[RoutesConsts::message] = "ESP32 Preferences does not support key enumeration";
         doc[FPSTR(SettingsConsts::json_settings)] = serialized("{}");
         
-        String output;
-        serializeJson(doc, output);
-        webserver.send(503, RoutesConsts::mime_json, output.c_str());
+        ResponseHelper::sendJsonResponse(503, doc);
     }
 }
 
 void SettingsService::handlePostSettings()
 {
-
-    if (!g_settingsServiceInstance || !g_settingsServiceInstance->isServiceStarted() ) {
-        webserver.send(503, RoutesConsts::mime_json , 
-                      createJsonError(FPSTR(SettingsConsts::msg_not_started)));
+    // Check service status
+    if (!ServiceStatusHelper::ensureServiceRunning(g_settingsServiceInstance, "Settings")) {
         return;
     }
     
-    // Check for required domain parameter
-    if (!webserver.hasArg(RoutesConsts::param_domain)) {
-        webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(SettingsConsts::msg_missing_domain)));
-        return;
-    }
-    
-    std::string domain = webserver.arg(RoutesConsts::param_domain).c_str();
-    
-    if (!isValidDomain(domain)) {
-        webserver.send(422, RoutesConsts::mime_json, 
-                      createJsonError(FPSTR(SettingsConsts::msg_invalid_domain)));
-        return;
-    }
+    // Validate domain parameter
+    std::string domain = ParamValidator::getValidatedParam(
+        RoutesConsts::param_domain,
+        FPSTR(SettingsConsts::msg_missing_domain),
+        [](const std::string& d) { return isValidDomain(d); }
+    );
+    if (domain.empty()) return;
     
     // Check if single key/value update via query parameters
     if (webserver.hasArg(RoutesConsts::param_key) && webserver.hasArg(RoutesConsts::param_value)) {
-        std::string key = webserver.arg(RoutesConsts::param_key).c_str();
-        std::string value = webserver.arg(RoutesConsts::param_value).c_str();
+        std::string key = ParamValidator::getValidatedParam(
+            RoutesConsts::param_key,
+            FPSTR(SettingsConsts::msg_invalid_key),
+            [](const std::string& k) { return isValidKey(k); }
+        );
+        if (key.empty()) return;
         
-        if (!isValidKey(key)) {
-            webserver.send(422, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(SettingsConsts::msg_invalid_key)));
-            return;
-        }
+        std::string value = webserver.arg(RoutesConsts::param_value).c_str();
         
         bool success = g_settingsServiceInstance->setSetting(domain, key, value);
         
@@ -338,22 +319,15 @@ void SettingsService::handlePostSettings()
             JsonDocument doc;
             doc[FPSTR(SettingsConsts::json_success)] = true;
             doc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
-            
-            String output;
-            serializeJson(doc, output);
-            webserver.send(200, RoutesConsts::mime_json, output.c_str());
+            ResponseHelper::sendJsonResponse(200, doc);
         } else {
-            webserver.send(503, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(SettingsConsts::msg_operation_failed)));
+            ResponseHelper::sendError(ResponseHelperConsts::SERVICE_UNAVAILABLE, 
+                                     FPSTR(SettingsConsts::msg_operation_failed));
         }
     } else if (webserver.hasArg("plain")) {
         // Parse JSON body for multiple settings
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, webserver.arg("plain"));
-        
-        if (error) {
-            webserver.send(422, RoutesConsts::mime_json, createJsonError(FPSTR(RoutesConsts::msg_invalid_json)));
-                          
+        if (!JsonBodyParser::parseBody(doc)) {
             return;
         }
         
@@ -371,17 +345,14 @@ void SettingsService::handlePostSettings()
             JsonDocument responseDoc;
             responseDoc[FPSTR(SettingsConsts::json_success)] = true;
             responseDoc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
-            
-            String output;
-            serializeJson(responseDoc, output);
-            webserver.send(200, RoutesConsts::mime_json, output.c_str());
+            ResponseHelper::sendJsonResponse(200, responseDoc);
         } else {
-            webserver.send(503, RoutesConsts::mime_json, 
-                          createJsonError(FPSTR(SettingsConsts::msg_operation_failed)));
+            ResponseHelper::sendError(ResponseHelperConsts::SERVICE_UNAVAILABLE,
+                                     FPSTR(SettingsConsts::msg_operation_failed));
         }
     } else {
-        webserver.send(422, RoutesConsts::mime_json, createJsonError(FPSTR(RoutesConsts::msg_invalid_request)));
-        
+        ResponseHelper::sendError(ResponseHelperConsts::INVALID_PARAMS,
+                                 FPSTR(RoutesConsts::msg_invalid_request));
     }
 }
 

@@ -724,7 +724,9 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
     std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_servos_speed_multiple;
 #ifdef VERBOSE_DEBUG
     logger->debug(fpstr_to_string(FPSTR(RoutesConsts::str_plus)) + path);
-    logRouteRegistration(path);enAPIRoute multi_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+#endif    
+    logRouteRegistration(path);
+    OpenAPIRoute multi_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
     multi_speed_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)),
                                                      ServoConsts::req_servos_speed_multiple, true);
     multi_speed_route.requestBody.example = ServoConsts::ex_servos_speed_multiple;
@@ -789,7 +791,9 @@ bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIRespo
     std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_servos_angle_multiple;
 #ifdef VERBOSE_DEBUG
     logger->debug(fpstr_to_string(FPSTR(RoutesConsts::str_plus)) + path);
-    logRouteRegistration(path);enAPIRoute multi_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    #endif
+    logRouteRegistration(path);
+    OpenAPIRoute multi_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
     multi_angle_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)),
                                                      ServoConsts::req_servos_angle_multiple, true);
     multi_angle_route.requestBody.example = ServoConsts::ex_servos_angle_multiple;
@@ -854,7 +858,9 @@ bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse>& stand
     std::string path = getPath(ServoConsts::action_attach_servo);
 #ifdef VERBOSE_DEBUG
     logger->debug(fpstr_to_string(FPSTR(RoutesConsts::str_plus)) + path);
-    logRouteRegistration(path);enAPIRoute attach_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attach_servo)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+#endif
+    logRouteRegistration(path);
+    OpenAPIRoute attach_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attach_servo)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
     attach_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attachment_config)),
                                                  ServoConsts::req_channel_connection, true);
     attach_route.requestBody.example = ServoConsts::ex_channel_connection;

@@ -168,7 +168,9 @@ bool MusicService::registerRoutes()
  path = getPath(MusicConsts::music_action_get_melodies);
 #ifdef VERBOSE_DEBUG
     logger->debug(fpstr_to_string(FPSTR(RoutesConsts::msg_registering)) + path);
-    logRouteRegistration(path);enAPIRoute routeMelodies(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_get_melodies, MusicConsts::music_tag, false, {}, responses);
+    #endif
+    logRouteRegistration(path);
+    OpenAPIRoute routeMelodies(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_get_melodies, MusicConsts::music_tag, false, {}, responses);
     registerOpenAPIRoute(routeMelodies  );
     
     webserver.on(path.c_str(), HTTP_POST, [this]() {

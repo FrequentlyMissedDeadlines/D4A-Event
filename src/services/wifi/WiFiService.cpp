@@ -83,15 +83,15 @@ std::string WifiService::getHostname()
 }
 std::string WifiService::getServiceName()
 {
-    return fpstr_to_string(FPSTR(WiFiConsts::str_service_name));
+    return progmem_to_string(WiFiConsts::str_service_name);
 }
 // create wifi access point
 bool WifiService::open_access_point()
 {
 
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_ssid)) + AP_SSID + ESP_SUFFIX);
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_password)) + AP_PASSWORD);
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_hostname)) + HOSTNAME + ESP_SUFFIX);
+    logger->info(progmem_to_string(WiFiConsts::msg_ap_ssid) + AP_SSID + ESP_SUFFIX);
+    logger->info(progmem_to_string(WiFiConsts::msg_ap_password) + AP_PASSWORD);
+    logger->info(progmem_to_string(WiFiConsts::msg_hostname) + HOSTNAME + ESP_SUFFIX);
     // Ensure WiFi is reset and set to AP mode before creating the SoftAP
     WiFi.disconnect(true);
     delay(100);
@@ -104,7 +104,7 @@ bool WifiService::open_access_point()
 
     if (!WiFi.softAP((AP_SSID + ESP_SUFFIX).c_str(), AP_PASSWORD.c_str()))
     {
-        logger->error(fpstr_to_string(FPSTR(WiFiConsts::msg_failed_to_create_ap)) + AP_SSID);
+        logger->error(progmem_to_string(WiFiConsts::msg_failed_to_create_ap) + AP_SSID);
         return false;
     }
 
@@ -114,7 +114,7 @@ bool WifiService::open_access_point()
     CONNECTED_SSID = AP_SSID+ESP_SUFFIX;
     if (logger)
     {
-        logger->warning(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_ap)) + AP_SSID + ESP_SUFFIX + fpstr_to_string(FPSTR(RoutesConsts::str_space)) + IP);
+        logger->warning(progmem_to_string(WiFiConsts::msg_wifi_ap) + AP_SSID + ESP_SUFFIX + progmem_to_string(RoutesConsts::str_space) + IP);
     }
     return true;
 }
@@ -154,9 +154,9 @@ bool WifiService::connect_to_wifi(std::string ssid, std::string password)
     // Wait for connection with timeout (up to 10 seconds)
     int attempts = 0;
     const int max_attempts = WIFI_CONN_MAX_ATTEMPTS; // 20 * 500ms = 10 seconds
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_connecting_to)) + ssid);
+    logger->info(progmem_to_string(WiFiConsts::msg_connecting_to) + ssid);
     while (WiFi.status() != WL_CONNECTED && attempts < max_attempts)
-    {  logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_attempt)) + std::to_string(attempts + 1) + fpstr_to_string(FPSTR(WiFiConsts::str_slash)) + std::to_string(max_attempts));
+    {  logger->info(progmem_to_string(WiFiConsts::msg_attempt) + std::to_string(attempts + 1) + progmem_to_string(WiFiConsts::str_slash) + std::to_string(max_attempts));
         delay(WIFI_CONN_SLEEP_MS);
         attempts++;
     }
@@ -165,14 +165,14 @@ bool WifiService::connect_to_wifi(std::string ssid, std::string password)
     if (WiFi.status() == WL_CONNECTED)
     {
         IP = std::string(WiFi.localIP().toString().c_str());
-        logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_connected)) + ssid + fpstr_to_string(FPSTR(RoutesConsts::str_space)) + IP);
+        logger->info(progmem_to_string(WiFiConsts::msg_wifi_connected) + ssid + progmem_to_string(RoutesConsts::str_space) + IP);
         
         CONNECTED_SSID = ssid;
         return true;
     }
     else
     {
-        logger->error(fpstr_to_string(FPSTR(WiFiConsts::msg_failed_to_connect)) + ssid);
+        logger->error(progmem_to_string(WiFiConsts::msg_failed_to_connect) + ssid);
         return false;
     }
 }
@@ -185,7 +185,7 @@ bool WifiService::initializeService()
     WiFi.setHostname((HOSTNAME+ESP_SUFFIX).c_str());
     // Initialization successful (preferences read). Return true so start_service proceeds.
     setServiceStatus(INITIALIZED);
-    logger->debug(getServiceName() + fpstr_to_string(FPSTR(RoutesConsts::str_space)) +  getStatusString());   
+    logger->debug(getServiceName() + progmem_to_string(RoutesConsts::str_space) +  getStatusString());   
     return true;
 }
 bool WifiService::startService()
@@ -194,7 +194,7 @@ bool WifiService::startService()
     
 #ifdef VERBOSE_DEBUG
     if (logger)
-        logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_starting)));
+        logger->info(progmem_to_string(WiFiConsts::msg_starting));
 #endif
     // test with hardcoded credentials for now (you can't reuse this)
     bool result = connect_and_fallback(WIFI_SSID, WIFI_PWD);
@@ -290,10 +290,10 @@ bool WifiService::loadSettings()
     AP_PASSWORD = settings_service_->getSetting(getServiceName(), WiFiConsts::settings_key_ap_password, DEFAULT_AP_PASSWORD);
     HOSTNAME = settings_service_->getSetting(getServiceName(), WiFiConsts::settings_key_hostname, DEFAULT_HOSTNAME);
     logger->info(FPSTR(WiFiConsts::msg_settings_loaded));
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_ssid_prefix)) + WIFI_SSID);
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_wifi_pwd_prefix)) + WIFI_PWD);
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_ssid_prefix)) + AP_SSID);
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_ap_pwd_prefix)) + AP_PASSWORD);
-    logger->info(fpstr_to_string(FPSTR(WiFiConsts::msg_hostname_prefix)) + HOSTNAME);     
+    logger->info(progmem_to_string(WiFiConsts::msg_wifi_ssid_prefix) + WIFI_SSID);
+    logger->info(progmem_to_string(WiFiConsts::msg_wifi_pwd_prefix) + WIFI_PWD);
+    logger->info(progmem_to_string(WiFiConsts::msg_ap_ssid_prefix) + AP_SSID);
+    logger->info(progmem_to_string(WiFiConsts::msg_ap_pwd_prefix) + AP_PASSWORD);
+    logger->info(progmem_to_string(WiFiConsts::msg_hostname_prefix) + HOSTNAME);     
     return true;
 }

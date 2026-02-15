@@ -86,17 +86,17 @@ bool K10SensorsService::registerRoutes()
   if (initResult != 0)
   {
     if (logger)
-      logger->error(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_init_failed)) + std::to_string(initResult));
+      logger->error(progmem_to_string(K10SensorsConsts::msg_aht20_init_failed) + std::to_string(initResult));
   }
   else if (!sensorReady())
   {
     if (logger)
-      logger->warning(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready)));
+      logger->warning(progmem_to_string(K10SensorsConsts::msg_aht20_not_ready));
   }
   else
   {
     if (logger)
-      logger->info(fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_init_success)));
+      logger->info(progmem_to_string(K10SensorsConsts::msg_aht20_init_success));
   }
 
   // Single route handler with all logic inside
@@ -108,7 +108,7 @@ bool K10SensorsService::registerRoutes()
     if (initResult != 0)
     {
       ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
-        fpstr_to_string(FPSTR(K10SensorsConsts::msg_failed_init_aht20)).c_str());
+        progmem_to_string(K10SensorsConsts::msg_failed_init_aht20).c_str());
       return;
     }
     
@@ -116,7 +116,7 @@ bool K10SensorsService::registerRoutes()
     if (!sensorReady())
     {
       ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
-        fpstr_to_string(FPSTR(K10SensorsConsts::msg_aht20_not_ready_init)).c_str());
+        progmem_to_string(K10SensorsConsts::msg_aht20_not_ready_init).c_str());
       return;
     }
     
@@ -129,21 +129,21 @@ bool K10SensorsService::registerRoutes()
     catch (...)
     {
       ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
-        fpstr_to_string(FPSTR(K10SensorsConsts::msg_get_sensor_failed)).c_str());
+        progmem_to_string(K10SensorsConsts::msg_get_sensor_failed).c_str());
     }
   });
 
-  registerSettingsRoutes(fpstr_to_string(FPSTR(K10SensorsConsts::settings_domain_sensors)).c_str(), this);
+  registerSettingsRoutes(progmem_to_string(K10SensorsConsts::settings_domain_sensors).c_str(), this);
   return true;
 }
 
 std::string K10SensorsService::getServiceName()
 {
-  return fpstr_to_string(FPSTR(K10SensorsConsts::str_service_name));
+  return progmem_to_string(K10SensorsConsts::str_service_name);
 }
 std::string K10SensorsService::getServiceSubPath()
 {
-    return fpstr_to_string(FPSTR(K10SensorsConsts::path_service));
+    return progmem_to_string(K10SensorsConsts::path_service);
 }
 std::string K10SensorsService::getPath(const std::string& finalpathstring)
 {

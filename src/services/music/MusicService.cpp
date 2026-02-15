@@ -28,21 +28,21 @@ namespace MusicConsts
     constexpr const char msg_initialize_done[] PROGMEM = " initialize done";
     constexpr const char msg_start_done[] PROGMEM = " start done";
     constexpr const char msg_stop_done[] PROGMEM = " stop done";
-    constexpr const char music_action_get_melodies[] PROGMEM = "melodies";
-    constexpr const char music_action_play[] PROGMEM = "play";
-    constexpr const char music_action_stop[] PROGMEM = "stop";
-    constexpr const char music_action_tone[] PROGMEM = "tone";
-    constexpr const char music_desc_get_melodies[] PROGMEM = "Get list of available built-in melodies";
-    constexpr const char music_desc_play_melody[] PROGMEM = "Play built-in melody with playback options. Query parameters: melody (required, 0-19), option (optional, 1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground)";
-    constexpr const char music_desc_play_tone[] PROGMEM = "Play a tone at specified frequency and duration. Query parameters: freq (required, Hz), beat (optional, default 8000)";
-    constexpr const char music_desc_stop_tone[] PROGMEM = "Stop current tone playback";
-    constexpr const char music_param_beat[] PROGMEM = "beat";
-    constexpr const char music_param_freq[] PROGMEM = "freq";
-    constexpr const char music_param_melody[] PROGMEM = "melody";
-    constexpr const char music_param_option[] PROGMEM = "option";
-    constexpr const char music_service_name[] PROGMEM = "Music";
-    constexpr const char music_service_path[] PROGMEM = "music/v1";
-    constexpr const char music_tag[] PROGMEM = "Music";
+    constexpr const char action_get_melodies[] PROGMEM = "melodies";
+    constexpr const char action_play[] PROGMEM = "play";
+    constexpr const char action_stop[] PROGMEM = "stop";
+    constexpr const char action_tone[] PROGMEM = "tone";
+    constexpr const char desc_get_melodies[] PROGMEM = "Get list of available built-in melodies";
+    constexpr const char desc_play_melody[] PROGMEM = "Play built-in melody with playback options. Query parameters: melody (required, 0-19), option (optional, 1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground)";
+    constexpr const char desc_play_tone[] PROGMEM = "Play a tone at specified frequency and duration. Query parameters: freq (required, Hz), beat (optional, default 8000)";
+    constexpr const char desc_stop_tone[] PROGMEM = "Stop current tone playback";
+    constexpr const char param_beat[] PROGMEM = "beat";
+    constexpr const char param_freq[] PROGMEM = "freq";
+    constexpr const char param_melody[] PROGMEM = "melody";
+    constexpr const char param_option[] PROGMEM = "option";
+    constexpr const char service_name[] PROGMEM = "Music";
+    constexpr const char service_path[] PROGMEM = "music/v1";
+    constexpr const char tag[] PROGMEM = "Music";
 }
 
 bool MusicService::initializeService()
@@ -50,7 +50,7 @@ bool MusicService::initializeService()
     setServiceStatus(INITIALIZED);
     
 #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + fpstr_to_string(FPSTR(MusicConsts::msg_initialize_done)));
+    logger->debug(getServiceName() + progmem_to_string(MusicConsts::msg_initialize_done));
 #endif
     return true;
 }
@@ -59,7 +59,7 @@ bool MusicService::startService()
 {
     setServiceStatus(STARTED);
 #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + fpstr_to_string(FPSTR(MusicConsts::msg_start_done)));
+    logger->debug(getServiceName() + progmem_to_string(MusicConsts::msg_start_done));
 #endif
     return true;
 }
@@ -68,7 +68,7 @@ bool MusicService::stopService()
 {
    setServiceStatus(STOPPED);
 #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + fpstr_to_string(FPSTR(MusicConsts::msg_stop_done)));
+    logger->debug(getServiceName() + progmem_to_string(MusicConsts::msg_stop_done));
 #endif
     return true;
 }
@@ -82,7 +82,7 @@ bool MusicService::registerRoutes()
     static constexpr char response_desc[] PROGMEM = "Operation completed successfully";
     
     // Register play melody route
-    std::string path = getPath(MusicConsts::music_action_play);
+    std::string path = getPath(MusicConsts::action_play);
     logRouteRegistration(path);
     
     std::vector<OpenAPIResponse> responses;
@@ -95,14 +95,14 @@ bool MusicService::registerRoutes()
     playParams.push_back(OpenAPIParameter("melody", "string", "query", "Melody enum value (0-19)", true));
     playParams.push_back(OpenAPIParameter("option", "string", "query", "Playback option (1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground)", false));
     
-    OpenAPIRoute routePlay(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_play_melody, MusicConsts::music_tag, false, playParams, responses);
+    OpenAPIRoute routePlay(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_play_melody, MusicConsts::tag, false, playParams, responses);
     registerOpenAPIRoute(routePlay);
     
     webserver.on(path.c_str(), HTTP_POST, [this]() {
         if (!checkServiceStarted()) return;
         
-        String melodyStr = webserver.arg(MusicConsts::music_param_melody);
-        String optionStr = webserver.arg(MusicConsts::music_param_option);
+        String melodyStr = webserver.arg(MusicConsts::param_melody);
+        String optionStr = webserver.arg(MusicConsts::param_option);
         
         if (melodyStr.isEmpty()) {
             webserver.send(400, RoutesConsts::mime_json, FPSTR(MusicConsts::json_error_melody_required));
@@ -118,7 +118,7 @@ bool MusicService::registerRoutes()
     });
     
     // Register play tone route
-    path = getPath(MusicConsts::music_action_tone);
+    path = getPath(MusicConsts::action_tone);
     logRouteRegistration(path);
     
     // Play tone route parameters
@@ -126,14 +126,14 @@ bool MusicService::registerRoutes()
     toneParams.push_back(OpenAPIParameter("freq", "string", "query", "Frequency in Hz", true));
     toneParams.push_back(OpenAPIParameter("beat", "string", "query", "Beat duration (default 8000)", false));
     
-    OpenAPIRoute routeTone(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_play_tone, MusicConsts::music_tag, false, toneParams, responses);
+    OpenAPIRoute routeTone(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_play_tone, MusicConsts::tag, false, toneParams, responses);
     registerOpenAPIRoute(routeTone);
     
     webserver.on(path.c_str(), HTTP_POST, [this]() {
         if (!checkServiceStarted()) return;
         
-        String freqStr = webserver.arg(MusicConsts::music_param_freq);
-        String beatStr = webserver.arg(MusicConsts::music_param_beat);
+        String freqStr = webserver.arg(MusicConsts::param_freq);
+        String beatStr = webserver.arg(MusicConsts::param_beat);
         
         if (freqStr.isEmpty()) {
             webserver.send(400, RoutesConsts::mime_json, FPSTR(MusicConsts::json_error_freq_required));
@@ -149,10 +149,10 @@ bool MusicService::registerRoutes()
     });
     
     // Register stop tone route
-     path = getPath(MusicConsts::music_action_stop);
+     path = getPath(MusicConsts::action_stop);
     logRouteRegistration(path);
     
-    OpenAPIRoute routeStop(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_stop_tone, MusicConsts::music_tag, false, {}, responses);
+    OpenAPIRoute routeStop(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_stop_tone, MusicConsts::tag, false, {}, responses);
     registerOpenAPIRoute(routeStop);
     
     webserver.on(path.c_str(), HTTP_POST, [this]() {
@@ -163,14 +163,14 @@ bool MusicService::registerRoutes()
     });
 
     // Register status route
-    registerServiceStatusRoute(MusicConsts::music_tag, this);
+    registerServiceStatusRoute(MusicConsts::tag, this);
 
- path = getPath(MusicConsts::music_action_get_melodies);
+ path = getPath(MusicConsts::action_get_melodies);
 #ifdef VERBOSE_DEBUG
-    logger->debug(fpstr_to_string(FPSTR(RoutesConsts::msg_registering)) + path);
+    logger->debug(progmem_to_string(RoutesConsts::msg_registering) + path);
     #endif
     logRouteRegistration(path);
-    OpenAPIRoute routeMelodies(path.c_str(), RoutesConsts::method_post, MusicConsts::music_desc_get_melodies, MusicConsts::music_tag, false, {}, responses);
+    OpenAPIRoute routeMelodies(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_get_melodies, MusicConsts::tag, false, {}, responses);
     registerOpenAPIRoute(routeMelodies  );
     
     webserver.on(path.c_str(), HTTP_POST, [this]() {
@@ -188,10 +188,10 @@ bool MusicService::registerRoutes()
 
 std::string MusicService::getServiceSubPath()
 {
-    return MusicConsts::music_service_path;
+    return MusicConsts::service_path;
 }
 
 std::string MusicService::getServiceName()
 {
-    return MusicConsts::music_service_name;
+    return MusicConsts::service_name;
 }

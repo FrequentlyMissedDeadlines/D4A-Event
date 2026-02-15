@@ -9,7 +9,6 @@
 #include <sstream>
 
 constexpr int MAX_ROWS = 16;
-constexpr int CHAR_HEIGHT = 10;
 
 
 // Constructor

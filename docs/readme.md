@@ -81,7 +81,7 @@ It also expose a UDP service that should received commands from a user remote co
 - Multiple servo control operations (individual, all, or batch)
 - Uses DFRobot_UnihikerExpansion controller
 
-#### 6. **K10CamService** (`/api/cam/v1`)
+#### 6. **CameraService** (`/api/cam/v1`)
 - Camera snapshot capture
 - Streaming capabilities
 - Image quality configuration

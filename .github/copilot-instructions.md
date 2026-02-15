@@ -15,7 +15,7 @@ All features are implemented as **services** inheriting from [IsServiceInterface
 - **Settings**: Optional `saveSettings()` / `loadSettings()` persistence
 - **OpenAPI**: Services expose HTTP routes via [IsOpenAPIInterface.h](src/services/IsOpenAPIInterface.h)
 
-**Example services**: `BoardInfoService`, `K10CamService`, `ServoService`, `UDPService`, `HTTPService`, `K10SensorsService`, `SettingsService`, `RollingLoggerService`, `MusicService`
+**Example services**: `BoardInfoService`, `CameraService`, `ServoService`, `UDPService`, `HTTPService`, `K10SensorsService`, `SettingsService`, `RollingLoggerService`, `MusicService`
 
 ### Service Initialization Pattern (from [main.cpp](src/main.cpp))
 ```cpp

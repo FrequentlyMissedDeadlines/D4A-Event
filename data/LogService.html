@@ -26,12 +26,43 @@
       margin-bottom: 15px;
       padding-bottom: 10px;
       border-bottom: 2px solid #444;
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    .log-header:hover {
+      background: #222;
+      margin: -5px;
+      padding: 5px 5px 15px 5px;
+      border-radius: 4px;
     }
     
     .log-title {
       font-size: 20px;
       font-weight: bold;
       color: #4CAF50;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .collapse-btn {
+      background: none;
+      border: none;
+      color: #4CAF50;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.3s;
+    }
+    
+    .collapse-btn.collapsed {
+      transform: rotate(-90deg);
     }
     
     .log-count {
@@ -51,6 +82,15 @@
       padding: 15px;
       border-radius: 4px;
       border: 1px solid #333;
+      transition: max-height 0.3s, opacity 0.3s;
+    }
+    
+    .log-entries.collapsed {
+      max-height: 0;
+      padding: 0 15px;
+      opacity: 0;
+      overflow: hidden;
+      border: none;
     }
     
     .log-entry {
@@ -249,7 +289,7 @@
     
     <div class="auto-refresh-control">
       <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
-      <label for="autoRefresh">Auto-refresh every 5s</label>
+      <label for="autoRefresh">Auto-refresh every 0.5s</label>
     </div>
     
     <div class="filter-controls">
@@ -269,6 +309,7 @@
   <script>
     let autoRefreshInterval = null;
     const activeFilters = new Set(['TRACE', 'DEBUG', 'INFO', 'WARNING', 'ERROR']);
+    const collapsedSections = new Set(); // Track which sections are collapsed
     
     function toggleFilter(level) {
       const btn = document.querySelector(`.filter-btn[data-level="${level}"]`);
@@ -289,7 +330,7 @@
     function toggleAutoRefresh() {
       const checkbox = document.getElementById('autoRefresh');
       if (checkbox.checked) {
-        autoRefreshInterval = setInterval(refreshLogs, 5000);
+        autoRefreshInterval = setInterval(refreshLogs, 500);
       } else {
         if (autoRefreshInterval) {
           clearInterval(autoRefreshInterval);
@@ -329,7 +370,17 @@
       
       const titleDiv = document.createElement('div');
       titleDiv.className = 'log-title';
-      titleDiv.textContent = title;
+      
+      const collapseBtn = document.createElement('button');
+      collapseBtn.className = 'collapse-btn';
+      collapseBtn.innerHTML = '▼';
+      collapseBtn.setAttribute('aria-label', 'Toggle section');
+      
+      const titleText = document.createElement('span');
+      titleText.textContent = title;
+      
+      titleDiv.appendChild(collapseBtn);
+      titleDiv.appendChild(titleText);
       
       const visibleCount = logs.filter(log => shouldShowEntry(log.level)).length;
       const countDiv = document.createElement('div');
@@ -360,6 +411,25 @@
       section.appendChild(header);
       section.appendChild(entries);
       
+      // Restore collapsed state if it was previously collapsed
+      if (collapsedSections.has(id)) {
+        entries.classList.add('collapsed');
+        collapseBtn.classList.add('collapsed');
+      }
+      
+      // Add click handler for collapse/expand
+      header.addEventListener('click', function() {
+        const isCollapsed = entries.classList.toggle('collapsed');
+        collapseBtn.classList.toggle('collapsed');
+        
+        // Store the collapse state
+        if (isCollapsed) {
+          collapsedSections.add(id);
+        } else {
+          collapsedSections.delete(id);
+        }
+      });
+      
       return section;
     }
     
@@ -382,6 +452,10 @@
         // Render app info logs
         if (data.app_info) {
           container.appendChild(renderLogSection('App Info Logger', data.app_info, 'appInfoLogs'));
+        }
+                // Render ESP-IDF logs
+        if (data.esp) {
+          container.appendChild(renderLogSection('ESP-IDF Logger', data.esp, 'espLogs'));
         }
         
         // Auto-scroll to bottom of each log section

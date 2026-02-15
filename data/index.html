@@ -76,8 +76,7 @@
           const li = document.createElement('li');
           li.innerHTML = `
             <span class="method method-${route.method}">${route.method}</span>
-            <a href="${route.path}" class="path">${route.path}</a>
-            <div style="margin-left: 50px; color: #666; font-size: 13px;">${route.description}</div>
+            <a href="${route.path}" class="path" title="${route.description}">${route.path}</a>
           `;
           routesList.appendChild(li);
         });

@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <freertos/task.h>
 #include <TFT_eSPI.h>
+#include <esp_log.h>
 
 #include <WebServer.h>
 #include <AsyncUDP.h>
@@ -17,9 +18,12 @@
 #include <SPIFFS.h>
 #include <FFat.h>
 #include <unihiker_k10.h>
+#include <esp_camera.h>
+#include <img_converters.h>
 #include "services/RollingLogger.h"
+#include "services/esp_to_rolling.h"
 #include "services/board/BoardInfoService.h"
-#include "services/camera/K10CamService.h"
+ #include "services/camera/WebcamService.h"
 #include "services/servo/ServoService.h"
 #include "services/udp/UDPService.h"
 #include "services/http/HTTPService.h"
@@ -30,8 +34,7 @@
 #include "services/wifi/WiFiService.h"
 #include "ui/utb2026.h"
 
-
-#define LOAD_FONT8N // TFT font - special case for library config
+#define LOAD_FONT8N   // TFT font - special case for library config
 #define VERBOSE_DEBUG // Enable verbose debug logging
 
 // Main application constants
@@ -93,13 +96,16 @@ SettingsService settings_service = SettingsService();
 K10SensorsService k10sensors_service = K10SensorsService();
 BoardInfoService board_info = BoardInfoService();
 ServoService servo_service = ServoService();
-K10CamService webcam_service = K10CamService();
+WebcamService webcam_service = WebcamService();
 RollingLogger debug_logger = RollingLogger();
 RollingLogger app_info_logger = RollingLogger();
+RollingLogger esp_logger = RollingLogger();
 RollingLoggerService rolling_logger_service = RollingLoggerService();
 UTB2026 ui = UTB2026();
 
 MusicService music_service = MusicService();
+
+// define CONFIG_GC2145_SUPPORT 1
 
 // Camera frame queue
 // Packet handling is implemented in udp_handler module
@@ -147,7 +153,7 @@ void task_DISPLAY(void *pvParameters)
  */
 void task_HTTP_SVR(void *pvParameters)
 {
-  debug_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_http_task_started)));
+  debug_logger.info(progmem_to_string(MainConsts::msg_http_task_started));
   int loop_count = 0;
   for (;;)
   {
@@ -155,7 +161,7 @@ void task_HTTP_SVR(void *pvParameters)
     loop_count++;
     if (loop_count % 1000 == 0)
     {
-      debug_logger.trace(fpstr_to_string(FPSTR(MainConsts::msg_webserver_running)));
+      debug_logger.trace(progmem_to_string(MainConsts::msg_webserver_running));
     }
     // Very short delay to allow other tasks to run
     vTaskDelay(web_server_task_delay_ticks);
@@ -177,34 +183,34 @@ namespace
     unihiker.rgb->write(0, 32, 0, 0); // pixel0 = red
 
 #ifdef VERBOSE_DEBUG
-    debug_logger.debug(fpstr_to_string(FPSTR(MainConsts::msg_service)) + service.getServiceName());
+    debug_logger.debug(progmem_to_string(MainConsts::msg_service) + service.getServiceName());
 #endif
     service.setLogger(&debug_logger);
-    
+
     // Attach settings service if this is not the settings service itself
-    if (&service != static_cast<IsServiceInterface*>(&settings_service))
+    if (&service != static_cast<IsServiceInterface *>(&settings_service))
     {
       service.setSettingsService(&settings_service);
     }
-    
+
     if (service.initializeService())
     {
       unihiker.rgb->write(0, 32, 32, 0); // pixel0 = red
       if (!service.startService())
       {
-        app_info_logger.error(service.getServiceName() + fpstr_to_string(FPSTR(MainConsts::msg_start_failed)));
+        app_info_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_start_failed));
       }
       else
       {
         unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
 #ifdef VERBOSE_DEBUG
-        app_info_logger.debug(service.getServiceName() + fpstr_to_string(FPSTR(MainConsts::msg_started)));
+        app_info_logger.debug(service.getServiceName() + progmem_to_string(MainConsts::msg_started));
 #endif
       }
     }
     else
     {
-      app_info_logger.error(service.getServiceName() + fpstr_to_string(FPSTR(MainConsts::msg_initialize_failed)));
+      app_info_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_initialize_failed));
     }
 
     // Register OpenAPI routes if the service implements IsOpenAPIInterface
@@ -215,19 +221,19 @@ namespace
       try
       {
 #ifdef VERBOSE_DEBUG
-        debug_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_openapi_registered)) + service.getServiceName());
+        debug_logger.info(progmem_to_string(MainConsts::msg_openapi_registered) + service.getServiceName());
 #endif
         http_service.registerOpenAPIService(openapi);
       }
       catch (const std::exception &e)
       {
-        debug_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_register_failed)) + service.getServiceName());
+        debug_logger.error(progmem_to_string(MainConsts::msg_register_failed) + service.getServiceName());
       }
     }
     else
     {
 #ifdef VERBOSE_DEBUG
-      debug_logger.debug(fpstr_to_string(FPSTR(MainConsts::msg_no_openapi)) + service.getServiceName());
+      debug_logger.debug(progmem_to_string(MainConsts::msg_no_openapi) + service.getServiceName());
 #endif
     }
     unihiker.rgb->write(0, 0, 0, 0); // pixel0 = red
@@ -236,6 +242,117 @@ namespace
   }
 
 }
+
+/**
+ * @brief Arduino setup function - initializes hardware and services
+ * @details Initializes display, loggers, services, and FreeRTOS tasks
+ */
+void setup()
+{
+  // Small delay to ensure system stabilizes
+  delay(500);
+  
+  // Configure ESP-IDF logging AS FIRST THING before any hardware init
+  esp_log_level_set("*", ESP_LOG_DEBUG);
+  
+  // Initialize loggers BEFORE hardware to capture early logs
+  app_info_logger.set_max_rows(32);
+  app_info_logger.set_log_level(RollingLogger::INFO);
+  debug_logger.set_max_rows(32);
+  debug_logger.set_log_level(RollingLogger::DEBUG);
+  esp_logger.set_max_rows(32);
+  esp_logger.set_log_level(RollingLogger::DEBUG);
+
+  // Redirect ESP-IDF logs BEFORE any other initialization
+  esp_log_to_rolling_init(&esp_logger);
+  
+  // Test ESP logging immediately after redirect
+  ESP_LOGI("Main", "TEST 1: ESP-IDF logging initialized");
+  ESP_LOGD("Main", "TEST 2: Debug level message");
+  ESP_LOGW("Main", "TEST 3: Warning level message");
+  ESP_LOGE("Main", "TEST 4: Error level message");
+  
+  // Now initialize hardware
+  unihiker.begin();
+  unihiker.initScreen(2, 30);
+  unihiker.creatCanvas();
+  unihiker.setScreenBackground(TFT_BLACK);
+
+  unihiker.rgb->write(0, 0, 0, 0);
+  unihiker.rgb->write(1, 0, 0, 0);
+  unihiker.rgb->write(2, 0, 0, 0);
+  
+
+
+  ui.init();
+  // ui.add_logger_view(&app_info_logger, 0, 120, 240, 240, TFT_BLACK, TFT_BLACK);
+  ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_LIGHTGREY, TFT_LIGHTGREY);
+  xTaskCreatePinnedToCore(task_DISPLAY, "Display_Task", 4096, nullptr, 1, nullptr, 1);
+
+  debug_logger.info(progmem_to_string(MainConsts::msg_starting_services));
+  if (!start_service(wifi_service))
+  {
+    app_info_logger.error(progmem_to_string(MainConsts::msg_fatal_wifi_failed));
+
+    return;
+  }
+  start_service(settings_service);
+  start_service(k10sensors_service);
+  start_service(board_info);
+  start_service(servo_service);
+  start_service(webcam_service);
+  start_service(music_service);
+
+  // Set up rolling logger service with logger instances (including esp_logger)
+  rolling_logger_service.set_logger_instances(&debug_logger, &app_info_logger, &esp_logger);
+  start_service(rolling_logger_service);
+
+  if (start_service(udp_service))
+  {
+    xTaskCreatePinnedToCore(xtask_UDP_SVR, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);
+  }
+  else
+  {
+    app_info_logger.error(progmem_to_string(MainConsts::msg_failed_udp));
+  }
+
+  // Initialize fast camera and register route BEFORE starting HTTP service
+
+  if (start_service(http_service))
+  {
+    xTaskCreatePinnedToCore(task_HTTP_SVR, "WebServer_Task", 8192, nullptr, 2, nullptr, 1);
+  }
+  else
+  {
+    app_info_logger.error(progmem_to_string(MainConsts::msg_failed_webserver));
+  }
+
+  ui.set_info(ui.KEY_WIFI_NAME, wifi_service.getSSID().c_str());
+  ui.set_info(ui.KEY_IP_ADDRESS, wifi_service.getIP().c_str());
+  ui.draw_all();
+  unihiker.rgb->write(0, 0, 0, 0);
+  unihiker.rgb->write(1, 0, 0, 0);
+  unihiker.rgb->write(2, 0, 0, 0);
+
+  app_info_logger.info(progmem_to_string(MainConsts::msg_bot_started) + wifi_service.getHostname() + progmem_to_string(MainConsts::msg_started));
+  app_info_logger.info(wifi_service.getIP() + progmem_to_string(RoutesConsts::str_space) + wifi_service.getSSID());
+  app_info_logger.info(progmem_to_string(MainConsts::msg_udp_port) + std::to_string(udp_service.getPort()));
+}
+
+/**
+ * @brief Arduino main loop function
+ * @details All application logic runs inside FreeRTOS tasks, this loop is empty
+ */
+void loop()
+{
+  // All application logic runs inside FreeRTOS tasks
+  delay(1000);
+}
+
+
+
+
+
 // //debugging function to list files in a filesystem (e.g., LittleFS, SPIFFS, FFat)
 // void listFilesInFS(fs::FS &fs, const char* fsName)
 // {
@@ -273,11 +390,11 @@ namespace
 //     const char* partitionLabel = partitions[i];
 //     debugLogger.info(std::string("Checking FS '") + partitionLabel + "'");
 //     // Try LittleFS on partition
-//     if (LittleFS.begin(false, "/littlefs", 10, "voice_data")) 
+//     if (LittleFS.begin(false, "/littlefs", 10, "voice_data"))
 //     {
 //       appInfoLogger.info("SUCCESS: LittleFS " + std::string(partitionLabel) + " mounted");
 //       listFilesInFS(LittleFS, (std::string("LittleFS_") + partitionLabel).c_str());
-//       LittleFS.end();    
+//       LittleFS.end();
 //     }
 //     else
 //     {
@@ -286,95 +403,3 @@ namespace
 //     delay(500);
 //   }
 // }
-
-/**
- * @brief Arduino setup function - initializes hardware and services
- * @details Initializes display, loggers, services, and FreeRTOS tasks
- */
-void setup()
-{
-  // Small delay to ensure system stabilizes
-  delay(500);
-  unihiker.begin();
-  unihiker.initScreen(2, 30);
-  unihiker.creatCanvas();
-  unihiker.setScreenBackground(TFT_BLACK);
-
-  unihiker.rgb->write(0, 0, 0, 0);
-  unihiker.rgb->write(1, 0, 0, 0);
-  unihiker.rgb->write(2, 0, 0, 0);
-  // Initialize the display once via the helper
-  app_info_logger.set_max_rows(8);
-  app_info_logger.set_log_level(RollingLogger::INFO);
-  debug_logger.set_max_rows(16);
-  debug_logger.set_log_level(RollingLogger::DEBUG);
-
-  ui.init();
-  // ui.add_logger_view(&app_info_logger, 0, 120, 240, 240, TFT_BLACK, TFT_BLACK);
-  ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_LIGHTGREY, TFT_LIGHTGREY);
-  xTaskCreatePinnedToCore(task_DISPLAY, "Display_Task", 4096, nullptr, 1, nullptr, 1);
-
-
-
-
-
-  debug_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_starting_services)));
-  if (!start_service(wifi_service))
-  {
-    app_info_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_fatal_wifi_failed)));
-  
-    return;
-  }  
-  start_service(settings_service);
-  start_service(k10sensors_service);
-  start_service(board_info);
-  start_service(servo_service);
-  start_service(webcam_service);
-  start_service(music_service);
-  
-  // Set up rolling logger service with logger instances
-  rolling_logger_service.set_logger_instances(&debug_logger, &app_info_logger);
-  start_service(rolling_logger_service);
-
-  if (start_service(udp_service))
-  {
-    xTaskCreatePinnedToCore(xtask_UDP_SVR, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);
-  }
-  else
-  {
-    app_info_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_failed_udp)));
-  }
-
-  if (start_service(http_service))
-  {
-    xTaskCreatePinnedToCore(task_HTTP_SVR, "WebServer_Task", 8192, nullptr, 2, nullptr, 1);
-  }
-  else
-  {
-    app_info_logger.error(fpstr_to_string(FPSTR(MainConsts::msg_failed_webserver)));
-  }
-
-
-
-  ui.set_info(ui.KEY_WIFI_NAME, wifi_service.getSSID().c_str());
-  ui.set_info(ui.KEY_IP_ADDRESS, wifi_service.getIP().c_str());
-  ui.draw_all();
-  unihiker.rgb->write(0, 0, 0, 0);
-  unihiker.rgb->write(1, 0, 0, 0);
-  unihiker.rgb->write(2, 0, 0, 0);
-
-  app_info_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_bot_started)) + wifi_service.getHostname() + fpstr_to_string(FPSTR(MainConsts::msg_started)));
-  app_info_logger.info(wifi_service.getIP() + fpstr_to_string(FPSTR(RoutesConsts::str_space)) + wifi_service.getSSID());
-  app_info_logger.info(fpstr_to_string(FPSTR(MainConsts::msg_udp_port)) + std::to_string(udp_service.getPort()));
-  
-}
-
-/**
- * @brief Arduino main loop function
- * @details All application logic runs inside FreeRTOS tasks, this loop is empty
- */
-void loop()
-{
-  // All application logic runs inside FreeRTOS tasks
-  // delay(60000);
-}

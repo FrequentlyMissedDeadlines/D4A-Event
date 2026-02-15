@@ -18,13 +18,14 @@ Preferences preferences_;
 
 // SettingsService constants namespace
 namespace SettingsConsts
-{
+{    
+    constexpr size_t max_domain_length = 15;
+    constexpr size_t max_key_length = 15;
     constexpr const char json_error_prefix[] PROGMEM = "{\"error\":\"";
     constexpr const char json_error_suffix[] PROGMEM = "\"}";
     constexpr const char json_settings[] PROGMEM = "settings";
     constexpr const char json_success[] PROGMEM = "success";
-    constexpr size_t max_domain_length = 15;
-    constexpr size_t max_key_length = 15;
+
     constexpr const char msg_initialized[] PROGMEM = "Settings Service initialized";
     constexpr const char msg_initializing[] PROGMEM = "Initializing Settings Service";
     constexpr const char msg_invalid_domain[] PROGMEM = "Invalid domain name.";
@@ -63,12 +64,12 @@ SettingsService::~SettingsService()
 
 std::string SettingsService::getServiceName()
 {
-    return fpstr_to_string(FPSTR(SettingsConsts::str_service_name));
+    return progmem_to_string(SettingsConsts::str_service_name);
 }
 
 std::string SettingsService::getServiceSubPath()
 {
-    return fpstr_to_string(FPSTR(SettingsConsts::path_service));
+    return progmem_to_string(SettingsConsts::path_service);
 }
 
 

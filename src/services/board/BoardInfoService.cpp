@@ -80,9 +80,9 @@ bool BoardInfoService::registerRoutes()
 
 std::string BoardInfoService::getServiceName()
 {
-  return fpstr_to_string(FPSTR(BoardInfoConsts::str_service_name));
+  return progmem_to_string(BoardInfoConsts::str_service_name);
 }
 std::string BoardInfoService::getServiceSubPath()
 {
-    return fpstr_to_string(FPSTR(BoardInfoConsts::path_service));
+    return progmem_to_string(BoardInfoConsts::path_service);
 }

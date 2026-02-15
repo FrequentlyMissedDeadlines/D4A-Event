@@ -324,11 +324,11 @@ bool UDPService::registerRoutes()
 
 std::string UDPService::getServiceName()
 {
-  return fpstr_to_string(FPSTR(UDPConsts::str_service_name));
+  return progmem_to_string(UDPConsts::str_service_name);
 }
 std::string UDPService::getServiceSubPath()
 {
-    return fpstr_to_string(FPSTR(UDPConsts::path_service));
+    return progmem_to_string(UDPConsts::path_service);
 }
 
 /**

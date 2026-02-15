@@ -24,7 +24,7 @@ bool RemoteControlService::initializeService()
 {
     if (!udp_service || !servo_service)
     {
-        logger->error(getServiceName() + fpstr_to_string(FPSTR(RemoteControlConsts::msg_missing_services)));
+        logger->error(getServiceName() + progmem_to_string(RemoteControlConsts::msg_missing_services));
         return false;
     }
 
@@ -45,7 +45,7 @@ bool RemoteControlService::startService()
 
     if (handler_id < 0)
     {
-        logger->error(getServiceName() + fpstr_to_string(FPSTR(RemoteControlConsts::msg_failed_register_handler)));
+        logger->error(getServiceName() + progmem_to_string(RemoteControlConsts::msg_failed_register_handler));
         return false;
     }
 
@@ -71,7 +71,7 @@ bool RemoteControlService::stopService()
 
 std::string RemoteControlService::getServiceName()
 {
-    return fpstr_to_string(FPSTR(RemoteControlConsts::str_service_name));
+    return progmem_to_string(RemoteControlConsts::str_service_name);
 }
 
 bool RemoteControlService::handleMessage(const std::string& message, const IPAddress& remoteIP, uint16_t remotePort)
@@ -80,7 +80,7 @@ bool RemoteControlService::handleMessage(const std::string& message, const IPAdd
     std::string cmd = message;
     
     // Remove leading/trailing whitespace
-    std::string whitespace = fpstr_to_string(FPSTR(RemoteControlConsts::str_whitespace));
+    std::string whitespace = progmem_to_string(RemoteControlConsts::str_whitespace);
     size_t start = cmd.find_first_not_of(whitespace);
     size_t end = cmd.find_last_not_of(whitespace);
     if (start != std::string::npos && end != std::string::npos)
@@ -95,43 +95,43 @@ bool RemoteControlService::handleMessage(const std::string& message, const IPAdd
     }
 
     // Check if this is a remote control command
-    if (cmd == fpstr_to_string(FPSTR(RemoteControlConsts::cmd_forward)))
+    if (cmd == progmem_to_string(RemoteControlConsts::cmd_forward))
     {
         executeForward();
         #ifdef VERBOSE_DEBUG
-        logger->debug(fpstr_to_string(FPSTR(RemoteControlConsts::msg_remote_forward)) + std::string(remoteIP.toString().c_str()));
+        logger->debug(progmem_to_string(RemoteControlConsts::msg_remote_forward) + std::string(remoteIP.toString().c_str()));
         #endif
         return true;
     }
-    else if (cmd == fpstr_to_string(FPSTR(RemoteControlConsts::cmd_backward)))
+    else if (cmd == progmem_to_string(RemoteControlConsts::cmd_backward))
     {
         executeBackward();
         #ifdef VERBOSE_DEBUG
-        logger->debug(fpstr_to_string(FPSTR(RemoteControlConsts::msg_remote_backward)) + std::string(remoteIP.toString().c_str()));
+        logger->debug(progmem_to_string(RemoteControlConsts::msg_remote_backward) + std::string(remoteIP.toString().c_str()));
         #endif
         return true;
     }
-    else if (cmd == fpstr_to_string(FPSTR(RemoteControlConsts::cmd_turn_left)))
+    else if (cmd == progmem_to_string(RemoteControlConsts::cmd_turn_left))
     {
         executeTurnLeft();
         #ifdef VERBOSE_DEBUG
-        logger->debug(fpstr_to_string(FPSTR(RemoteControlConsts::msg_remote_turn_left)) + std::string(remoteIP.toString().c_str()));
+        logger->debug(progmem_to_string(RemoteControlConsts::msg_remote_turn_left) + std::string(remoteIP.toString().c_str()));
         #endif
         return true;
     }
-    else if (cmd == fpstr_to_string(FPSTR(RemoteControlConsts::cmd_turn_right)))
+    else if (cmd == progmem_to_string(RemoteControlConsts::cmd_turn_right))
     {
         executeTurnRight();
         #ifdef VERBOSE_DEBUG
-        logger->debug(fpstr_to_string(FPSTR(RemoteControlConsts::msg_remote_turn_right)) + std::string(remoteIP.toString().c_str()));
+        logger->debug(progmem_to_string(RemoteControlConsts::msg_remote_turn_right) + std::string(remoteIP.toString().c_str()));
         #endif
         return true;
     }
-    else if (cmd == fpstr_to_string(FPSTR(RemoteControlConsts::cmd_stop)))
+    else if (cmd == progmem_to_string(RemoteControlConsts::cmd_stop))
     {
         executeStop();
         #ifdef VERBOSE_DEBUG
-        logger->debug(fpstr_to_string(FPSTR(RemoteControlConsts::msg_remote_stop)) + std::string(remoteIP.toString().c_str()));
+        logger->debug(progmem_to_string(RemoteControlConsts::msg_remote_stop) + std::string(remoteIP.toString().c_str()));
         #endif
         return true;
     }

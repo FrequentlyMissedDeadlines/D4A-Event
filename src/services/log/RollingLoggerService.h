@@ -17,6 +17,7 @@ namespace RollingLoggerConsts
     constexpr const char path_all_logs[] PROGMEM = "all";
     constexpr const char path_debug_log[] PROGMEM = "debug";
     constexpr const char path_app_info_log[] PROGMEM = "app_info";
+    constexpr const char path_esp_log[] PROGMEM = "esp";
 }
 
 class RollingLoggerService : public IsOpenAPIInterface
@@ -30,8 +31,9 @@ public:
      * @brief Set the logger instances to be exposed via API
      * @param debug_log Pointer to debug logger instance
      * @param app_info_log Pointer to app info logger instance
+     * @param esp_log Pointer to ESP-IDF logger instance (optional)
      */
-    void set_logger_instances(RollingLogger* debug_log, RollingLogger* app_info_log);
+    void set_logger_instances(RollingLogger* debug_log, RollingLogger* app_info_log, RollingLogger* esp_log = nullptr);
 
 private:
 
@@ -39,6 +41,7 @@ private:
     // Pointers to logger instances
     static RollingLogger* debug_logger_ptr_;
     static RollingLogger* app_info_logger_ptr_;
+    static RollingLogger* esp_logger_ptr_;
     
     /**
      * @brief Helper to convert log level to string

@@ -671,7 +671,7 @@
           }
         }
         
-        // Map setting to K10CamService API endpoint
+        // Map setting to CameraService API endpoint
         let endpoint, body;
         
         switch(setting) {
@@ -696,7 +696,7 @@
             body = { level: parseInt(value) };
             break;
           default:
-            showError(`Setting '${setting}' is not supported by K10CamService`);
+            showError(`Setting '${setting}' is not supported by CameraService`);
             return;
         }
         

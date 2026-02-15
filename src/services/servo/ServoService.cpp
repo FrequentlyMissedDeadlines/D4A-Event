@@ -140,15 +140,15 @@ std::array<ServoConnection, MAX_SERVO_CHANNELS> attached_servos = {NOT_CONNECTED
 
 bool ServoService::initializeService()
 {
-    logger->info(fpstr_to_string(FPSTR(ServoConsts::msg_initializing)));
+    logger->info(progmem_to_string(ServoConsts::msg_initializing));
     if (servoController.begin())
     {
-        logger->info(fpstr_to_string(FPSTR(ServoConsts::msg_initialized_success)));
+        logger->info(progmem_to_string(ServoConsts::msg_initialized_success));
         setServiceStatus(INITIALIZED);
     }
     else
     {
-        logger->warning(fpstr_to_string(FPSTR(ServoConsts::msg_issue_detected)));
+        logger->warning(progmem_to_string(ServoConsts::msg_issue_detected));
         setServiceStatus(INITIALIZED_FAILED);
     }
 
@@ -163,13 +163,13 @@ bool ServoService::startService()
     {
                 
 #ifdef VERBOSE_DEBUG
-        logger->debug(getServiceName() + fpstr_to_string(FPSTR(RoutesConsts::str_space)) + getStatusString());   
+        logger->debug(getServiceName() + progmem_to_string(RoutesConsts::str_space) + getStatusString());   
 #endif
     }
     else
     {
         setServiceStatus(START_FAILED);
-        logger->error(getServiceName() + fpstr_to_string(FPSTR(ServoConsts::msg_start_failed)));
+        logger->error(getServiceName() + progmem_to_string(ServoConsts::msg_start_failed));
         return false;
     }
     setServiceStatus(STARTED);
@@ -186,7 +186,7 @@ bool ServoService::attachServo(uint8_t channel, ServoConnection connection)
     {
         if (channel >= MAX_SERVO_CHANNELS)
         {
-            throw std::out_of_range(fpstr_to_string(FPSTR(ServoConsts::err_channel_range)));
+            throw std::out_of_range(progmem_to_string(ServoConsts::err_channel_range));
         }
         attached_servos[channel] = connection;
 
@@ -393,7 +393,7 @@ std::string ServoService::getAttachedServo(uint8_t channel)
  */
 bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_angle;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_angle;
     logRouteRegistration(path);
 
     OpenAPIRoute angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -406,22 +406,12 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& sta
     {
         if (!checkServiceStarted()) return;
         
-        String body = webserver.arg(FPSTR(ServoConsts::str_plain));
-        
-        if (body.isEmpty())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
-        
+        // Parse and validate JSON body
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, body.c_str());
-        
-        if (error || !doc[ServoConsts::servo_channel].is<uint8_t>() || !doc[ServoConsts::servo_angle].is<uint16_t>())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
+            return d[ServoConsts::servo_channel].is<uint8_t>() && 
+                   d[ServoConsts::servo_angle].is<uint16_t>();
+        })) return;
 
         uint8_t ch = doc[ServoConsts::servo_channel].as<uint8_t>();
         uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
@@ -450,7 +440,7 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& sta
  */
 bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_speed;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_speed;
     logRouteRegistration(path);
 
     OpenAPIRoute speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -463,22 +453,12 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& sta
     {
         if (!checkServiceStarted()) return;
         
-        String body = webserver.arg(FPSTR(ServoConsts::str_plain));
-        
-        if (body.isEmpty())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
-        
+        // Parse and validate JSON body
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, body.c_str());
-        
-        if (error || !doc[ServoConsts::servo_channel].is<int>() || !doc[ServoConsts::servo_speed].is<int>())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
+            return d[ServoConsts::servo_channel].is<int>() && 
+                   d[ServoConsts::servo_speed].is<int>();
+        })) return;
         
         uint8_t channel = doc[ServoConsts::servo_channel].as<uint8_t>();
         int8_t speed = doc[ServoConsts::servo_speed].as<int>();
@@ -507,7 +487,7 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& sta
  */
 bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_stop_all;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_stop_all;
     logRouteRegistration(path);
 
     OpenAPIRoute stop_all_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_stop_all)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -535,7 +515,7 @@ bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse>& standard_
  */
 bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_get_status;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_get_status;
     logRouteRegistration(path);
 
     std::vector<OpenAPIParameter> status_params;
@@ -555,19 +535,18 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standar
     {
         if (!checkServiceStarted()) return;
         
-        if (!webserver.hasArg(ServoConsts::servo_channel))
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+        // Validate channel parameter with range check
+        std::string channel_str = ParamValidator::getValidatedParam(
+            ServoConsts::servo_channel,
+            RoutesConsts::msg_invalid_params,
+            [](const std::string& val) {
+                int ch = std::atoi(val.c_str());
+                return ch >= 0 && ch <= 7;
+            }
+        );
+        if (channel_str.empty()) return;
 
-        uint8_t channel = (uint8_t)webserver.arg(ServoConsts::servo_channel).toInt();
-        
-        if (channel > 7)
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
-            return;
-        }
+        uint8_t channel = (uint8_t)std::atoi(channel_str.c_str());
         
         std::string status = getAttachedServo(channel);
         webserver.send(200, RoutesConsts::mime_json, status.c_str());
@@ -581,7 +560,7 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standar
  */
 bool ServoService::addRouteGetAllStatus()
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_get_all_status;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_get_all_status;
     logRouteRegistration(path);
 
     std::vector<OpenAPIResponse> all_status_responses;
@@ -609,7 +588,7 @@ bool ServoService::addRouteGetAllStatus()
  */
 bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_all_angle;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_all_angle;
     logRouteRegistration(path);
 
     OpenAPIRoute all_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -622,22 +601,11 @@ bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& stand
     {
         if (!checkServiceStarted()) return;
         
-        String body = webserver.arg(FPSTR(ServoConsts::str_plain));
-        
-        if (body.isEmpty())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
-        
+        // Parse and validate JSON body
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, body.c_str());
-        
-        if (error || !doc[ServoConsts::servo_angle].is<uint16_t>())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
+            return d[ServoConsts::servo_angle].is<uint16_t>();
+        })) return;
 
         uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
         
@@ -665,7 +633,7 @@ bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& stand
  */
 bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_all_speed;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_all_speed;
     logRouteRegistration(path);
 
     OpenAPIRoute all_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -721,9 +689,9 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& stand
  */
 bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_servos_speed_multiple;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_servos_speed_multiple;
 #ifdef VERBOSE_DEBUG
-    logger->debug(fpstr_to_string(FPSTR(RoutesConsts::str_plus)) + path);
+    logger->debug(progmem_to_string(RoutesConsts::str_plus) + path);
 #endif    
     logRouteRegistration(path);
     OpenAPIRoute multi_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -736,21 +704,11 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
     {
         if (!checkServiceStarted()) return;
         
-        String body = webserver.arg(FPSTR(ServoConsts::str_plain));
-        
-        if (body.isEmpty())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
-        
+        // Parse and validate JSON body
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, body.c_str());
-        if (error || !doc[ServoConsts::servos].is<JsonArray>())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
+            return d[ServoConsts::servos].is<JsonArray>();
+        })) return;
 
         JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
         std::vector<ServoSpeedOp> ops;
@@ -788,9 +746,9 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
  */
 bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + fpstr_to_string(FPSTR(RoutesConsts::str_slash)) + ServoConsts::action_set_servos_angle_multiple;
+    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_servos_angle_multiple;
 #ifdef VERBOSE_DEBUG
-    logger->debug(fpstr_to_string(FPSTR(RoutesConsts::str_plus)) + path);
+    logger->debug(progmem_to_string(RoutesConsts::str_plus) + path);
     #endif
     logRouteRegistration(path);
     OpenAPIRoute multi_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -803,21 +761,11 @@ bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIRespo
     {
         if (!checkServiceStarted()) return;
         
-        String body = webserver.arg(FPSTR(ServoConsts::str_plain));
-        
-        if (body.isEmpty())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
-        
+        // Parse and validate JSON body
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, body.c_str());
-        if (error || !doc[ServoConsts::servos].is<JsonArray>())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
+            return d[ServoConsts::servos].is<JsonArray>();
+        })) return;
 
         JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
         std::vector<ServoAngleOp> ops;
@@ -857,7 +805,7 @@ bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse>& stand
 {
     std::string path = getPath(ServoConsts::action_attach_servo);
 #ifdef VERBOSE_DEBUG
-    logger->debug(fpstr_to_string(FPSTR(RoutesConsts::str_plus)) + path);
+    logger->debug(progmem_to_string(RoutesConsts::str_plus) + path);
 #endif
     logRouteRegistration(path);
     OpenAPIRoute attach_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attach_servo)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
@@ -945,12 +893,12 @@ bool ServoService::registerRoutes()
 
 std::string ServoService::getServiceName()
 {
-    return fpstr_to_string(FPSTR(ServoConsts::str_service_name));
+    return progmem_to_string(ServoConsts::str_service_name);
 }
 
 std::string ServoService::getServiceSubPath()
 {
-    return fpstr_to_string(FPSTR(ServoConsts::path_service));
+    return progmem_to_string(ServoConsts::path_service);
 }
 
 bool ServoService::saveSettings()
@@ -962,7 +910,7 @@ bool ServoService::saveSettings()
         return false;
     }
     
-    std::string comma = fpstr_to_string(FPSTR(ServoConsts::str_comma));
+    std::string comma = progmem_to_string(ServoConsts::str_comma);
     return settings_service_->setSetting(getServiceName(), reinterpret_cast<const char *>(FPSTR(ServoConsts::settings_key_servos)), std::to_string(static_cast<int>(attached_servos[0])) + comma + std::to_string(static_cast<int>(attached_servos[1])) + comma + std::to_string(static_cast<int>(attached_servos[2])) + comma + std::to_string(static_cast<int>(attached_servos[3])) + comma + std::to_string(static_cast<int>(attached_servos[4])) + comma + std::to_string(static_cast<int>(attached_servos[5])) + comma + std::to_string(static_cast<int>(attached_servos[6])) + comma + std::to_string(static_cast<int>(attached_servos[7])));
 }
 
@@ -978,7 +926,7 @@ bool ServoService::loadSettings()
     std::string attached_servos_settings = settings_service_->getSetting(getServiceName(), reinterpret_cast<const char *>(FPSTR(ServoConsts::settings_key_servos)));
     if (attached_servos_settings.empty())
     {
-        logger->info(fpstr_to_string(FPSTR(ServoConsts::msg_no_saved_settings)));
+        logger->info(progmem_to_string(ServoConsts::msg_no_saved_settings));
         return true;
     }
 
@@ -1006,6 +954,6 @@ bool ServoService::loadSettings()
         attachServo(channel, connection);
     }
 
-    logger->info(fpstr_to_string(FPSTR(ServoConsts::msg_loaded_settings)));
+    logger->info(progmem_to_string(ServoConsts::msg_loaded_settings));
     return true;
 }

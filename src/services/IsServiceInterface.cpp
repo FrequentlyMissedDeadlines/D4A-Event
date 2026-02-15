@@ -19,7 +19,7 @@ bool IsServiceInterface::saveSettings()
     if (!settings_service_)
     {
         if (logger) {
-            logger->warning(getServiceName() + ": " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_no_settings_service)));
+            logger->warning(getServiceName() + ": " + progmem_to_string(ServiceInterfaceConsts::msg_no_settings_service));
         }
         return false;
     }
@@ -53,14 +53,14 @@ bool IsServiceInterface::saveSettings()
     {
         #ifdef VERBOSE_DEBUG
         if (logger) {
-            logger->debug(getServiceName() + ": " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_settings_save_success)));
+            logger->debug(getServiceName() + ": " + progmem_to_string(ServiceInterfaceConsts::msg_settings_save_success));
         }
         #endif
     }
     else
     {
         if (logger) {
-            logger->error(getServiceName() + ": " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_settings_save_failed)));
+            logger->error(getServiceName() + ": " + progmem_to_string(ServiceInterfaceConsts::msg_settings_save_failed));
         }
     }
     
@@ -79,7 +79,7 @@ bool IsServiceInterface::loadSettings()
     if (!settings_service_)
     {
         if (logger) {
-            logger->warning(getServiceName() + ": " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_no_settings_service)));
+            logger->warning(getServiceName() + ": " + progmem_to_string(ServiceInterfaceConsts::msg_no_settings_service));
         }
         return false;
     }
@@ -115,7 +115,7 @@ bool IsServiceInterface::loadSettings()
     {
         #ifdef VERBOSE_DEBUG
         if (logger) {
-            logger->debug(getServiceName() + ": " + fpstr_to_string(FPSTR(ServiceInterfaceConsts::msg_settings_load_success)));
+            logger->debug(getServiceName() + ": " + progmem_to_string(ServiceInterfaceConsts::msg_settings_load_success));
         }
         #endif
     }

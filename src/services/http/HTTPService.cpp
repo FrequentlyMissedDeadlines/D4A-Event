@@ -62,7 +62,9 @@ bool HTTPService::startService()
   {
     logger->info("LittleFS mounted successfully");
     // Debug: List files in LittleFS
+    #ifdef VERBOSE_DEBUG
     listFilesInFS(LittleFS, "/");
+    #endif  
   }
 
   // Register base routes but don't start server yet (services need to register first)

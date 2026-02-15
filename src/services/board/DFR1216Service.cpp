@@ -116,13 +116,13 @@ bool DFR1216Service::setServoAngle(uint8_t channel, uint16_t angle)
 
     if (channel > 5)
     {
-        logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_servo_channel_out_of_range)));
+        logger->error(progmem_to_string(DFR1216Consts::msg_servo_channel_out_of_range));
         return false;
     }
 
     if (angle > 180)
     {
-        logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_angle_out_of_range)));
+        logger->error(progmem_to_string(DFR1216Consts::msg_angle_out_of_range));
         return false;
     }
 
@@ -141,13 +141,13 @@ bool DFR1216Service::setMotorSpeed(uint8_t motor, int8_t speed)
 
     if (motor < 1 || motor > 4)
     {
-        logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_motor_out_of_range)));
+        logger->error(progmem_to_string(DFR1216Consts::msg_motor_out_of_range));
         return false;
     }
 
     if (speed < -100 || speed > 100)
     {
-        logger->error(fpstr_to_string(FPSTR(DFR1216Consts::msg_speed_out_of_range)));
+        logger->error(progmem_to_string(DFR1216Consts::msg_speed_out_of_range));
         return false;
     }
 
@@ -207,7 +207,7 @@ bool DFR1216Service::registerRoutes()
 
     OpenAPIRoute servo_route(getPath("setServoAngle").c_str(),
                              RoutesConsts::method_post,
-                             fpstr_to_string(FPSTR(DFR1216Consts::desc_servo_control)).c_str(),
+                             progmem_to_string(DFR1216Consts::desc_servo_control).c_str(),
                              FPSTR(DFR1216Consts::tag_dfr1216), false, servo_params, servo_responses);
     servo_route.requestBody = OpenAPIRequestBody(FPSTR(DFR1216Consts::desc_servo_params),
                                                  DFR1216Consts::req_channel_angle, true);
@@ -234,7 +234,7 @@ bool DFR1216Service::registerRoutes()
 
     OpenAPIRoute motor_route(getPath("setMotorSpeed").c_str(),
                              RoutesConsts::method_post,
-                             fpstr_to_string(FPSTR(DFR1216Consts::desc_motor_control)).c_str(),
+                             progmem_to_string(DFR1216Consts::desc_motor_control).c_str(),
                              FPSTR(DFR1216Consts::tag_dfr1216), false, motor_params, motor_responses);
     motor_route.requestBody = OpenAPIRequestBody(FPSTR(DFR1216Consts::desc_motor_params),
                                                  DFR1216Consts::req_motor_speed, true);
@@ -252,7 +252,7 @@ bool DFR1216Service::registerRoutes()
     registerOpenAPIRoute(
         OpenAPIRoute(getPath("getStatus").c_str(),
                      RoutesConsts::method_get,
-                     fpstr_to_string(FPSTR(DFR1216Consts::desc_get_status)).c_str(),
+                     progmem_to_string(DFR1216Consts::desc_get_status).c_str(),
                      FPSTR(DFR1216Consts::tag_dfr1216), false, {}, status_responses));
 
     // Register actual HTTP handlers
@@ -280,16 +280,17 @@ void DFR1216Service::handle_set_servo_angle()
         return;
     
 
-    if (!webserver.hasArg("channel") ||
-        !webserver.hasArg("angle"))
-    {
-        ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, 
-                                 FPSTR(DFR1216Consts::msg_missing_servo_params));
-        return;
-    }
+    // Validate parameters
+    std::string channel_str = ParamValidator::getValidatedParam("channel", 
+                                FPSTR(DFR1216Consts::msg_missing_servo_params));
+    if (channel_str.empty()) return;
+    
+    std::string angle_str = ParamValidator::getValidatedParam("angle", 
+                                FPSTR(DFR1216Consts::msg_missing_servo_params));
+    if (angle_str.empty()) return;
 
-    uint8_t channel = webserver.arg("channel").toInt();
-    uint16_t angle = webserver.arg("angle").toInt();
+    uint8_t channel = std::atoi(channel_str.c_str());
+    uint16_t angle = std::atoi(angle_str.c_str());
 
     if (setServoAngle(channel, angle))
     {
@@ -312,16 +313,17 @@ void DFR1216Service::handle_set_motor_speed()
         return;
 
 
-    if (!webserver.hasArg("motor") ||
-        !webserver.hasArg("speed"))
-    {
-        ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, 
-                                 FPSTR(DFR1216Consts::msg_missing_motor_params));
-        return;
-    }
+    // Validate parameters
+    std::string motor_str = ParamValidator::getValidatedParam("motor", 
+                                FPSTR(DFR1216Consts::msg_missing_motor_params));
+    if (motor_str.empty()) return;
+    
+    std::string speed_str = ParamValidator::getValidatedParam("speed", 
+                                FPSTR(DFR1216Consts::msg_missing_motor_params));
+    if (speed_str.empty()) return;
 
-    uint8_t motor = webserver.arg("motor").toInt();
-    int8_t speed = webserver.arg("speed").toInt();
+    uint8_t motor = std::atoi(motor_str.c_str());
+    int8_t speed = std::atoi(speed_str.c_str());
 
     if (setMotorSpeed(motor, speed))
     {

@@ -20,6 +20,7 @@ namespace ServiceInterfaceConsts
 {
 
     constexpr const char service_status_uninitialized[] PROGMEM = "uninitialized";
+    constexpr const char service_status_not_initialized[] PROGMEM = "not initialized";
     constexpr const char service_status_initialized[] PROGMEM = "initialized";
     constexpr const char service_status_initialize_failed[] PROGMEM = "initialize failed";
     constexpr const char service_status_started[] PROGMEM = "started";
@@ -262,21 +263,21 @@ public:
         switch (service_status_)
         {
         case UNINITIALIZED:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_uninitialized));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_uninitialized);
         case INITIALIZED:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_initialized));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_initialized);
         case INITIALIZED_FAILED:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_initialize_failed));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_initialize_failed);
         case STARTED:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_started));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_started);
         case START_FAILED:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_start_failed));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_start_failed);
         case STOPPED:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_stopped));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_stopped);
         case STOP_FAILED:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_stop_failed));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_stop_failed);
         default:
-            return fpstr_to_string(FPSTR(ServiceInterfaceConsts::service_status_unknown));
+            return progmem_to_string(ServiceInterfaceConsts::service_status_unknown);
         }
     }
 

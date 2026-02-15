@@ -251,15 +251,45 @@ public:
 
 /**
  * @class ServiceStatusHelper
- * @brief Helper for checking service running status
+ * @brief Helper for checking service running status and sending standardized error responses
+ * @details Consolidates service status validation patterns across all OpenAPI-enabled services.
+ *          Replaces inconsistent checkServiceStarted() implementations that used 423 status codes.
  */
 class ServiceStatusHelper {
 public:
     /**
-     * @brief Check if service is running, send error if not
-     * @param service Pointer to service instance
-     * @param serviceName Service name for error message
-     * @return true if running, false and sends error if not
+-     * @brief Check if service is running, send 503 error if not
+     * @param service Pointer to service instance (can be nullptr, will be checked)
+     * @param serviceName Service name for error message (PROGMEM string safe)
+     * @return true if service is running and started, false if not (error response already sent)
+     * 
+     * @details Validates both service pointer and startup status, automatically sending
+     *          HTTP 503 SERVICE_UNAVAILABLE error with descriptive message if either check fails.
+     *          This replaces the older checkServiceStarted() method which incorrectly used 423 Locked.
+     * 
+     * @note Thread-safe: Only checks service state, does not modify it
+     * @note Low memory overhead: Only allocates error message string on failure path
+     * 
+     * @example Usage within service class (check self)
+     * @code
+     * void MyService::handleRoute() {
+     *     if (!ServiceStatusHelper::ensureServiceRunning(this, "MyService")) return;
+     *     // Service is guaranteed running here
+     *     // ... route handler logic ...
+     * }
+     * @endcode
+     * 
+     * @example Usage for external service dependency
+     * @code
+     * void MyService::handleRoute() {
+     *     if (!ServiceStatusHelper::ensureServiceRunning(g_settingsServiceInstance, "Settings")) return;
+     *     // SettingsService is guaranteed running here
+     *     // ... route handler logic ...
+     * }
+     * @endcode
+     * 
+     * @see IsServiceInterface::isServiceStarted()
+     * @see ResponseHelper::sendError()
      */
     static bool ensureServiceRunning(IsServiceInterface* service, const char* serviceName) {
         if (!service || !service->isServiceStarted()) {

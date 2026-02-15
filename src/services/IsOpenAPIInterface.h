@@ -300,7 +300,7 @@ protected:
 #ifdef VERBOSE_DEBUG
         if (logger)
         {
-            logger->debug(fpstr_to_string(FPSTR(RoutesConsts::msg_registering)) + path);
+            logger->debug(progmem_to_string(RoutesConsts::msg_registering) + path);
         }
 #endif
     }

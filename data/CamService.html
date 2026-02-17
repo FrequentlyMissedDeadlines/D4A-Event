@@ -43,6 +43,7 @@
     }
     .mode-btn.off {
       border-color: #f44336;
+        background: #f0f0f0;
     }
     .mode-btn.off.active {
       background: #f44336;
@@ -229,7 +230,7 @@
       <h2>Camera Mode</h2>
       <div class="mode-buttons">
         <button class="mode-btn off active" onclick="setMode('off')" id="btnOff">
-          ⏹️ Off
+          ∅ Off
         </button>
         <button class="mode-btn" onclick="setMode('snapshot')" id="btnSnapshot">
           📸 Snapshot
@@ -245,7 +246,7 @@
 
     <div class="settings-panel" id="settingsPanel" style="display: none;">
       <h2>
-        Camera Settings
+      Camera Settings NOT TESTED - USE WITH CAUTION
         <span class="toggle-settings" onclick="toggleSettings()">✖ Close</span>
       </h2>
       
@@ -289,8 +290,11 @@
       <div class="settings-actions">
         <button onclick="loadCameraSettings()" class="btn">🔄 Load Settings</button>
         <button onclick="saveCameraSettings()" class="btn">💾 Save Settings</button>
+        <button onclick="stopCamService()" class="btn">⏹️ Stop Service</button>
+        <button onclick="startCamService()" class="btn">▶️ Start Service</button>
       </div>
     </div>
+    <div style="display: none;" class="settings-panel" id="hiddenSettingsPanel">
           <div class="setting-item">
             <label>AE Level <span class="setting-value" id="val-ae_level">0</span></label>
             <input type="range" id="ae_level" min="-2" max="2" value="0" step="1" oninput="updateSetting('ae_level', this.value)">
@@ -319,7 +323,7 @@
               <option value="6">128X</option>
             </select>
           </div>
-        </div>
+     
 
         <!-- White Balance -->
         <div class="setting-group">
@@ -467,6 +471,7 @@
             </select>
             <small style="color: #999;">Displays hardware test pattern</small>
           </div>
+        </div>   </div>
         </div>
       </div>
 
@@ -673,11 +678,11 @@
         
         // Map setting to CameraService API endpoint - use PUT /api/webcam/v1/settings with JSON body
         const settingMap = {
+          'quality': 'quality',
           'framesize': 'framesize',
-          'vflip': 'vflip',
-          'hmirror': 'hmirror',
           'contrast': 'contrast',
-          'brightness': 'brightness'
+          'brightness': 'brightness',
+          'saturation': 'saturation'
         };
         
         if (!settingMap[setting]) {
@@ -687,10 +692,8 @@
         
         // Build request body with appropriate field
         const body = {};
-        if (setting === 'framesize' || setting === 'contrast' || setting === 'brightness') {
+        if (setting === 'quality' || setting === 'framesize' || setting === 'contrast' || setting === 'brightness' || setting === 'saturation') {
           body[setting] = parseInt(value);
-        } else if (setting === 'vflip' || setting === 'hmirror') {
-          body[setting] = (value === 'true' || value === true);
         } else {
           body[setting] = value;
         }
@@ -703,10 +706,10 @@
         
         const data = await response.json();
         
-        if (response.ok) {
+        if (response.ok && data.result === 'success') {
           showSuccess(`${setting} updated to ${value}`);
         } else {
-          showError(`Failed to update ${setting}: ${data.error || 'Unknown error'}`);
+          showError('Failed to update setting: ' + (data.message || 'Unknown error'));
         }
       } catch (error) {
         console.error('Update setting error:', error);
@@ -719,50 +722,52 @@
         const response = await fetch('/api/webcam/v1/serviceStatus');
         const data = await response.json();
         
-        if (data.status === 'started') {
+        if (data.status === 'started' && data.settings) {
+          const settings = data.settings;
+          
+          // Update quality
+          const qualityControl = document.getElementById('quality');
+          const qualityValue = document.getElementById('val-quality');
+          if (qualityControl && settings.quality !== undefined) {
+            qualityControl.value = settings.quality;
+            if (qualityValue) qualityValue.textContent = settings.quality;
+          }
+          
           // Update framesize
           const framesizeControl = document.getElementById('framesize');
           const framesizeValue = document.getElementById('val-framesize');
-          if (framesizeControl && data.framesize !== undefined) {
-            framesizeControl.value = data.framesize;
-            if (framesizeValue) framesizeValue.textContent = data.framesize;
-          }
-          
-          // Update vflip
-          const vflipControl = document.getElementById('vflip');
-          const vflipValue = document.getElementById('val-vflip');
-          if (vflipControl && data.vflip !== undefined) {
-            vflipControl.value = data.vflip ? 'true' : 'false';
-            if (vflipValue) vflipValue.textContent = data.vflip ? 'On' : 'Off';
-          }
-          
-          // Update hmirror
-          const hmirrorControl = document.getElementById('hmirror');
-          const hmirrorValue = document.getElementById('val-hmirror');
-          if (hmirrorControl && data.hmirror !== undefined) {
-            hmirrorControl.value = data.hmirror ? 'true' : 'false';
-            if (hmirrorValue) hmirrorValue.textContent = data.hmirror ? 'On' : 'Off';
+          if (framesizeControl && settings.framesize !== undefined) {
+            framesizeControl.value = settings.framesize;
+            if (framesizeValue) framesizeValue.textContent = settings.framesize_name || settings.framesize;
           }
           
           // Update contrast
           const contrastControl = document.getElementById('contrast');
           const contrastValue = document.getElementById('val-contrast');
-          if (contrastControl && data.contrast !== undefined) {
-            contrastControl.value = data.contrast;
-            if (contrastValue) contrastValue.textContent = data.contrast;
+          if (contrastControl && settings.contrast !== undefined) {
+            contrastControl.value = settings.contrast;
+            if (contrastValue) contrastValue.textContent = settings.contrast;
           }
           
           // Update brightness
           const brightnessControl = document.getElementById('brightness');
           const brightnessValue = document.getElementById('val-brightness');
-          if (brightnessControl && data.brightness !== undefined) {
-            brightnessControl.value = data.brightness;
-            if (brightnessValue) brightnessValue.textContent = data.brightness;
+          if (brightnessControl && settings.brightness !== undefined) {
+            brightnessControl.value = settings.brightness;
+            if (brightnessValue) brightnessValue.textContent = settings.brightness;
+          }
+          
+          // Update saturation
+          const saturationControl = document.getElementById('saturation');
+          const saturationValue = document.getElementById('val-saturation');
+          if (saturationControl && settings.saturation !== undefined) {
+            saturationControl.value = settings.saturation;
+            if (saturationValue) saturationValue.textContent = settings.saturation;
           }
           
           showSuccess('Settings loaded successfully');
         } else {
-          showError('Camera not started');
+          showError('Camera not started or settings not available');
         }
       } catch (error) {
         console.error('Load settings error:', error);
@@ -773,20 +778,66 @@
     async function saveCameraSettings() {
       try {
         const response = await fetch('/api/webcam/v1/saveSettings', {
-          method: 'GET',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         });
         
         const data = await response.json();
         
-        if (response.ok && data.success) {
+        if (response.ok && data.result === 'success') {
           showSuccess('Settings saved to persistent storage');
         } else {
-          showError('Failed to save settings: ' + (data.error || 'Unknown error'));
+          showError('Failed to save settings: ' + (data.message || 'Unknown error'));
         }
       } catch (error) {
         console.error('Save settings error:', error);
         showError('Failed to save settings: ' + error.message);
+      }
+    }
+
+    async function stopCamService() {
+      try {
+        const response = await fetch('/api/webcam/v1/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.result === 'success') {
+          showSuccess('Camera service stopped successfully');
+          // Reset the mode to off
+          setMode('off');
+          // Refresh status after a short delay
+          setTimeout(() => refreshStatus(), 500);
+        } else {
+          showError('Failed to stop service: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Stop service error:', error);
+        showError('Failed to stop service: ' + error.message);
+      }
+    }
+
+    async function startCamService() {
+      try {
+        const response = await fetch('/api/webcam/v1/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.result === 'success') {
+          showSuccess('Camera service started successfully');
+          // Refresh status after a short delay to show new state
+          setTimeout(() => refreshStatus(), 500);
+        } else {
+          showError('Failed to start service: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Start service error:', error);
+        showError('Failed to start service: ' + error.message);
       }
     }
 

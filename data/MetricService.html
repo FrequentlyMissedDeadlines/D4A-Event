@@ -299,7 +299,7 @@
       const container = document.getElementById('sensors-content');
       
       try {
-        const response = await fetch('/api/sensors/v1/');
+        const response = await fetch('/api/sensors/v1');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -455,7 +455,7 @@
       const container = document.getElementById('udp-content');
       
       try {
-        const response = await fetch('/api/udp/v1/');
+        const response = await fetch('/api/udp/v1');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -573,7 +573,7 @@
       const container = document.getElementById('board-content');
       
       try {
-        const response = await fetch('/api/board/v1/');
+        const response = await fetch('/api/boardinfo/v1');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }

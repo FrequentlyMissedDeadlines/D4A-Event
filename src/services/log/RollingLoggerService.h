@@ -15,9 +15,13 @@ namespace RollingLoggerConsts
     constexpr const char str_service_name[] PROGMEM = "Rolling logger";
     constexpr const char path_service[] PROGMEM = "logs/v1";
     constexpr const char path_all_logs[] PROGMEM = "all";
-    constexpr const char path_debug_log[] PROGMEM = "debug";
-    constexpr const char path_app_info_log[] PROGMEM = "app_info";
-    constexpr const char path_esp_log[] PROGMEM = "esp";
+    constexpr const char path_log_debug_json[] PROGMEM = "debug.json";
+    constexpr const char path_log_app_info_json[] PROGMEM = "app_info.json";
+    constexpr const char path_log_esp_json[] PROGMEM = "esp.json";
+    constexpr const char path_log_debug_txt[] PROGMEM = "debug.log";
+    constexpr const char path_log_app_info_txt[] PROGMEM = "app_info.log";
+    constexpr const char path_log_esp_txt[] PROGMEM = "esp.log";
+    constexpr const char route_esp_desc[] PROGMEM = "Retrieves log entries from the ESP-IDF logger only";
 }
 
 class RollingLoggerService : public IsOpenAPIInterface
@@ -56,4 +60,11 @@ private:
      * @return JSON string containing all log entries
      */
     static String serialize_logger_to_json(RollingLogger* logger);
+    
+    /**
+     * @brief Helper to serialize a logger's entries to plain text
+     * @param logger Pointer to the logger instance
+     * @return Plain text string with format "LEVEL: message\n" per entry
+     */
+    static String serialize_logger_to_text(RollingLogger* logger);
 };

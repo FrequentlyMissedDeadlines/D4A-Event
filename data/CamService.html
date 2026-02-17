@@ -529,7 +529,7 @@
       } else if (mode === 'stream') {
         placeholder.style.display = 'none';
         image.classList.add('visible');
-        image.src = '/api/mycam/v1/stream?' + new Date().getTime();
+        image.src = '/api/webcam/v1/stream?' + new Date().getTime();
         controls.style.display = 'none';
         
         // Monitor stream connection
@@ -550,7 +550,7 @@
         
         // Add timestamp to prevent caching
         const timestamp = new Date().getTime();
-        const response = await fetch(`/api/mycam/v1/snapshot?t=${timestamp}`);
+        const response = await fetch(`/api/webcam/v1/snapshot?t=${timestamp}`);
         
         if (response.status === 409) {
           showError('Cannot capture snapshot while streaming is active. Stop the stream first.');
@@ -588,7 +588,7 @@
 
     async function refreshStatus() {
       try {
-        const response = await fetch('/api/mycam/v1/status');
+        const response = await fetch('/api/webcam/v1/serviceStatus');
         const data = await response.json();
         
         const indicator = document.getElementById('statusIndicator');
@@ -671,37 +671,32 @@
           }
         }
         
-        // Map setting to CameraService API endpoint
-        let endpoint, body;
+        // Map setting to CameraService API endpoint - use PUT /api/webcam/v1/settings with JSON body
+        const settingMap = {
+          'framesize': 'framesize',
+          'vflip': 'vflip',
+          'hmirror': 'hmirror',
+          'contrast': 'contrast',
+          'brightness': 'brightness'
+        };
         
-        switch(setting) {
-          case 'framesize':
-            endpoint = '/api/mycam/v1/framesize';
-            body = { value: parseInt(value) };
-            break;
-          case 'vflip':
-            endpoint = '/api/mycam/v1/vflip';
-            body = { enabled: value };
-            break;
-          case 'hmirror':
-            endpoint = '/api/mycam/v1/hmirror';
-            body = { enabled: value };
-            break;
-          case 'contrast':
-            endpoint = '/api/mycam/v1/contrast';
-            body = { level: parseInt(value) };
-            break;
-          case 'brightness':
-            endpoint = '/api/mycam/v1/brightness';
-            body = { level: parseInt(value) };
-            break;
-          default:
-            showError(`Setting '${setting}' is not supported by CameraService`);
-            return;
+        if (!settingMap[setting]) {
+          showError(`Setting '${setting}' is not supported by CameraService`);
+          return;
         }
         
-        const response = await fetch(endpoint, {
-          method: 'POST',
+        // Build request body with appropriate field
+        const body = {};
+        if (setting === 'framesize' || setting === 'contrast' || setting === 'brightness') {
+          body[setting] = parseInt(value);
+        } else if (setting === 'vflip' || setting === 'hmirror') {
+          body[setting] = (value === 'true' || value === true);
+        } else {
+          body[setting] = value;
+        }
+        
+        const response = await fetch('/api/webcam/v1/settings', {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
@@ -721,7 +716,7 @@
 
     async function loadCameraSettings() {
       try {
-        const response = await fetch('/api/mycam/v1/status');
+        const response = await fetch('/api/webcam/v1/serviceStatus');
         const data = await response.json();
         
         if (data.status === 'started') {
@@ -777,8 +772,8 @@
 
     async function saveCameraSettings() {
       try {
-        const response = await fetch('/api/mycam/v1/settings/save', {
-          method: 'POST',
+        const response = await fetch('/api/webcam/v1/saveSettings', {
+          method: 'GET',
           headers: { 'Content-Type': 'application/json' }
         });
         

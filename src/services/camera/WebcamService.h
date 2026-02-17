@@ -64,6 +64,7 @@ public:
 
 private:
     bool initialized_;
+    framesize_t current_framesize_ = FRAMESIZE_VGA;  // Track current frame size
 
     volatile bool streaming_active_ = false;
 
@@ -83,6 +84,13 @@ private:
      * @brief Handle camera settings update HTTP request
      */
     void handleSettings();
+
+    /**
+     * @brief Reinitialize camera with new framesize
+     * @param framesize New framesize to apply (0-13)
+     * @return true if reinitialization successful, false otherwise
+     */
+    bool reinitializeWithFramesize(framesize_t framesize);
 
     /**
      * @brief Configure camera pins for UNIHIKER K10 board

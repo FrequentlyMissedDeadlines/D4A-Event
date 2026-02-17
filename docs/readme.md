@@ -98,6 +98,8 @@ It also expose a UDP service that should received commands from a user remote co
 
 #### 9. **RollingLoggerService** (`/api/logs/v1`)
 - HTTP endpoint for accessing application logs
+- Multiple log sources (debug, app_info, esp)
+- Dual format support: JSON and plain text (.json, .log)
 - Log level configuration
 - Real-time log streaming
 - Historical log queries

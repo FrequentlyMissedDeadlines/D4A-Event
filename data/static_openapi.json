@@ -1,0 +1,1609 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "K10 Bot API",
+    "version": "1.0.0",
+    "description": "API for controlling UniHiker K10 Robot with sensors, servos, camera, and more"
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "API base path"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Board Info",
+      "description": "System information and board metrics"
+    },
+    {
+      "name": "Sensors",
+      "description": "K10 sensor readings (light, temperature, humidity, accelerometer)"
+    },
+    {
+      "name": "Logs",
+      "description": "Rolling logger service for debug and application logs"
+    },
+    {
+      "name": "UDP",
+      "description": "UDP message handling and statistics"
+    },
+    {
+      "name": "OpenAPI",
+      "description": "API documentation and specification"
+    },
+    {
+      "name": "Camera",
+      "description": "Webcam snapshot and stream endpoints"
+    },
+    {
+      "name": "Servos",
+      "description": "Servo motor control (angle and speed)"
+    },
+    {
+      "name": "Music",
+      "description": "Music playback and tone generation"
+    },
+    {
+      "name": "DFR1216",
+      "description": "DFR1216 expansion board control"
+    },
+    {
+      "name": "Settings",
+      "description": "Persistent settings management"
+    }
+  ],
+  "x-service-settings-pattern": "Each service that implements settings persistence automatically gets two routes: /{service}/saveSettings (GET) to save current settings, and /{service}/loadSettings (GET) to load persisted settings. These routes are not individually documented below but follow a standard pattern.",
+  "x-service-status-pattern": "Some services expose a /serviceStatus (GET) route that returns the current service state (started, stopped, initialized, etc.).",
+  "paths": {
+    "/boardinfo/v1": {
+      "get": {
+        "tags": ["Board Info"],
+        "summary": "Get board information",
+        "description": "Retrieves comprehensive board information including system metrics, memory usage, chip details, and firmware version",
+        "operationId": "getBoardInfo",
+        "responses": {
+          "200": {
+            "description": "Board information retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "uptimeMs": {
+                      "type": "integer",
+                      "description": "System uptime in milliseconds"
+                    },
+                    "board": {
+                      "type": "string",
+                      "description": "Board model name"
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "Firmware version"
+                    },
+                    "heapTotal": {
+                      "type": "integer",
+                      "description": "Total heap size in bytes"
+                    },
+                    "heapFree": {
+                      "type": "integer",
+                      "description": "Free heap size in bytes"
+                    },
+                    "freeStackBytes": {
+                      "type": "integer",
+                      "description": "Free stack space for current task"
+                    },
+                    "chipCores": {
+                      "type": "integer",
+                      "description": "Number of CPU cores"
+                    },
+                    "chipModel": {
+                      "type": "string",
+                      "description": "Chip model name"
+                    },
+                    "chipRevision": {
+                      "type": "integer",
+                      "description": "Chip revision number"
+                    },
+                    "cpuFreqMHz": {
+                      "type": "integer",
+                      "description": "CPU frequency in MHz"
+                    },
+                    "freeSketchSpace": {
+                      "type": "integer",
+                      "description": "Available flash space for sketch"
+                    },
+                    "sdkVersion": {
+                      "type": "string",
+                      "description": "ESP-IDF SDK version"
+                    }
+                  }
+                },
+                "example": {
+                  "uptimeMs": 123456,
+                  "board": "UNIHIKER_K10",
+                  "version": "1.0.0",
+                  "heapTotal": 327680,
+                  "heapFree": 280000,
+                  "freeStackBytes": 2048,
+                  "chipCores": 2,
+                  "chipModel": "ESP32-S3",
+                  "chipRevision": 1,
+                  "cpuFreqMHz": 240,
+                  "freeSketchSpace": 1310720,
+                  "sdkVersion": "v4.4.2"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service not started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sensors/v1": {
+      "get": {
+        "tags": ["Sensors"],
+        "summary": "Get all sensor readings",
+        "description": "Retrieves all K10 sensor readings including light, temperature, humidity, microphone, and accelerometer data",
+        "operationId": "getSensors",
+        "responses": {
+          "200": {
+            "description": "Sensor data retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "light": {
+                      "type": "number",
+                      "description": "Ambient light sensor reading"
+                    },
+                    "hum_rel": {
+                      "type": "number",
+                      "description": "Relative humidity percentage"
+                    },
+                    "celcius": {
+                      "type": "number",
+                      "description": "Temperature in Celsius"
+                    },
+                    "mic_data": {
+                      "type": "number",
+                      "description": "Microphone data reading"
+                    },
+                    "accelerometer": {
+                      "type": "array",
+                      "description": "3-axis accelerometer data [x,y,z]",
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "light": 125.5,
+                  "hum_rel": 45.2,
+                  "celcius": 23.8,
+                  "mic_data": 512,
+                  "accelerometer": [0.12, -0.05, 9.81]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sensor initialization or reading failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/logs/v1/all": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get all logs",
+        "description": "Retrieves all log entries from both debug and app_info loggers",
+        "operationId": "getAllLogs",
+        "responses": {
+          "200": {
+            "description": "Log entries retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "debug": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "level": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "app_info": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "level": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "debug": [
+                    {
+                      "level": "DEBUG",
+                      "message": "WebServer task running..."
+                    }
+                  ],
+                  "app_info": [
+                    {
+                      "level": "INFO",
+                      "message": "WiFi connected"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/logs/v1/debug": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get debug logs",
+        "description": "Retrieves log entries from the debug logger only",
+        "operationId": "getDebugLogs",
+        "responses": {
+          "200": {
+            "description": "Log entries retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "description": "Log level"
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "Log message content"
+                      }
+                    }
+                  }
+                },
+                "example": [
+                  {
+                    "level": "INFO",
+                    "message": "System initialized"
+                  },
+                  {
+                    "level": "DEBUG",
+                    "message": "Service started"
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Logger instance not available"
+          }
+        }
+      }
+    },
+    "/logs/v1/app_info": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get app info logs",
+        "description": "Retrieves log entries from the app_info logger only",
+        "operationId": "getAppInfoLogs",
+        "responses": {
+          "200": {
+            "description": "Log entries retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "description": "Log level"
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "Log message content"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Logger instance not available"
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/logs/v1/esp": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get ESP-IDF logs",
+        "description": "Retrieves log entries from the ESP-IDF logger only",
+        "operationId": "getESPLogs",
+        "responses": {
+          "200": {
+            "description": "Log entries retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Logger instance not available"
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/logs/v1/debug.json": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get debug logs (JSON format)",
+        "description": "Retrieves debug logger entries in JSON format",
+        "operationId": "getDebugLogsJson",
+        "responses": {
+          "200": {
+            "description": "Debug logs retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "description": "Log level"
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "Log message content"
+                      }
+                    }
+                  }
+                },
+                "example": [
+                  {
+                    "level": "INFO",
+                    "message": "System initialized"
+                  },
+                  {
+                    "level": "DEBUG",
+                    "message": "Service started"
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Logger not available"
+          }
+        }
+      }
+    },
+    "/logs/v1/debug.log": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get debug logs (plain text)",
+        "description": "Retrieves debug logger entries in plain text format (LEVEL: message)",
+        "operationId": "getDebugLogsText",
+        "responses": {
+          "200": {
+            "description": "Debug logs retrieved successfully",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "INFO: System initialized\nDEBUG: Service started\n"
+              }
+            }
+          },
+          "404": {
+            "description": "Logger not available"
+          }
+        }
+      }
+    },
+    "/logs/v1/app_info.json": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get app info logs (JSON format)",
+        "description": "Retrieves app_info logger entries in JSON format",
+        "operationId": "getAppInfoLogsJson",
+        "responses": {
+          "200": {
+            "description": "App info logs retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "description": "Log level"
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "Log message content"
+                      }
+                    }
+                  }
+                },
+                "example": [
+                  {
+                    "level": "INFO",
+                    "message": "WiFi connected"
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Logger not available"
+          }
+        }
+      }
+    },
+    "/logs/v1/app_info.log": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get app info logs (plain text)",
+        "description": "Retrieves app_info logger entries in plain text format (LEVEL: message)",
+        "operationId": "getAppInfoLogsText",
+        "responses": {
+          "200": {
+            "description": "App info logs retrieved successfully",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "INFO: WiFi connected\n"
+              }
+            }
+          },
+          "404": {
+            "description": "Logger not available"
+          }
+        }
+      }
+    },
+    "/logs/v1/esp.json": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get ESP-IDF logs (JSON format)",
+        "description": "Retrieves ESP-IDF logger entries in JSON format",
+        "operationId": "getESPLogsJson",
+        "responses": {
+          "200": {
+            "description": "ESP logs retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "description": "Log level"
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "Log message content"
+                      }
+                    }
+                  }
+                },
+                "example": [
+                  {
+                    "level": "INFO",
+                    "message": "ESP-IDF initialized"
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Logger not available"
+          }
+        }
+      }
+    },
+    "/logs/v1/esp.log": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Get ESP-IDF logs (plain text)",
+        "description": "Retrieves ESP-IDF logger entries in plain text format (LEVEL: message)",
+        "operationId": "getESPLogsText",
+        "responses": {
+          "200": {
+            "description": "ESP logs retrieved successfully",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "INFO: ESP-IDF initialized\n"
+              }
+            }
+          },
+          "404": {
+            "description": "Logger not available"
+          }
+        }
+      }
+    },
+    "/udp/v1": {
+      "get": {
+        "tags": ["UDP"],
+        "summary": "Get UDP service status",
+        "description": "Returns UDP listening port, message statistics, and recent messages",
+        "operationId": "getUDPStatus",
+        "responses": {
+          "200": {
+            "description": "UDP status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "port": {
+                      "type": "integer",
+                      "description": "UDP listening port"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Total messages received since start"
+                    },
+                    "dropped": {
+                      "type": "integer",
+                      "description": "Number of packets dropped due to buffer lock"
+                    },
+                    "buffer": {
+                      "type": "string",
+                      "description": "Current buffer usage (used/max)"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "description": "Recent messages with timestamps",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message if buffer is locked"
+                    }
+                  }
+                },
+                "example": {
+                  "port": 12345,
+                  "total": 1523,
+                  "dropped": 5,
+                  "buffer": "15/20",
+                  "messages": [
+                    "[125 ms] Hello",
+                    "[230 ms] World"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "tags": ["OpenAPI"],
+        "summary": "Get OpenAPI specification",
+        "description": "Get OpenAPI 3.0.0 specification for all registered services including paths, parameters, request bodies, and response schemas",
+        "operationId": "getOpenAPISpec",
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "openapi": {
+                      "type": "string"
+                    },
+                    "info": {
+                      "type": "object"
+                    },
+                    "paths": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "example": {
+                  "openapi": "3.0.0",
+                  "info": {
+                    "title": "K10 Bot API",
+                    "version": "1.0.0"
+                  },
+                  "paths": {}
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/webcam/v1/snapshot": {
+      "get": {
+        "tags": ["Camera"],
+        "summary": "Capture snapshot",
+        "description": "Captures and returns a JPEG image from the camera",
+        "operationId": "captureSnapshot",
+        "responses": {
+          "200": {
+            "description": "Snapshot captured successfully",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "JPEG image data"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Camera not initialized or service not started"
+          }
+        }
+      }
+    },
+    "/webcam/v1/settings": {
+      "put": {
+        "tags": ["Camera"],
+        "summary": "Update camera settings",
+        "description": "Updates camera settings such as quality, framesize, brightness, contrast, and saturation",
+        "operationId": "updateCameraSettings",
+        "requestBody": {
+          "description": "Camera settings to update",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quality": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 63,
+                    "description": "JPEG quality (0-63, lower is better)"
+                  },
+                  "framesize": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 13,
+                    "description": "Frame size (0-13)"
+                  },
+                  "brightness": {
+                    "type": "integer",
+                    "minimum": -2,
+                    "maximum": 2,
+                    "description": "Brightness (-2 to 2)"
+                  },
+                  "contrast": {
+                    "type": "integer",
+                    "minimum": -2,
+                    "maximum": 2,
+                    "description": "Contrast (-2 to 2)"
+                  },
+                  "saturation": {
+                    "type": "integer",
+                    "minimum": -2,
+                    "maximum": 2,
+                    "description": "Saturation (-2 to 2)"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings applied successfully"
+          },
+          "400": {
+            "description": "Invalid JSON body"
+          },
+          "422": {
+            "description": "Missing required parameters"
+          },
+          "503": {
+            "description": "Camera not initialized or service not started"
+          }
+        }
+      }
+    },
+    "/webcam/v1/stream": {
+      "get": {
+        "tags": ["Camera"],
+        "summary": "Start video stream",
+        "description": "Returns a continuous MJPEG video stream",
+        "operationId": "startVideoStream",
+        "responses": {
+          "200": {
+            "description": "Stream started successfully",
+            "content": {
+              "multipart/x-mixed-replace": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "Continuous MJPEG video stream"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Camera not initialized or service not started"
+          }
+        }
+      }
+    },
+    "/webcam/v1/stop": {
+      "post": {
+        "tags": ["Camera"],
+        "summary": "Stop camera service",
+        "description": "Stop the camera service (useful before changing framesize)",
+        "operationId": "stopCameraService",
+        "responses": {
+          "200": {
+            "description": "Service stopped successfully"
+          },
+          "500": {
+            "description": "Failed to stop service"
+          }
+        }
+      }
+    },
+    "/webcam/v1/start": {
+      "post": {
+        "tags": ["Camera"],
+        "summary": "Start camera service",
+        "description": "Start the camera service (applies saved framesize from preferences)",
+        "operationId": "startCameraService",
+        "responses": {
+          "200": {
+            "description": "Service started successfully"
+          },
+          "500": {
+            "description": "Failed to start service"
+          }
+        }
+      }
+    },
+    "/servos/v1/setServoAngle": {
+      "post": {
+        "tags": ["Servos"],
+        "summary": "Set servo angle",
+        "description": "Set servo angle for angular servos (180° or 270°)",
+        "operationId": "setServoAngle",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "description": "Servo channel (0-7)",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "angle",
+            "in": "query",
+            "description": "Angle in degrees (0-180 for 180° servos, 0-270 for 270° servos)",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed successfully"
+          },
+          "422": {
+            "description": "Missing required parameters"
+          },
+          "500": {
+            "description": "Operation failed"
+          },
+          "503": {
+            "description": "Service not initialized or not started"
+          }
+        }
+      }
+    },
+    "/servos/v1/setServoSpeed": {
+      "post": {
+        "tags": ["Servos"],
+        "summary": "Set servo speed",
+        "description": "Set continuous servo speed for rotational servos",
+        "operationId": "setServoSpeed",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "description": "Servo channel (0-7)",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "speed",
+            "in": "query",
+            "description": "Speed percentage (-100 to +100, negative is reverse)",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed successfully"
+          },
+          "422": {
+            "description": "Missing required parameters"
+          },
+          "500": {
+            "description": "Operation failed"
+          },
+          "503": {
+            "description": "Service not initialized or not started"
+          }
+        }
+      }
+    },
+    "/servos/v1/stopAll": {
+      "post": {
+        "tags": ["Servos"],
+        "summary": "Stop all servos",
+        "description": "Stop all servos by setting speed to 0",
+        "operationId": "stopAllServos",
+        "responses": {
+          "200": {
+            "description": "Operation completed successfully"
+          },
+          "422": {
+            "description": "Missing required parameters"
+          },
+          "500": {
+            "description": "Operation failed"
+          },
+          "503": {
+            "description": "Service not initialized or not started"
+          }
+        }
+      }
+    },
+    "/music/v1/play": {
+      "post": {
+        "tags": ["Music"],
+        "summary": "Play melody",
+        "description": "Play built-in melody with playback options. Query parameters: melody (required, 0-19), option (optional, 1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground)",
+        "operationId": "playMelody",
+        "parameters": [
+          {
+            "name": "melody",
+            "in": "query",
+            "description": "Melody enum value (0-19)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "option",
+            "in": "query",
+            "description": "Playback option (1=Once, 2=Forever, 4=OnceInBackground, 8=ForeverInBackground)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed successfully"
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/music/v1/tone": {
+      "post": {
+        "tags": ["Music"],
+        "summary": "Play tone",
+        "description": "Play a tone at specified frequency and duration. Query parameters: freq (required, Hz), beat (optional, default 8000)",
+        "operationId": "playTone",
+        "parameters": [
+          {
+            "name": "freq",
+            "in": "query",
+            "description": "Frequency in Hz",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "beat",
+            "in": "query",
+            "description": "Beat duration (default 8000)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed successfully"
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/music/v1/stop": {
+      "post": {
+        "tags": ["Music"],
+        "summary": "Stop tone",
+        "description": "Stop current tone playback",
+        "operationId": "stopTone",
+        "responses": {
+          "200": {
+            "description": "Operation completed successfully"
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/music/v1/melodies": {
+      "post": {
+        "tags": ["Music"],
+        "summary": "Get available melodies",
+        "description": "Get list of available built-in melodies",
+        "operationId": "getMelodies",
+        "responses": {
+          "200": {
+            "description": "Operation completed successfully"
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      }
+    },
+    "/dfr1216/v1/setServoAngle": {
+      "post": {
+        "tags": ["DFR1216"],
+        "summary": "Set DFR1216 servo angle",
+        "description": "Set servo angle on DFR1216 expansion board",
+        "operationId": "setDFR1216ServoAngle",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "description": "Servo channel number",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "angle",
+            "in": "query",
+            "description": "Angle in degrees",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Servo angle parameters",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "integer"
+                  },
+                  "angle": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Servo angle set successfully"
+          },
+          "422": {
+            "description": "Missing required parameters"
+          },
+          "503": {
+            "description": "Service not initialized or not started"
+          }
+        }
+      }
+    },
+    "/dfr1216/v1/setMotorSpeed": {
+      "post": {
+        "tags": ["DFR1216"],
+        "summary": "Set DFR1216 motor speed",
+        "description": "Set motor speed on DFR1216 expansion board",
+        "operationId": "setDFR1216MotorSpeed",
+        "parameters": [
+          {
+            "name": "motor",
+            "in": "query",
+            "description": "Motor number",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "speed",
+            "in": "query",
+            "description": "Speed percentage",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Motor speed parameters",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "motor": {
+                    "type": "integer"
+                  },
+                  "speed": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Motor speed set successfully"
+          },
+          "422": {
+            "description": "Missing required parameters"
+          },
+          "503": {
+            "description": "Service not initialized or not started"
+          }
+        }
+      }
+    },
+    "/settings/v1/settings": {
+      "get": {
+        "tags": ["Settings"],
+        "summary": "Get settings",
+        "description": "Retrieve a single setting value or all settings in a domain",
+        "operationId": "getSettings",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "description": "Settings domain/namespace (max 15 chars, alphanumeric and underscore)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "description": "Setting key (max 15 chars, alphanumeric and underscore)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {
+                  "domain": "wifi",
+                  "settings": {}
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters"
+          },
+          "503": {
+            "description": "Service not started"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Settings"],
+        "summary": "Update settings",
+        "description": "Update or insert setting. Use query parameters.",
+        "operationId": "updateSettings",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "description": "Settings domain/namespace (max 15 chars, alphanumeric and underscore)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "description": "Setting key for single update (max 15 chars)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "description": "Setting value for single update",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {
+                  "success": true,
+                  "message": "Operation successful."
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters"
+          },
+          "503": {
+            "description": "Operation failed or service not started"
+          }
+        }
+      }
+    },
+    "/boardinfo/v1/saveSettings": {
+      "get": {
+        "tags": ["Board Info"],
+        "summary": "Save Board Info settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveBoardInfoSettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/boardinfo/v1/loadSettings": {
+      "get": {
+        "tags": ["Board Info"],
+        "summary": "Load Board Info settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadBoardInfoSettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/sensors/v1/saveSettings": {
+      "get": {
+        "tags": ["Sensors"],
+        "summary": "Save sensor settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveSensorsSettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/sensors/v1/loadSettings": {
+      "get": {
+        "tags": ["Sensors"],
+        "summary": "Load sensor settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadSensorsSettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/logs/v1/saveSettings": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Save logger settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveLogsSettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/logs/v1/loadSettings": {
+      "get": {
+        "tags": ["Logs"],
+        "summary": "Load logger settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadLogsSettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/udp/v1/saveSettings": {
+      "get": {
+        "tags": ["UDP"],
+        "summary": "Save UDP settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveUDPSettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/udp/v1/loadSettings": {
+      "get": {
+        "tags": ["UDP"],
+        "summary": "Load UDP settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadUDPSettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/api/openapi.json/saveSettings": {
+      "get": {
+        "tags": ["OpenAPI"],
+        "summary": "Save OpenAPI settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveOpenAPISettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/api/openapi.json/loadSettings": {
+      "get": {
+        "tags": ["OpenAPI"],
+        "summary": "Load OpenAPI settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadOpenAPISettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/webcam/v1/serviceStatus": {
+      "get": {
+        "tags": ["Camera"],
+        "summary": "Get webcam service status",
+        "description": "Get service status",
+        "operationId": "getWebcamServiceStatus",
+        "responses": {
+          "200": {
+            "description": "Service status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "initialized": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "example": {
+                  "service": "Example Service",
+                  "status": "started",
+                  "initialized": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webcam/v1/saveSettings": {
+      "get": {
+        "tags": ["Camera"],
+        "summary": "Save webcam settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveWebcamSettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/webcam/v1/loadSettings": {
+      "get": {
+        "tags": ["Camera"],
+        "summary": "Load webcam settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadWebcamSettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/servos/v1/saveSettings": {
+      "get": {
+        "tags": ["Servos"],
+        "summary": "Save servo settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveServoSettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/servos/v1/loadSettings": {
+      "get": {
+        "tags": ["Servos"],
+        "summary": "Load servo settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadServoSettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/music/v1/serviceStatus": {
+      "get": {
+        "tags": ["Music"],
+        "summary": "Get music service status",
+        "description": "Get service status",
+        "operationId": "getMusicServiceStatus",
+        "responses": {
+          "200": {
+            "description": "Service status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "initialized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dfr1216/v1/saveSettings": {
+      "get": {
+        "tags": ["DFR1216"],
+        "summary": "Save DFR1216 settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveDFR1216Settings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/dfr1216/v1/loadSettings": {
+      "get": {
+        "tags": ["DFR1216"],
+        "summary": "Load DFR1216 settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadDFR1216Settings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/settings/v1/saveSettings": {
+      "get": {
+        "tags": ["Settings"],
+        "summary": "Save settings service settings",
+        "description": "Save own service settings (if exists).",
+        "operationId": "saveSettingsServiceSettings",
+        "responses": {
+          "200": {
+            "description": "Settings saved successfully"
+          }
+        }
+      }
+    },
+    "/settings/v1/loadSettings": {
+      "get": {
+        "tags": ["Settings"],
+        "summary": "Load settings service settings",
+        "description": "Load own service settings (if exists).",
+        "operationId": "loadSettingsServiceSettings",
+        "responses": {
+          "200": {
+            "description": "Settings loaded successfully"
+          }
+        }
+      }
+    }
+  }
+}

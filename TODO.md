@@ -6,10 +6,10 @@
    1. handle ESP_LOG (ref `esp_log.h`)
    1. fix log on screen
 1. Camera 
-   1. allow fine settings
+   1. allow fine settings <-- no way at this time
 1. Features
    1. ServoService
-      1. add synchronized servo actions 
+      1. add synchronized servo actions (speed x for motor a,b,c)
    1. AI
       1. add MicroTFService ?
       1. add HuskylensService ? 

@@ -330,7 +330,16 @@ protected:
         }
         return true;
     }
-
+    bool checkLoggerDefined(const std::shared_ptr<RollingLogger>& loggerPtr)
+    {
+        if (!loggerPtr)
+        {
+            webserver.send(423, RoutesConsts::mime_json, 
+                          getResultJsonString(RoutesConsts::result_err, "Logger not defined").c_str());
+            return false;
+        }
+        return true;
+    }
     /**
      * @brief Register standard save/load settings routes for a service
      * @param serviceName Service name for OpenAPI grouping

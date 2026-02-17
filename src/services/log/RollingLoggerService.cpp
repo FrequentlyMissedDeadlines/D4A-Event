@@ -99,6 +99,31 @@ String RollingLoggerService::serialize_logger_to_json(RollingLogger* logger)
     return output;
 }
 
+/**
+ * @brief Serialize logger entries to plain text format
+ * @param logger Pointer to the logger instance
+ * @return Plain text string with format "LEVEL: message\n" per entry
+ */
+String RollingLoggerService::serialize_logger_to_text(RollingLogger* logger)
+{
+    if (!logger)
+    {
+        return "";
+    }
+    
+    String output;
+    const auto& log_rows = logger->get_log_rows();
+    for (const auto& entry : log_rows)
+    {
+        output += log_level_to_string(entry.first);
+        output += ": ";
+        output += entry.second.c_str();
+        output += "\n";
+    }
+    
+    return output;
+}
+
 bool RollingLoggerService::registerRoutes()
 {
     static constexpr char route_all_desc[] PROGMEM = "Retrieves all log entries from both debug and app_info loggers";
@@ -114,10 +139,10 @@ bool RollingLoggerService::registerRoutes()
     static constexpr char example_all_logs[] PROGMEM = "{\"debug\":[{\"level\":\"DEBUG\",\"message\":\"WebServer task running...\"}],\"app_info\":[{\"level\":\"INFO\",\"message\":\"WiFi connected\"}]}";
 
     // Route 1: GET /api/logs/v1/all - Get all logs
+   std::string path = getPath(progmem_to_string(RollingLoggerConsts::path_all_logs));
     {
-        std::string path_all = getPath(progmem_to_string(RollingLoggerConsts::path_all_logs));
         #ifdef VERBOSE_DEBUG
-        logger->debug("Registering " + path_all);
+        logger->debug("Registering " + path);
         #endif
 
         std::vector<OpenAPIResponse> responses;
@@ -127,10 +152,10 @@ bool RollingLoggerService::registerRoutes()
         responses.push_back(successResponse);
         responses.push_back(createServiceNotStartedResponse());
 
-        OpenAPIRoute route_all(path_all.c_str(), RoutesConsts::method_get, route_all_desc, "Logs", false, {}, responses);
+        OpenAPIRoute route_all(path.c_str(), RoutesConsts::method_get, route_all_desc, "Logs", false, {}, responses);
         registerOpenAPIRoute(route_all);
 
-        webserver.on(path_all.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this]()
         {
             if (!checkServiceStarted()) return;
             JsonDocument doc;
@@ -180,49 +205,55 @@ bool RollingLoggerService::registerRoutes()
         });
     }
 
-    // Route 2: GET /api/logs/v1/debug - Get debug logs only
+       
+    // Route 2a: GET /api/logs/v1/debug.json - Get debug logs as JSON
+        path = getPath(progmem_to_string(RollingLoggerConsts::path_log_debug_json));
+
     {
-        std::string path_debug = getPath(progmem_to_string(RollingLoggerConsts::path_debug_log));
         #ifdef VERBOSE_DEBUG
-        logger->debug("Registering " + path_debug);
+        logger->debug("Registering " + path);
         #endif
 
-        std::vector<OpenAPIResponse> responses;
-        OpenAPIResponse successResponse(200, response_desc);
-        successResponse.schema = schema_logs_array;
-        successResponse.example = example_single_log;
-        responses.push_back(successResponse);
-        
-        OpenAPIResponse notAvailableResponse(404, response_not_available);
-        responses.push_back(notAvailableResponse);
-
-        OpenAPIRoute route_debug(path_debug.c_str(), RoutesConsts::method_get, route_debug_desc, "Logs", false, {}, responses);
-        registerOpenAPIRoute(route_debug);
-
-        webserver.on(path_debug.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this]()
         {
             if (!checkServiceStarted()) return;
             if (!debug_logger_ptr_)
             {
-                JsonDocument doc;
-                doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_err);
-                doc[FPSTR(RoutesConsts::message)] = "Debug logger not available";
-                String output;
-                serializeJson(doc, output);
-                webserver.send(404, RoutesConsts::mime_json, output.c_str());
+                webserver.send(404, RoutesConsts::mime_json, "[]");
                 return;
             }
-            
             String output = serialize_logger_to_json(debug_logger_ptr_);
             webserver.send(200, RoutesConsts::mime_json, output.c_str());
         });
     }
+    
+    // Route 2b: GET /api/logs/v1/debug.log - Get debug logs as plain text
+    path = getPath(progmem_to_string(RollingLoggerConsts::path_log_debug_txt));
 
-    // Route 3: GET /api/logs/v1/app_info - Get app_info logs only
     {
-        std::string path_app_info = getPath(progmem_to_string(RollingLoggerConsts::path_app_info_log));
         #ifdef VERBOSE_DEBUG
-        logger->debug("Registering " + path_app_info);
+        logger->debug("Registering " + path);
+        #endif
+
+        webserver.on(path.c_str(), HTTP_GET, [this]()
+        {
+            if (!checkServiceStarted()) return;
+            if (!debug_logger_ptr_)
+            {
+                webserver.send(404, "text/plain", "");
+                return;
+            }
+            String output = serialize_logger_to_text(debug_logger_ptr_);
+            webserver.send(200, "text/plain", output.c_str());
+        });
+    }
+
+    // Route 3a: GET /api/logs/v1/app_info - Get app_info logs only
+    path = getPath(progmem_to_string(RollingLoggerConsts::path_log_app_info_json));
+    {
+        
+        #ifdef VERBOSE_DEBUG
+        logger->debug("Registering " + path);
         #endif
 
         std::vector<OpenAPIResponse> responses;
@@ -235,34 +266,50 @@ bool RollingLoggerService::registerRoutes()
         responses.push_back(notAvailableResponse);
         responses.push_back(createServiceNotStartedResponse());
 
-        OpenAPIRoute route_app_info(path_app_info.c_str(), RoutesConsts::method_get, route_app_info_desc, "Logs", false, {}, responses);
+        OpenAPIRoute route_app_info(path.c_str(), RoutesConsts::method_get, route_app_info_desc, "Logs", false, {}, responses);
         registerOpenAPIRoute(route_app_info);
 
-        webserver.on(path_app_info.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this]()
         {
             if (!checkServiceStarted()) return;
             if (!app_info_logger_ptr_)
             {
-                JsonDocument doc;
-                doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_err);
-                doc[FPSTR(RoutesConsts::message)] = "App info logger not available";
-                String output;
-                serializeJson(doc, output);
-                webserver.send(404, RoutesConsts::mime_json, output.c_str());
+                webserver.send(404, RoutesConsts::mime_json, "[]");
                 return;
             }
-            
             String output = serialize_logger_to_json(app_info_logger_ptr_);
             webserver.send(200, RoutesConsts::mime_json, output.c_str());
+        }); 
+    }
+
+    path = getPath(progmem_to_string(RollingLoggerConsts::path_log_app_info_txt));
+    // Route 3b: GET /api/logs/v1/app_info.log - Get app_info logs as plain text
+    {
+
+        #ifdef VERBOSE_DEBUG
+        logger->debug("Registering " + path_log_app_info_json);
+        #endif
+
+        webserver.on(path.c_str(), HTTP_GET, [this]()
+        {
+            if (!checkServiceStarted()) return;
+            if (!app_info_logger_ptr_)
+            {
+                webserver.send(404, "text/plain", "");
+                return;
+            }
+            String output = serialize_logger_to_text(app_info_logger_ptr_);
+            webserver.send(200, "text/plain", output.c_str());
         });
     }
 
     // Route 4: GET /api/logs/v1/esp - Get ESP-IDF logs only
+    path = getPath(progmem_to_string(RollingLoggerConsts::path_log_esp_json));
     {
-        static constexpr char route_esp_desc[] PROGMEM = "Retrieves log entries from the ESP-IDF logger only";
-        std::string path_esp = getPath(progmem_to_string(RollingLoggerConsts::path_esp_log));
+        
+        
         #ifdef VERBOSE_DEBUG
-        logger->debug("Registering " + path_esp);
+        logger->debug("Registering " + path);
         #endif
 
         std::vector<OpenAPIResponse> responses;
@@ -275,25 +322,42 @@ bool RollingLoggerService::registerRoutes()
         responses.push_back(notAvailableResponse);
         responses.push_back(createServiceNotStartedResponse());
 
-        OpenAPIRoute route_esp(path_esp.c_str(), RoutesConsts::method_get, route_esp_desc, "Logs", false, {}, responses);
+        OpenAPIRoute route_esp(path.c_str(), RoutesConsts::method_get, progmem_to_string(RollingLoggerConsts::route_esp_desc).c_str(), "Logs", false, {}, responses);
+        
+
         registerOpenAPIRoute(route_esp);
 
-        webserver.on(path_esp.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this]()
         {
             if (!checkServiceStarted()) return;
             if (!esp_logger_ptr_)
             {
-                JsonDocument doc;
-                doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_err);
-                doc[FPSTR(RoutesConsts::message)] = "ESP logger not available";
-                String output;
-                serializeJson(doc, output);
-                webserver.send(404, RoutesConsts::mime_json, output.c_str());
+                webserver.send(404, RoutesConsts::mime_json, "[]");
                 return;
             }
-            
             String output = serialize_logger_to_json(esp_logger_ptr_);
             webserver.send(200, RoutesConsts::mime_json, output.c_str());
+        });
+    }
+
+    // Route 4b: GET /api/logs/v1/esp.log - Get ESP logs as plain text
+    path = getPath(progmem_to_string(RollingLoggerConsts::path_log_esp_txt));
+    {
+        
+        #ifdef VERBOSE_DEBUG
+        logger->debug("Registering " + path);
+        #endif
+
+        webserver.on(path.c_str(), HTTP_GET, [this]()
+        {
+            if (!checkServiceStarted()) return;
+            if (!esp_logger_ptr_)
+            {
+                webserver.send(404, "text/plain", "");
+                return;
+            }
+            String output = serialize_logger_to_text(esp_logger_ptr_);
+            webserver.send(200, "text/plain", output.c_str());
         });
     }
 

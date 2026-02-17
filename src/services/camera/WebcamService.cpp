@@ -77,6 +77,22 @@ namespace WebcamConsts
     constexpr const char pref_contrast[] PROGMEM = "contrast";
     constexpr const char pref_saturation[] PROGMEM = "saturation";
     constexpr uint16_t stream_delay_ms = 33;  // ~30fps target frame rate
+    
+    // Framesize name mappings
+    constexpr const char fs_96x96[] PROGMEM = "96X96";
+    constexpr const char fs_qqvga[] PROGMEM = "QQVGA";
+    constexpr const char fs_qcif[] PROGMEM = "QCIF";
+    constexpr const char fs_hqvga[] PROGMEM = "HQVGA";
+    constexpr const char fs_240x240[] PROGMEM = "240X240";
+    constexpr const char fs_qvga[] PROGMEM = "QVGA";
+    constexpr const char fs_cif[] PROGMEM = "CIF";
+    constexpr const char fs_hvga[] PROGMEM = "HVGA";
+    constexpr const char fs_vga[] PROGMEM = "VGA";
+    constexpr const char fs_svga[] PROGMEM = "SVGA";
+    constexpr const char fs_xga[] PROGMEM = "XGA";
+    constexpr const char fs_hd[] PROGMEM = "HD";
+    constexpr const char fs_sxga[] PROGMEM = "SXGA";
+    constexpr const char fs_uxga[] PROGMEM = "UXGA";
 }
 
 /**
@@ -108,10 +124,30 @@ bool WebcamService::initializeService()
         }
     }
 
+    // Load framesize from preferences if saved, otherwise use default
+    Preferences prefs;
+    if (prefs.begin(progmem_to_string(WebcamConsts::pref_namespace).c_str(), true))
+    {
+        if (prefs.isKey(progmem_to_string(WebcamConsts::pref_framesize).c_str()))
+        {
+            current_framesize_ = (framesize_t)prefs.getInt(progmem_to_string(WebcamConsts::pref_framesize).c_str(), WebcamConsts::frame_size);
+            logger->info("Using saved framesize: " + std::to_string(current_framesize_));
+        }
+        else
+        {
+            current_framesize_ = WebcamConsts::frame_size;
+        }
+        prefs.end();
+    }
+    else
+    {
+        current_framesize_ = WebcamConsts::frame_size;
+    }
+    
     // Register camera using low-level API (no screen display)
     // Use RGB565 format - more universally supported than JPEG
     // The frame will be converted to JPEG in handleSnapshot()
-    register_camera(PIXFORMAT_RGB565, WebcamConsts::frame_size, WebcamConsts::camera_queue_length, xQueueCamera);
+    register_camera(PIXFORMAT_RGB565, current_framesize_, WebcamConsts::camera_queue_length, xQueueCamera);
     // Verify camera sensor is accessible
     sensor_t *s = esp_camera_sensor_get();
     if (!s)
@@ -191,6 +227,93 @@ void WebcamService::configureCamera(camera_config_t &config)
     // handles camera initialization through register_camera()
     // Kept for interface compatibility
     logger->info("Note: Camera configuration is handled by UniHiker K10 board");
+}
+
+/**
+ * @brief Reinitialize camera with new framesize
+ * @details Fully stops and restarts the camera service with new framesize
+ *          This is the only safe way to change framesize as it reallocates buffers
+ * @param framesize New framesize to apply (0-13)
+ * @return true if reinitialization successful, false otherwise
+ */
+bool WebcamService::reinitializeWithFramesize(framesize_t framesize)
+{
+    logger->info("Reinitializing camera service with framesize " + std::to_string(framesize));
+    
+    // Check if already at requested framesize
+    if (current_framesize_ == framesize)
+    {
+        logger->info("Already at requested framesize " + std::to_string(framesize));
+        return true;
+    }
+    
+    // Step 1: Stop the service (but keep initialized_ flag for restart)
+    logger->info("Stopping camera service...");
+    bool was_initialized = initialized_;
+    
+    // Flush and clear queue
+    camera_fb_t *stale_fb = nullptr;
+    while (xQueueReceive(xQueueCamera, &stale_fb, 0) == pdTRUE)
+    {
+        if (stale_fb)
+        {
+            esp_camera_fb_return(stale_fb);
+        }
+    }
+    
+    // Step 2: Deinitialize camera hardware
+    logger->info("Deinitializing camera hardware...");
+    esp_err_t err = esp_camera_deinit();
+    if (err != ESP_OK)
+    {
+        logger->error("Failed to deinitialize camera: " + std::to_string(err));
+        initialized_ = false;
+        setServiceStatus(INITIALIZED_FAILED);
+        return false;
+    }
+    
+    // Wait for hardware to fully shut down
+    delay(500);
+    
+    // Step 3: Reinitialize with new framesize
+    logger->info("Reinitializing camera with new framesize...");
+    current_framesize_ = framesize;
+    register_camera(PIXFORMAT_RGB565, framesize, WebcamConsts::camera_queue_length, xQueueCamera);
+    
+    // Step 4: Verify sensor is accessible
+    sensor_t *s = esp_camera_sensor_get();
+    if (!s)
+    {
+        logger->error("Failed to get camera sensor after reinitialization");
+        initialized_ = false;
+        setServiceStatus(INITIALIZED_FAILED);
+        return false;
+    }
+    
+    // Step 5: Restore previous settings (quality, brightness, etc.) if they were saved
+    if (was_initialized)
+    {
+        initialized_ = true;
+        // Reload other settings from preferences
+        loadSettings();
+    }
+    
+    // Wait for camera to stabilize
+    delay(200);
+    
+    // Flush initial frames
+    int flushed = 0;
+    while (flushed < 3 && xQueueReceive(xQueueCamera, &stale_fb, pdMS_TO_TICKS(100)) == pdTRUE)
+    {
+        if (stale_fb)
+        {
+            esp_camera_fb_return(stale_fb);
+            flushed++;
+        }
+    }
+    
+    logger->info("Camera reinitialized successfully with framesize " + std::to_string(framesize));
+    return true;
 }
 
 /**
@@ -547,53 +670,92 @@ void WebcamService::handleSettings()
         }
     }
     
-    // Update framesize (0-13) - DISABLED: Requires camera restart to work properly
-    // Framesize changes at runtime cause buffer mismatches (cam_hal: FB-SIZE errors)
-    // Use loadSettings() during initialization instead, or restart service after changing
+    // Framesize changes are DISABLED at runtime due to buffer reallocation issues
+    // To change framesize: save settings, then restart the WebcamService
     if (doc[FPSTR(WebcamConsts::field_framesize)].is<JsonVariant>())
     {
-        webserver.send(422, RoutesConsts::mime_json,
-                      getResultJsonString(RoutesConsts::result_err, 
-                                        "framesize cannot be changed at runtime - requires service restart").c_str());
-        return;
-    }
-    
-    /* COMMENTED OUT - framesize changes require camera reinitialization
-    if (doc[FPSTR(WebcamConsts::field_framesize)].is<JsonVariant>())
-    {
-        int framesize = doc[FPSTR(WebcamConsts::field_framesize)];
-        if (framesize >= 0 && framesize <= 13)
+        int framesize = -1;
+        
+        // Check if framesize is a string (name) or integer (numeric value)
+        if (doc[FPSTR(WebcamConsts::field_framesize)].is<const char*>())
         {
-            // Clear the queue before changing frame size to avoid stale frames
-            camera_fb_t *stale_fb = nullptr;
-            while (xQueueReceive(xQueueCamera, &stale_fb, 0) == pdTRUE)
+            std::string fs_name = doc[FPSTR(WebcamConsts::field_framesize)].as<const char*>();
+            // Convert to uppercase for case-insensitive comparison
+            for (char &c : fs_name) c = toupper(c);
+            
+            // Map name to framesize value
+            if (fs_name == "96X96") framesize = 0;
+            else if (fs_name == "QQVGA") framesize = 1;
+            else if (fs_name == "QCIF") framesize = 2;
+            else if (fs_name == "HQVGA") framesize = 3;
+            else if (fs_name == "240X240") framesize = 4;
+            else if (fs_name == "QVGA") framesize = 5;
+            else if (fs_name == "CIF") framesize = 6;
+            else if (fs_name == "HVGA") framesize = 7;
+            else if (fs_name == "VGA") framesize = 8;
+            else if (fs_name == "SVGA") framesize = 9;
+            else if (fs_name == "XGA") framesize = 10;
+            else if (fs_name == "HD") framesize = 11;
+            else if (fs_name == "SXGA") framesize = 12;
+            else if (fs_name == "UXGA") framesize = 13;
+            else
             {
-                if (stale_fb)
-                {
-                    esp_camera_fb_return(stale_fb);
-                }
+                webserver.send(422, RoutesConsts::mime_json,
+                              getResultJsonString(RoutesConsts::result_err, 
+                                                ("Invalid framesize name: " + fs_name + ". Valid names: 96X96, QQVGA, QCIF, HQVGA, 240X240, QVGA, CIF, HVGA, VGA, SVGA, XGA, HD, SXGA, UXGA").c_str()).c_str());
+                return;
             }
-            
-            // Change framesize
-            s->set_framesize(s, (framesize_t)framesize);
-            
-            // Small delay to let camera adjust
-            delay(100);
-            
-            updated = true;
-            updateMsg += "framesize=" + std::to_string(framesize) + " (may need camera restart) ";
-            logger->info("Updated framesize to " + std::to_string(framesize));
-            logger->warn("Framesize change may require camera restart for stable operation");
+        }
+        else if (doc[FPSTR(WebcamConsts::field_framesize)].is<int>())
+        {
+            framesize = doc[FPSTR(WebcamConsts::field_framesize)];
+            if (framesize < 0 || framesize > 13)
+            {
+                webserver.send(422, RoutesConsts::mime_json,
+                              getResultJsonString(RoutesConsts::result_err, 
+                                                "framesize must be 0-13 or a valid name (VGA, SVGA, etc.)").c_str());
+                return;
+            }
         }
         else
         {
             webserver.send(422, RoutesConsts::mime_json,
                           getResultJsonString(RoutesConsts::result_err, 
-                                            "framesize must be 0-13").c_str());
+                                            "framesize must be a number (0-13) or name (VGA, SVGA, etc.)").c_str());
             return;
         }
+        
+        if (framesize >= 0 && framesize <= 13)
+        {
+            // Save framesize to preferences for next initialization
+            Preferences prefs;
+            if (prefs.begin(progmem_to_string(WebcamConsts::pref_namespace).c_str(), false))
+            {
+                prefs.putInt(progmem_to_string(WebcamConsts::pref_framesize).c_str(), framesize);
+                prefs.end();
+                updated = true;
+                
+                // Map numeric value back to name for response
+                const char* fs_names[] = {"96X96", "QQVGA", "QCIF", "HQVGA", "240X240", "QVGA", "CIF", "HVGA", "VGA", "SVGA", "XGA", "HD", "SXGA", "UXGA"};
+                std::string fs_name = fs_names[framesize];
+                
+                updateMsg += "framesize=" + fs_name + " (will apply on service restart) ";
+                logger->info("Framesize " + fs_name + " (" + std::to_string(framesize) + ") saved to preferences - restart service to apply");
+                
+                webserver.send(200, RoutesConsts::mime_json,
+                              getResultJsonString(RoutesConsts::result_ok, 
+                                                ("Framesize " + fs_name + " saved. Restart camera service to apply: POST /api/webcam/v1/stop then POST /api/webcam/v1/start").c_str()).c_str());
+                return;
+            }
+            else
+            {
+                webserver.send(503, RoutesConsts::mime_json,
+                              getResultJsonString(RoutesConsts::result_err, 
+                                                "Failed to save framesize preference").c_str());
+                return;
+            }
+        }
     }
-    */
     
     // Update brightness (-2 to 2)
     if (doc[FPSTR(WebcamConsts::field_brightness)].is<JsonVariant>())
@@ -758,6 +920,40 @@ bool WebcamService::registerRoutes()
         if (!checkServiceStarted()) return;
         handleStream(); });
 
+    // Stop service route - allows stopping the camera service via HTTP
+    path = getPath("stop");
+    logger->info("Add " + path + " route");
+    std::vector<OpenAPIResponse> stopResponses;
+    stopResponses.push_back(OpenAPIResponse(200, "Service stopped successfully"));
+    stopResponses.push_back(OpenAPIResponse(500, "Failed to stop service"));
+    registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_post,
+                                      "Stop the camera service (useful before changing framesize)",
+                                      WebcamConsts::tag, false, {}, stopResponses));
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+                 {
+        bool success = this->stopService();
+        webserver.send(success ? 200 : 500, RoutesConsts::mime_json,
+                      getResultJsonString(success ? RoutesConsts::result_ok : RoutesConsts::result_err,
+                                        success ? "Service stopped" : "Failed to stop service").c_str());
+    });
+
+    // Start service route - allows starting the camera service via HTTP
+    path = getPath("start");
+    logger->info("Add " + path + " route");
+    std::vector<OpenAPIResponse> startResponses;
+    startResponses.push_back(OpenAPIResponse(200, "Service started successfully"));
+    startResponses.push_back(OpenAPIResponse(500, "Failed to start service"));
+    registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_post,
+                                      "Start the camera service (applies saved framesize from preferences)",
+                                      WebcamConsts::tag, false, {}, startResponses));
+    webserver.on(path.c_str(), HTTP_POST, [this]()
+                 {
+        bool success = this->startService();
+        webserver.send(success ? 200 : 500, RoutesConsts::mime_json,
+                      getResultJsonString(success ? RoutesConsts::result_ok : RoutesConsts::result_err,
+                                        success ? "Service started" : "Failed to start service").c_str());
+    });
+
     registerSettingsRoutes("Webcam", this);
 
     return true;
@@ -831,6 +1027,9 @@ bool WebcamService::loadSettings()
     }
     
     // Load and apply settings if they exist
+    // NOTE: Framesize is loaded in initializeService() before camera initialization
+    // DO NOT call set_framesize() here - it would cause buffer mismatch errors
+    
     if (prefs.isKey(progmem_to_string(WebcamConsts::pref_quality).c_str()))
     {
         int quality = prefs.getInt(progmem_to_string(WebcamConsts::pref_quality).c_str(), 12);
@@ -838,33 +1037,26 @@ bool WebcamService::loadSettings()
         logger->info("Loaded quality: " + std::to_string(quality));
     }
     
-    if (prefs.isKey(progmem_to_string(WebcamConsts::pref_framesize).c_str()))
+    if (prefs.isKey(progmem_to_string(WebcamConsts::pref_brightness).c_str()))
     {
-        int framesize = prefs.getInt(progmem_to_string(WebcamConsts::pref_framesize).c_str(), FRAMESIZE_CIF);
-        s->set_framesize(s, (framesize_t)framesize);
-        logger->debug("Loaded framesize: " + std::to_string(framesize));
+        int brightness = prefs.getInt(progmem_to_string(WebcamConsts::pref_brightness).c_str(), 0);
+        s->set_brightness(s, brightness);
+        logger->debug("Loaded brightness: " + std::to_string(brightness));
     }
     
-    // if (prefs.isKey(progmem_to_string(WebcamConsts::pref_brightness).c_str()))
-    // {
-    //     int brightness = prefs.getInt(progmem_to_string(WebcamConsts::pref_brightness).c_str(), 0);
-    //     s->set_brightness(s, brightness);
-    //     logger->debug("Loaded brightness: " + std::to_string(brightness));
-    // }
+    if (prefs.isKey(progmem_to_string(WebcamConsts::pref_contrast).c_str()))
+    {
+        int contrast = prefs.getInt(progmem_to_string(WebcamConsts::pref_contrast).c_str(), 0);
+        s->set_contrast(s, contrast);
+        logger->debug("Loaded contrast: " + std::to_string(contrast));
+    }
     
-    // if (prefs.isKey(progmem_to_string(WebcamConsts::pref_contrast).c_str()))
-    // {
-    //     int contrast = prefs.getInt(progmem_to_string(WebcamConsts::pref_contrast).c_str(), 0);
-    //     s->set_contrast(s, contrast);
-    //     logger->debug("Loaded contrast: " + std::to_string(contrast));
-    // }
-    
-    // if (prefs.isKey(progmem_to_string(WebcamConsts::pref_saturation).c_str()))
-    // {
-    //     int saturation = prefs.getInt(progmem_to_string(WebcamConsts::pref_saturation).c_str(), 0);
-    //     s->set_saturation(s, saturation);
-    //     logger->debug("Loaded saturation: " + std::to_string(saturation));
-    // }
+    if (prefs.isKey(progmem_to_string(WebcamConsts::pref_saturation).c_str()))
+    {
+        int saturation = prefs.getInt(progmem_to_string(WebcamConsts::pref_saturation).c_str(), 0);
+        s->set_saturation(s, saturation);
+        logger->debug("Loaded saturation: " + std::to_string(saturation));
+    }
     
     prefs.end();
     logger->info("Settings loaded successfully");

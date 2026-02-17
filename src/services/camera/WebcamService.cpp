@@ -28,10 +28,10 @@ QueueHandle_t xQueueCamera; // Camera frame queue from unihiker_k10
 namespace WebcamConsts
 {
     constexpr uint8_t camera_queue_length = 2;
-    constexpr uint16_t camera_rate_ms = 500;  // 500ms timeout - reasonable for 30fps camera
-    constexpr framesize_t frame_size = FRAMESIZE_CIF; //1600x1200
+    constexpr uint16_t camera_rate_ms = 50;  // 50ms timeout -> 20 per second
+    constexpr framesize_t frame_size = FRAMESIZE_HVGA; //480x320
     constexpr const char action_snapshot[] PROGMEM = "snapshot";
-    constexpr const char action_status[] PROGMEM = "stawebcam_tus";
+    constexpr const char action_status[] PROGMEM = "status";
     constexpr const char action_stream[] PROGMEM = "stream";
     constexpr const char action_settings[] PROGMEM = "settings";
     constexpr const char msg_not_initialized[] PROGMEM = "Camera not initialized.";
@@ -337,9 +337,30 @@ camera_fb_t *WebcamService::captureSnapshot()
         return nullptr;
     }
 
-    // Try to get frame from queue (wait up to camera_rate_ms)
+    // Flush old frames and get the most recent one
+    // This ensures we always get the latest captured image, not a stale frame
     camera_fb_t *fb = nullptr;
-    BaseType_t result = xQueueReceive(xQueueCamera, &fb, pdMS_TO_TICKS(WebcamConsts::camera_rate_ms));
+    camera_fb_t *latest_fb = nullptr;
+    
+    // Keep reading frames until queue is empty, keeping only the last one
+    while (xQueueReceive(xQueueCamera, &fb, 0) == pdTRUE)
+    {
+        // Return previous frame if we had one
+        if (latest_fb != nullptr)
+        {
+            esp_camera_fb_return(latest_fb);
+        }
+        latest_fb = fb;
+    }
+    
+    // If we got at least one frame, return it
+    if (latest_fb != nullptr)
+    {
+        return latest_fb;
+    }
+    
+    // No frames available, wait for a new one
+    BaseType_t result = xQueueReceive(xQueueCamera, &latest_fb, WebcamConsts::camera_rate_ms / portTICK_PERIOD_MS);
     if (result != pdTRUE)
     {
 #ifdef VERBOSE_DEBUG
@@ -348,7 +369,7 @@ camera_fb_t *WebcamService::captureSnapshot()
         return nullptr;
     }
 
-    if (!fb)
+    if (!latest_fb)
     {
 #ifdef VERBOSE_DEBUG
         logger->debug(progmem_to_string_to_string(progmem_to_string(WebcamConsts::msg_camera_capture_failed)));
@@ -356,7 +377,7 @@ camera_fb_t *WebcamService::captureSnapshot()
         return nullptr;
     }
 
-    return fb;
+    return latest_fb;
 }
 
 /**

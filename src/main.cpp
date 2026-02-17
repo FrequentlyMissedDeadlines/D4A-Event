@@ -286,7 +286,7 @@ void setup()
 
   ui.init();
   // ui.add_logger_view(&app_info_logger, 0, 120, 240, 240, TFT_BLACK, TFT_BLACK);
-  ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_LIGHTGREY, TFT_LIGHTGREY);
+  ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_DARKGREY,TFT_DARKGREY);
   xTaskCreatePinnedToCore(task_DISPLAY, "Display_Task", 4096, nullptr, 1, nullptr, 1);
 
   debug_logger.info(progmem_to_string(MainConsts::msg_starting_services));

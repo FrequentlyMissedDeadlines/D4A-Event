@@ -128,6 +128,38 @@ void UTB2026::init()
     inc_counter(KEY_HTTP_REQ, 0);
 };
 
+void UTB2026::set_logger_instances(RollingLogger* debug_log, RollingLogger* app_log, RollingLogger* esp_log)
+{
+    debug_logger_ = debug_log;
+    app_logger_ = app_log;
+    esp_logger_ = esp_log;
+}
+
+void UTB2026::next_display_mode()
+{
+    previous_display_mode_ = current_display_mode_;
+    switch (current_display_mode_)
+    {
+    case MODE_APP_UI:
+        current_display_mode_ = MODE_APP_LOG;
+        break;
+    case MODE_APP_LOG:
+        current_display_mode_ = MODE_DEBUG_LOG;
+        break;
+    case MODE_DEBUG_LOG:
+        current_display_mode_ = MODE_ESP_LOG;
+        break;
+    case MODE_ESP_LOG:
+        current_display_mode_ = MODE_APP_UI;
+        break;
+    }
+}
+
+UTB2026::DisplayMode UTB2026::get_display_mode() const
+{
+    return current_display_mode_;
+}
+
 void UTB2026::set_info(const std::string &key, const std::string &value)
 {
     infos[key] = value;
@@ -365,11 +397,150 @@ void UTB2026::draw_logger()
 }
 
 void UTB2026::draw_all()
-
-{   tft.setViewport(0, 0, 240, 80);
-    tft.fillScreen(TFT_BROWN);
-    draw_network_info();
-    draw_servos();
-    draw_logger();
+{
+    tft.resetViewport();
+    
+    // Only clear screen when mode changes to avoid flicker
+    bool mode_changed = (current_display_mode_ != previous_display_mode_);
+    if (mode_changed)
+    {
+        tft.fillScreen(TFT_BLACK);
+        previous_display_mode_ = current_display_mode_;
+    }
+    
+    switch (current_display_mode_)
+    {
+    case MODE_APP_UI:
+        // Show application UI (network info + servos) without logger views
+        tft.setViewport(0, 0, 240, 320);
+        if (mode_changed)
+        {
+            tft.fillRect(0, 0, 240, 320, TFT_BLACK);
+        }
+        draw_network_info();
+        draw_servos();
+        break;
+        
+    case MODE_APP_LOG:
+        // Show app log full screen
+        if (app_logger_ != nullptr)
+        {
+            tft.setViewport(0, 0, 240, 320);
+            const auto& log_rows = app_logger_->get_log_rows();
+            int max_rows = 32; // 320 pixels / 10 pixels per line
+            int n_rows = log_rows.size();
+            int start_index = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+            
+            for (int i = 0; i < max_rows; ++i)
+            {
+                int y_pos = i * UTB2026Consts::line_height;
+                // Clear line first to remove old text
+                tft.fillRect(0, y_pos, 240, UTB2026Consts::line_height, TFT_BLACK);
+                
+                if ((start_index + i) < n_rows)
+                {
+                    const auto& line = log_rows[start_index + i];
+                    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+                    tft.setCursor(0, y_pos);
+                    tft.print(line.second.c_str());
+                }
+            }
+        }
+        break;
+        
+    case MODE_DEBUG_LOG:
+        // Show debug log full screen
+        if (debug_logger_ != nullptr)
+        {
+            tft.setViewport(0, 0, 240, 320);
+            const auto& log_rows = debug_logger_->get_log_rows();
+            int max_rows = 32; // 320 pixels / 10 pixels per line
+            int n_rows = log_rows.size();
+            int start_index = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+            
+            for (int i = 0; i < max_rows; ++i)
+            {
+                int y_pos = i * UTB2026Consts::line_height;
+                // Clear line first to remove old text
+                tft.fillRect(0, y_pos, 240, UTB2026Consts::line_height, TFT_BLACK);
+                
+                if ((start_index + i) < n_rows)
+                {
+                    const auto& line = log_rows[start_index + i];
+                    // Color by log level
+                    uint16_t text_color;
+                    switch (line.first)
+                    {
+                    case RollingLogger::DEBUG:
+                        text_color = UTB2026Consts::color_debug;
+                        break;
+                    case RollingLogger::INFO:
+                        text_color = UTB2026Consts::color_info;
+                        break;
+                    case RollingLogger::WARNING:
+                        text_color = UTB2026Consts::color_warning;
+                        break;
+                    case RollingLogger::ERROR:
+                        text_color = UTB2026Consts::color_error;
+                        break;
+                    default:
+                        text_color = UTB2026Consts::color_info;
+                        break;
+                    }
+                    tft.setTextColor(text_color, TFT_BLACK);
+                    tft.setCursor(0, y_pos);
+                    tft.print(line.second.c_str());
+                }
+            }
+        }
+        break;
+        
+    case MODE_ESP_LOG:
+        // Show ESP log full screen
+        if (esp_logger_ != nullptr)
+        {
+            tft.setViewport(0, 0, 240, 320);
+            const auto& log_rows = esp_logger_->get_log_rows();
+            int max_rows = 32; // 320 pixels / 10 pixels per line
+            int n_rows = log_rows.size();
+            int start_index = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+            
+            for (int i = 0; i < max_rows; ++i)
+            {
+                int y_pos = i * UTB2026Consts::line_height;
+                // Clear line first to remove old text
+                tft.fillRect(0, y_pos, 240, UTB2026Consts::line_height, TFT_BLACK);
+                
+                if ((start_index + i) < n_rows)
+                {
+                    const auto& line = log_rows[start_index + i];
+                    // Color by log level
+                    uint16_t text_color;
+                    switch (line.first)
+                    {
+                    case RollingLogger::DEBUG:
+                        text_color = UTB2026Consts::color_debug;
+                        break;
+                    case RollingLogger::INFO:
+                        text_color = UTB2026Consts::color_info;
+                        break;
+                    case RollingLogger::WARNING:
+                        text_color = UTB2026Consts::color_warning;
+                        break;
+                    case RollingLogger::ERROR:
+                        text_color = UTB2026Consts::color_error;
+                        break;
+                    default:
+                        text_color = UTB2026Consts::color_info;
+                        break;
+                    }
+                    tft.setTextColor(text_color, TFT_BLACK);
+                    tft.setCursor(0, y_pos);
+                    tft.print(line.second.c_str());
+                }
+            }
+        }
+        break;
+    }
 };
 

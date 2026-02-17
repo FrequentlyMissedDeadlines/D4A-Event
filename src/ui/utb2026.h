@@ -109,6 +109,35 @@ public:
      */
     void draw_logger();
 
+    /**
+     * @brief Display mode enumeration
+     */
+    enum DisplayMode {
+        MODE_APP_UI,      // Application UI only (network info + servos)
+        MODE_APP_LOG,     // App log only (full screen)
+        MODE_DEBUG_LOG,   // Debug log only (full screen)
+        MODE_ESP_LOG      // ESP log only (full screen)
+    };
+
+    /**
+     * @brief Cycle to next display mode
+     */
+    void next_display_mode();
+
+    /**
+     * @brief Get current display mode
+     * @return Current DisplayMode
+     */
+    DisplayMode get_display_mode() const;
+
+    /**
+     * @brief Set references to logger instances
+     * @param debug_log Debug logger instance
+     * @param app_log Application logger instance
+     * @param esp_log ESP logger instance
+     */
+    void set_logger_instances(RollingLogger* debug_log, RollingLogger* app_log, RollingLogger* esp_log);
+
     const std::string KEY_UDP_STATE = "udp?";
     const std::string KEY_UDP_PORT = "udp#";
     const std::string KEY_UDP_IN = "udp->";
@@ -132,4 +161,9 @@ private:
         uint16_t bg_color;
     };
     std::vector<logger_view> logger_views;
+    DisplayMode current_display_mode_ = MODE_APP_UI;
+    DisplayMode previous_display_mode_ = MODE_APP_UI;
+    RollingLogger* debug_logger_ = nullptr;
+    RollingLogger* app_logger_ = nullptr;
+    RollingLogger* esp_logger_ = nullptr;
 };

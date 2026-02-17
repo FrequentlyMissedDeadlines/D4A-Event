@@ -134,12 +134,25 @@ void task_DISPLAY(void *pvParameters)
   int last_displayed_total_messages = 0;
   TickType_t last_update_tick = xTaskGetTickCount();
   TickType_t last_wake_tick = xTaskGetTickCount();
+  bool last_button_state = false;
 
   for (;;)
   {
+    // Check button A for display mode toggle
+    bool button_pressed = unihiker.buttonA != nullptr && unihiker.buttonA->isPressed();
+    if (button_pressed && !last_button_state)
+    {
+      // Button just pressed (rising edge)
+      ui.next_display_mode();
+      ui.draw_all(); // Immediately redraw with new mode
+      last_update_tick = xTaskGetTickCount(); // Reset update timer
+    }
+    last_button_state = button_pressed;
+
     TickType_t now = xTaskGetTickCount();
     if ((now - last_update_tick) >= display_update_interval_ticks)
     {
+      ui.draw_all();
       last_update_tick = now;
     }
 
@@ -285,6 +298,7 @@ void setup()
 
 
   ui.init();
+  ui.set_logger_instances(&debug_logger, &app_info_logger, &esp_logger);
   // ui.add_logger_view(&app_info_logger, 0, 120, 240, 240, TFT_BLACK, TFT_BLACK);
   ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_DARKGREY,TFT_DARKGREY);
   xTaskCreatePinnedToCore(task_DISPLAY, "Display_Task", 4096, nullptr, 1, nullptr, 1);
@@ -352,54 +366,55 @@ void loop()
 
 
 
-
-// //debugging function to list files in a filesystem (e.g., LittleFS, SPIFFS, FFat)
-// void listFilesInFS(fs::FS &fs, const char* fsName)
-// {
-//   debugLogger.info(std::string("=== ") + fsName + " File List ===");
-//   File root = fs.open("/");
-//   if (!root)
-//   {
-//     debugLogger.error("Failed to open root directory");
-//     return;
-//   }
-//   if (!root.isDirectory())
-//   {
-//     debugLogger.error("Root is not a directory");
-//     return;
-//   }
-//   int fileCount = 0;
-//   File file = root.openNextFile();
-//   while (file)
-//   {
-//     fileCount++;
-//     String filename = file.name();
-//     size_t filesize = file.size();
-//     debugLogger.info(std::string(filename.c_str()) + " (" + std::to_string(filesize) + " bytes)");
-//     file = root.openNextFile();
-//   }
-//   debugLogger.info("Total: " + std::to_string(fileCount) + " files");
-// }
-// // debug function to check all partitions for LittleFS and list files (used for debugging storage issues)
-// void testAllPartFitions()
-// {
-//   const char* partitions[] = { "voice_data"};
-//   constexpr size_t num_partitions = 1;
-//   for (size_t i = 0; i < num_partitions; i++)
-//   {
-//     const char* partitionLabel = partitions[i];
-//     debugLogger.info(std::string("Checking FS '") + partitionLabel + "'");
-//     // Try LittleFS on partition
-//     if (LittleFS.begin(false, "/littlefs", 10, "voice_data"))
-//     {
-//       appInfoLogger.info("SUCCESS: LittleFS " + std::string(partitionLabel) + " mounted");
-//       listFilesInFS(LittleFS, (std::string("LittleFS_") + partitionLabel).c_str());
-//       LittleFS.end();
-//     }
-//     else
-//     {
-//       debugLogger.error(std::string("FAILED: LittleFS '") + partitionLabel + "'");
-//     }
-//     delay(500);
-//   }
-// }
+/*
+//debugging function to list files in a filesystem (e.g., LittleFS, SPIFFS, FFat)
+void listFilesInFS(fs::FS &fs, const char* fsName)
+{
+  debugLogger.info(std::string("=== ") + fsName + " File List ===");
+  File root = fs.open("/");
+  if (!root)
+  {
+    debugLogger.error("Failed to open root directory");
+    return;
+  }
+  if (!root.isDirectory())
+  {
+    debugLogger.error("Root is not a directory");
+    return;
+  }
+  int fileCount = 0;
+  File file = root.openNextFile();
+  while (file)
+  {
+    fileCount++;
+    String filename = file.name();
+    size_t filesize = file.size();
+    debugLogger.info(std::string(filename.c_str()) + " (" + std::to_string(filesize) + " bytes)");
+    file = root.openNextFile();
+  }
+  debugLogger.info("Total: " + std::to_string(fileCount) + " files");
+}
+// debug function to check all partitions for LittleFS and list files (used for debugging storage issues)
+void testAllPartFitions()
+{
+  const char* partitions[] = { "voice_data"};
+  constexpr size_t num_partitions = 1;
+  for (size_t i = 0; i < num_partitions; i++)
+  {
+    const char* partitionLabel = partitions[i];
+    debugLogger.info(std::string("Checking FS '") + partitionLabel + "'");
+    // Try LittleFS on partition
+    if (LittleFS.begin(false, "/littlefs", 10, "voice_data"))
+    {
+      appInfoLogger.info("SUCCESS: LittleFS " + std::string(partitionLabel) + " mounted");
+      listFilesInFS(LittleFS, (std::string("LittleFS_") + partitionLabel).c_str());
+      LittleFS.end();
+    }
+    else
+    {
+      debugLogger.error(std::string("FAILED: LittleFS '") + partitionLabel + "'");
+    }
+    delay(500);
+  }
+}
+  */

@@ -9,7 +9,7 @@
  */
 
 #include "RollingLoggerService.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
 // Initialize static members
@@ -155,9 +155,9 @@ bool RollingLoggerService::registerRoutes()
         OpenAPIRoute route_all(path.c_str(), RoutesConsts::method_get, route_all_desc, "Logs", false, {}, responses);
         registerOpenAPIRoute(route_all);
 
-        webserver.on(path.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
         {
-            if (!checkServiceStarted()) return;
+            if (!checkServiceStarted(request)) return;
             JsonDocument doc;
             
             if (debug_logger_ptr_)
@@ -201,7 +201,7 @@ bool RollingLoggerService::registerRoutes()
             
             String output;
             serializeJson(doc, output);
-            webserver.send(200, RoutesConsts::mime_json, output.c_str());
+            request->send(200, RoutesConsts::mime_json, output.c_str());
         });
     }
 
@@ -214,16 +214,16 @@ bool RollingLoggerService::registerRoutes()
         logger->debug("Registering " + path);
         #endif
 
-        webserver.on(path.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
         {
-            if (!checkServiceStarted()) return;
+            if (!checkServiceStarted(request)) return;
             if (!debug_logger_ptr_)
             {
-                webserver.send(404, RoutesConsts::mime_json, "[]");
+                request->send(404, RoutesConsts::mime_json, "[]");
                 return;
             }
             String output = serialize_logger_to_json(debug_logger_ptr_);
-            webserver.send(200, RoutesConsts::mime_json, output.c_str());
+            request->send(200, RoutesConsts::mime_json, output.c_str());
         });
     }
     
@@ -235,16 +235,16 @@ bool RollingLoggerService::registerRoutes()
         logger->debug("Registering " + path);
         #endif
 
-        webserver.on(path.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
         {
-            if (!checkServiceStarted()) return;
+            if (!checkServiceStarted(request)) return;
             if (!debug_logger_ptr_)
             {
-                webserver.send(404, "text/plain", "");
+                request->send(404, "text/plain", "");
                 return;
             }
             String output = serialize_logger_to_text(debug_logger_ptr_);
-            webserver.send(200, "text/plain", output.c_str());
+            request->send(200, "text/plain", output.c_str());
         });
     }
 
@@ -269,16 +269,16 @@ bool RollingLoggerService::registerRoutes()
         OpenAPIRoute route_app_info(path.c_str(), RoutesConsts::method_get, route_app_info_desc, "Logs", false, {}, responses);
         registerOpenAPIRoute(route_app_info);
 
-        webserver.on(path.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
         {
-            if (!checkServiceStarted()) return;
+            if (!checkServiceStarted(request)) return;
             if (!app_info_logger_ptr_)
             {
-                webserver.send(404, RoutesConsts::mime_json, "[]");
+                request->send(404, RoutesConsts::mime_json, "[]");
                 return;
             }
             String output = serialize_logger_to_json(app_info_logger_ptr_);
-            webserver.send(200, RoutesConsts::mime_json, output.c_str());
+            request->send(200, RoutesConsts::mime_json, output.c_str());
         }); 
     }
 
@@ -290,16 +290,16 @@ bool RollingLoggerService::registerRoutes()
         logger->debug("Registering " + path_log_app_info_json);
         #endif
 
-        webserver.on(path.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
         {
-            if (!checkServiceStarted()) return;
+            if (!checkServiceStarted(request)) return;
             if (!app_info_logger_ptr_)
             {
-                webserver.send(404, "text/plain", "");
+                request->send(404, "text/plain", "");
                 return;
             }
             String output = serialize_logger_to_text(app_info_logger_ptr_);
-            webserver.send(200, "text/plain", output.c_str());
+            request->send(200, "text/plain", output.c_str());
         });
     }
 
@@ -327,16 +327,16 @@ bool RollingLoggerService::registerRoutes()
 
         registerOpenAPIRoute(route_esp);
 
-        webserver.on(path.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
         {
-            if (!checkServiceStarted()) return;
+            if (!checkServiceStarted(request)) return;
             if (!esp_logger_ptr_)
             {
-                webserver.send(404, RoutesConsts::mime_json, "[]");
+                request->send(404, RoutesConsts::mime_json, "[]");
                 return;
             }
             String output = serialize_logger_to_json(esp_logger_ptr_);
-            webserver.send(200, RoutesConsts::mime_json, output.c_str());
+            request->send(200, RoutesConsts::mime_json, output.c_str());
         });
     }
 
@@ -348,20 +348,21 @@ bool RollingLoggerService::registerRoutes()
         logger->debug("Registering " + path);
         #endif
 
-        webserver.on(path.c_str(), HTTP_GET, [this]()
+        webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
         {
-            if (!checkServiceStarted()) return;
+            if (!checkServiceStarted(request)) return;
             if (!esp_logger_ptr_)
             {
-                webserver.send(404, "text/plain", "");
+                request->send(404, "text/plain", "");
                 return;
             }
             String output = serialize_logger_to_text(esp_logger_ptr_);
-            webserver.send(200, "text/plain", output.c_str());
+            request->send(200, "text/plain", output.c_str());
         });
     }
 
-    registerSettingsRoutes("Logs", this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
     return true;
 }

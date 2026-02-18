@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <unihiker_k10.h>
 #include "../IsOpenAPIInterface.h"
 #include "../IsServiceInterface.h"

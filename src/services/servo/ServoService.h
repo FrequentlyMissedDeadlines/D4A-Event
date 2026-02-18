@@ -4,9 +4,9 @@
  * @brief Header for servo controller integration with the main application
  * @details
  * - Provides servo initialization, control, and HTTP route registration.
- * - `registerRoutes()` no longer accepts a `WebServer*` argument; services use
- *   the global `WebServer webserver` instance that is created in `main.cpp`.
- *   An `extern WebServer webserver` declaration is provided in
+ * - `registerRoutes()` no longer accepts a server argument; services use
+ *   the global `AsyncWebServer webserver` instance that is created in `main.cpp`.
+ *   An `extern AsyncWebServer webserver` declaration is provided in
  *   `IsOpenAPIInterface.h` to make the global accessible to services.
  */
 #pragma once

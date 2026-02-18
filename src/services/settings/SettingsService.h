@@ -104,12 +104,12 @@ private:
     /**
      * @brief Handle GET /settings request
      */
-    static void handleGetSettings();
+    static void handleGetSettings(AsyncWebServerRequest *request);
     
     /**
      * @brief Handle POST /settings request
      */
-    static void handlePostSettings();
+    static void handlePostSettings(AsyncWebServerRequest *request);
     
     /**
      * @brief Build JSON response for multiple settings

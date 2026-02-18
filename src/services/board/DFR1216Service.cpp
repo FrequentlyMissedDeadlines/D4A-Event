@@ -12,7 +12,7 @@
 #include "DFR1216Service.h"
 #include "../FlashStringHelper.h"
 #include "../ResponseHelper.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <pgmspace.h>
 #include <ArduinoJson.h>
 
@@ -111,7 +111,7 @@ bool DFR1216Service::stopService()
 
 bool DFR1216Service::setServoAngle(uint8_t channel, uint16_t angle)
 {
-    if (!checkServiceStarted())
+    if (!isServiceStarted())
         return false;
 
     if (channel > 5)
@@ -136,7 +136,7 @@ bool DFR1216Service::setServoAngle(uint8_t channel, uint16_t angle)
 
 bool DFR1216Service::setMotorSpeed(uint8_t motor, int8_t speed)
 {
-    if (!checkServiceStarted())
+    if (!isServiceStarted())
         return false;
 
     if (motor < 1 || motor > 4)
@@ -257,40 +257,38 @@ bool DFR1216Service::registerRoutes()
 
     // Register actual HTTP handlers
     webserver.on(getPath("setServoAngle").c_str(), HTTP_POST,
-                 [this]()
-                 { this->handle_set_servo_angle(); });
+                 [this](AsyncWebServerRequest *request)
+                 { this->handle_set_servo_angle(request); });
 
     webserver.on(getPath("setMotorSpeed").c_str(), HTTP_POST,
-                 [this]()
-                 { this->handle_set_motor_speed(); });
+                 [this](AsyncWebServerRequest *request)
+                 { this->handle_set_motor_speed(request); });
 
     webserver.on(getPath("getStatus").c_str(), HTTP_GET,
-                 [this]()
-                 { this->handle_get_status(); });
+                 [this](AsyncWebServerRequest *request)
+                 { this->handle_get_status(request); });
 
-    registerSettingsRoutes("DFR1216", this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
     logger->info(getServiceName() + " routes registered");
     return true;
 }
 
-void DFR1216Service::handle_set_servo_angle()
+void DFR1216Service::handle_set_servo_angle(AsyncWebServerRequest *request)
 {
-    if (!checkServiceStarted())
+    if (!checkServiceStarted(request))
         return;
-    
 
     // Validate parameters
-    std::string channel_str = ParamValidator::getValidatedParam("channel", 
-                                FPSTR(DFR1216Consts::msg_missing_servo_params));
-    if (channel_str.empty()) return;
-    
-    std::string angle_str = ParamValidator::getValidatedParam("angle", 
-                                FPSTR(DFR1216Consts::msg_missing_servo_params));
-    if (angle_str.empty()) return;
+    if (!request->hasArg("channel") || !request->hasArg("angle")) {
+        ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, 
+                                 FPSTR(DFR1216Consts::msg_missing_servo_params));
+        return;
+    }
 
-    uint8_t channel = std::atoi(channel_str.c_str());
-    uint16_t angle = std::atoi(angle_str.c_str());
+    uint8_t channel = std::atoi(request->arg("channel").c_str());
+    uint16_t angle = std::atoi(request->arg("angle").c_str());
 
     if (setServoAngle(channel, angle))
     {
@@ -298,32 +296,29 @@ void DFR1216Service::handle_set_servo_angle()
         doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
         doc[FPSTR(DFR1216Consts::json_channel)] = channel;
         doc[FPSTR(DFR1216Consts::json_angle)] = angle;
-        ResponseHelper::sendJsonResponse(200, doc);
+        ResponseHelper::sendJsonResponse(request, 200, doc);
     }
     else
     {
-        ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, 
+        ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, 
                                  FPSTR(RoutesConsts::resp_operation_failed));
     }
 }
 
-void DFR1216Service::handle_set_motor_speed()
+void DFR1216Service::handle_set_motor_speed(AsyncWebServerRequest *request)
 {
-    if (!checkServiceStarted())
+    if (!checkServiceStarted(request))
         return;
 
-
     // Validate parameters
-    std::string motor_str = ParamValidator::getValidatedParam("motor", 
-                                FPSTR(DFR1216Consts::msg_missing_motor_params));
-    if (motor_str.empty()) return;
-    
-    std::string speed_str = ParamValidator::getValidatedParam("speed", 
-                                FPSTR(DFR1216Consts::msg_missing_motor_params));
-    if (speed_str.empty()) return;
+    if (!request->hasArg("motor") || !request->hasArg("speed")) {
+        ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, 
+                                 FPSTR(DFR1216Consts::msg_missing_motor_params));
+        return;
+    }
 
-    uint8_t motor = std::atoi(motor_str.c_str());
-    int8_t speed = std::atoi(speed_str.c_str());
+    uint8_t motor = std::atoi(request->arg("motor").c_str());
+    int8_t speed = std::atoi(request->arg("speed").c_str());
 
     if (setMotorSpeed(motor, speed))
     {
@@ -331,18 +326,18 @@ void DFR1216Service::handle_set_motor_speed()
         doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
         doc[FPSTR(DFR1216Consts::json_motor)] = motor;
         doc[FPSTR(DFR1216Consts::json_speed)] = speed;
-        ResponseHelper::sendJsonResponse(200, doc);
+        ResponseHelper::sendJsonResponse(request, 200, doc);
     }
     else
     {
-        ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, 
+        ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, 
                                  FPSTR(RoutesConsts::resp_operation_failed));
     }
 }
 
-void DFR1216Service::handle_get_status()
+void DFR1216Service::handle_get_status(AsyncWebServerRequest *request)
 {
-    if (!checkServiceStarted())
+    if (!checkServiceStarted(request))
         return;
     JsonDocument doc;
     doc[FPSTR(RoutesConsts::message)] = getServiceName();
@@ -370,7 +365,7 @@ void DFR1216Service::handle_get_status()
 
     std::string response;
     serializeJson(doc, response);
-    webserver.send(200, RoutesConsts::mime_json, response.c_str());
+    request->send(200, RoutesConsts::mime_json, response.c_str());
 }
 
 bool DFR1216Service::saveSettings()

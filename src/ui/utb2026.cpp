@@ -16,7 +16,7 @@
 #include <vector>
 #include "../services/udp/UDPService.h"
 #include "../services/http/HTTPService.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 
 namespace UTB2026Consts
 {
@@ -34,7 +34,7 @@ namespace UTB2026Consts
 extern TFT_eSPI tft;
 
 
-extern WebServer webserver;
+extern AsyncWebServer webserver;
 extern UDPService udp_service;
 extern HTTPService http_service;
 extern ServoService servo_service;

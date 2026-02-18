@@ -9,7 +9,7 @@
   </style>
 </head>
 <body>
-  <h1>K10 Bot API Test Interface</h1>
+  <h1>API Test Interface</h1>
   <div id="routes-container">
     <!-- Routes will be dynamically loaded -->
   </div>
@@ -36,7 +36,7 @@
         const value = input.value;
         const paramIn = input.getAttribute('data-param-in');
         
-        if (value) {
+        if (value !== '') {
           if (paramIn === 'path') {
             // Replace path parameter
             url = url.replace('{' + name + '}', encodeURIComponent(value));
@@ -46,6 +46,15 @@
           } else if (paramIn === 'header') {
             // Add to headers
             headers[name] = value;
+          } else if (paramIn === 'body') {
+            // Add to request body
+            // Try to parse as number if input type is number
+            const inputType = input.type;
+            if (inputType === 'number') {
+              bodyParams[name] = parseFloat(value);
+            } else {
+              bodyParams[name] = value;
+            }
           } else {
             // Default: for GET use query, for POST/PUT use body
             if (method === 'GET') {
@@ -117,7 +126,8 @@
               method: method.toUpperCase(),
               path: path,
               description: details.summary || details.description || '',
-              parameters: details.parameters || []
+              parameters: details.parameters || [],
+              requestBody: details.requestBody
             };
             
             // Create route container
@@ -126,17 +136,25 @@
             
             let html = `
               <div class="route-header">
-                <span class="method method-${route.method}">${route.method}</span>
+                <span class="method method-${route.method}">${route.method}<a href="${route.path}" target="_blank">🔗</a></span>
                 <span class="path">${route.path}</span>
               </div>
               <div class="description">${route.description}</div>
               <form id="form${formId}" onsubmit="return testRoute(${formId}, '${route.method}', '${route.path}')">
             `;
             
-            // Add parameter inputs in table format
-            if (route.parameters.length > 0) {
+            // Check if we need to display any inputs
+            const hasRequestBody = route.requestBody && 
+                                   route.requestBody.content && 
+                                   route.requestBody.content['application/json'] &&
+                                   route.requestBody.content['application/json'].schema &&
+                                   route.requestBody.content['application/json'].schema.properties;
+            
+            // Start table if we have parameters or requestBody
+            if (route.parameters.length > 0 || hasRequestBody) {
               html += `<table class="param-table">`;
               
+              // Add parameter inputs
               route.parameters.forEach(param => {
                 const required = param.required ? '<span style="color:red;">*</span>' : '';
                 const type = param.schema?.type || param.type || 'string';
@@ -156,6 +174,39 @@
                   </tr>
                 `;
               });
+              
+              // Add requestBody fields if present
+              if (hasRequestBody) {
+                const jsonContent = route.requestBody.content['application/json'];
+                const schema = jsonContent.schema;
+                const requiredFields = schema.required || [];
+                const example = jsonContent.example || {};
+                
+                Object.entries(schema.properties).forEach(([propName, propSchema]) => {
+                  const isRequired = requiredFields.includes(propName);
+                  const required = isRequired ? '<span style="color:red;">*</span>' : '';
+                  const type = propSchema.type || 'string';
+                  const description = propSchema.description || '';
+                  const exampleValue = example[propName] !== undefined ? example[propName] : '';
+                  const min = propSchema.minimum !== undefined ? ` min="${propSchema.minimum}"` : '';
+                  const max = propSchema.maximum !== undefined ? ` max="${propSchema.maximum}"` : '';
+                  
+                  html += `
+                    <tr class="param-group">
+                      <td class="param-label">${propName}${required} (body, ${type})</td>
+                      <td>
+                        <input type="${type === 'integer' || type === 'number' ? 'number' : 'text'}" 
+                               class="param-input" name="${propName}" 
+                               data-param-in="body" 
+                               placeholder="${description}${exampleValue !== '' ? ' (e.g., ' + exampleValue + ')' : ''}"
+                               ${exampleValue !== '' ? 'value="' + exampleValue + '"' : ''}
+                               ${min}${max}
+                               ${isRequired ? 'required' : ''}>
+                      </td>
+                    </tr>
+                  `;
+                });
+              }
               
               html += `</table>`;
             }

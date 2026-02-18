@@ -6,13 +6,16 @@
 
 #pragma once
 
-#include <WebServer.h>
+// Include ESPAsyncWebServer first to avoid HTTP method enum conflicts
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <map>
+#include <memory>
 #include "FlashStringHelper.h"
 #include "IsServiceInterface.h"
 
 // Forward declaration
-extern WebServer webserver;
+extern AsyncWebServer webserver;
 
 /**
  * @class ResponseHelper
@@ -32,83 +35,90 @@ public:
 
     /**
      * @brief Send JSON response with pre-built JsonDocument
+     * @param request Pointer to AsyncWebServerRequest
      * @param statusCode HTTP status code
      * @param doc JsonDocument containing response data
      */
-    static void sendJsonResponse(int statusCode, const JsonDocument& doc) {
+    static void sendJsonResponse(AsyncWebServerRequest *request, int statusCode, const JsonDocument& doc) {
         String output;
         serializeJson(doc, output);
-        webserver.send(statusCode, "application/json", output.c_str());
+        request->send(statusCode, "application/json", output.c_str());
     }
     
     /**
      * @brief Send JSON success response with optional message
+     * @param request Pointer to AsyncWebServerRequest
      * @param message Optional success message (PROGMEM)
      * @param statusCode HTTP status code (default 200)
      */
-    static void sendSuccess(const char* message = nullptr, int statusCode = 200) {
+    static void sendSuccess(AsyncWebServerRequest *request, const char* message = nullptr, int statusCode = 200) {
         JsonDocument doc;
         doc["result"] = "ok";
         if (message) {
             doc["message"] = message;
         }
-        sendJsonResponse(statusCode, doc);
+        sendJsonResponse(request, statusCode, doc);
     }
     
     /**
      * @brief Send JSON success response with __FlashStringHelper* message
+     * @param request Pointer to AsyncWebServerRequest
      * @param message Success message from FPSTR/F() macro
      * @param statusCode HTTP status code (default 200)
      */
-    static void sendSuccess(const __FlashStringHelper* message, int statusCode = 200) {
+    static void sendSuccess(AsyncWebServerRequest *request, const __FlashStringHelper* message, int statusCode = 200) {
         JsonDocument doc;
         doc["result"] = "ok";
         if (message) {
             doc["message"] = message;
         }
-        sendJsonResponse(statusCode, doc);
+        sendJsonResponse(request, statusCode, doc);
     }
     
     /**
      * @brief Send JSON success response with custom data
+     * @param request Pointer to AsyncWebServerRequest
      * @param statusCode HTTP status code
      * @param doc JsonDocument with custom success data
      */
-    static void sendSuccessWithData(int statusCode, const JsonDocument& doc) {
-        sendJsonResponse(statusCode, doc);
+    static void sendSuccessWithData(AsyncWebServerRequest *request, int statusCode, const JsonDocument& doc) {
+        sendJsonResponse(request, statusCode, doc);
     }
     
     /**
      * @brief Send JSON error response with standard format
+     * @param request Pointer to AsyncWebServerRequest
      * @param errorType HTTP error status code
      * @param message Error message (PROGMEM)
      */
-    static void sendError(ErrorType errorType, const char* message) {
+    static void sendError(AsyncWebServerRequest *request, ErrorType errorType, const char* message) {
         JsonDocument doc;
         doc["error"] = message;
         doc["result"] = "error";
-        sendJsonResponse((int)errorType, doc);
+        sendJsonResponse(request, (int)errorType, doc);
     }
     
     /**
      * @brief Send JSON error response with __FlashStringHelper*
+     * @param request Pointer to AsyncWebServerRequest
      * @param errorType HTTP error status code
      * @param message Error message from FPSTR/F() macro
      */
-    static void sendError(ErrorType errorType, const __FlashStringHelper* message) {
+    static void sendError(AsyncWebServerRequest *request, ErrorType errorType, const __FlashStringHelper* message) {
         JsonDocument doc;
         doc["error"] = message;
         doc["result"] = "error";
-        sendJsonResponse((int)errorType, doc);
+        sendJsonResponse(request, (int)errorType, doc);
     }
     
     /**
      * @brief Send JSON error response with std::string message
+     * @param request Pointer to AsyncWebServerRequest
      * @param errorType HTTP error status code
      * @param message Error message as std::string
      */
-    static void sendError(ErrorType errorType, const std::string& message) {
-        sendError(errorType, message.c_str());
+    static void sendError(AsyncWebServerRequest *request, ErrorType errorType, const std::string& message) {
+        sendError(request, errorType, message.c_str());
     }
     
     /**
@@ -132,35 +142,65 @@ public:
  * @brief Helper for parsing and validating JSON request bodies
  */
 class JsonBodyParser {
+private:
+    // Private member to store body data as a shared pointer for async handling
+    inline static std::map<AsyncWebServerRequest*, std::shared_ptr<String>> bodyCache;
+
 public:
     /**
+     * @brief Store body data from AsyncWebServer body handler
+     * @param request Pointer to AsyncWebServerRequest
+     * @param data Body data buffer
+     * @param len Length of current chunk
+     * @param index Current position in body
+     * @param total Total body length
+     */
+    static void storeBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, 
+                         size_t index, size_t total) {
+        if (index == 0) {
+            bodyCache[request] = std::make_shared<String>();
+            bodyCache[request]->reserve(total);
+        }
+        
+        for (size_t i = 0; i < len; i++) {
+            bodyCache[request]->concat((char)data[i]);
+        }
+    }
+
+    /**
      * @brief Parse and validate JSON request body
+     * @param request Pointer to AsyncWebServerRequest
      * @param doc Reference to JsonDocument to populate
      * @param validator Optional validation function
      * @return true if body valid, false and sends error response if invalid
      */
-    static bool parseBody(JsonDocument& doc, 
+    static bool parseBody(AsyncWebServerRequest *request, JsonDocument& doc, 
                          std::function<bool(const JsonDocument&)> validator = nullptr) {
-        String body = webserver.arg("plain");
-        
-        if (body.isEmpty()) {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, "Empty request body");
+        auto it = bodyCache.find(request);
+        if (it == bodyCache.end() || !it->second || it->second->length() == 0) {
+            ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, "Empty request body");
             return false;
         }
+        
+        String body = *it->second;
         
         DeserializationError error = deserializeJson(doc, body.c_str());
         if (error) {
             std::string errorMsg = std::string("Invalid JSON: ") + error.c_str();
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, errorMsg);
+            ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, errorMsg);
+            bodyCache.erase(it);
             return false;
         }
         
         if (validator && !validator(doc)) {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, 
+            ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, 
                                      "Invalid payload schema");
+            bodyCache.erase(it);
             return false;
         }
         
+        // Clean up after successful parsing
+        bodyCache.erase(it);
         return true;
     }
 };
@@ -173,29 +213,31 @@ class ParamValidator {
 public:
     /**
      * @brief Check if parameter exists and optionally validate it
+     * @param request Pointer to AsyncWebServerRequest
      * @param paramName Parameter name to check
      * @param errorMessage Optional custom error message (const char*)
      * @param validator Optional validation function
      * @return Parameter value if valid, empty string and sends error if invalid
      */
     static std::string getValidatedParam(
+        AsyncWebServerRequest *request,
         const char* paramName,
         const char* errorMessage = nullptr,
         std::function<bool(const std::string&)> validator = nullptr) 
     {
-        if (!webserver.hasArg(paramName)) {
+        if (!request->hasParam(paramName)) {
             std::string msg = errorMessage ? std::string(errorMessage) 
                                           : std::string("Missing parameter: ") + paramName;
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
+            ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, msg);
             return "";
         }
         
-        std::string value = webserver.arg(paramName).c_str();
+        std::string value = request->getParam(paramName)->value().c_str();
         
         if (validator && !validator(value)) {
             std::string msg = errorMessage ? std::string(errorMessage)
                                           : std::string("Invalid ") + paramName;
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
+            ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, msg);
             return "";
         }
         
@@ -204,34 +246,36 @@ public:
     
     /**
      * @brief Check if parameter exists and optionally validate it (__FlashStringHelper* version)
+     * @param request Pointer to AsyncWebServerRequest
      * @param paramName Parameter name to check
      * @param errorMessage Optional custom error message from FPSTR/F()
      * @param validator Optional validation function
      * @return Parameter value if valid, empty string and sends error if invalid
      */
     static std::string getValidatedParam(
+        AsyncWebServerRequest *request,
         const char* paramName,
         const __FlashStringHelper* errorMessage,
         std::function<bool(const std::string&)> validator = nullptr) 
     {
-        if (!webserver.hasArg(paramName)) {
+        if (!request->hasParam(paramName)) {
             if (errorMessage) {
-                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, errorMessage);
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, errorMessage);
             } else {
                 std::string msg = std::string("Missing parameter: ") + paramName;
-                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, msg);
             }
             return "";
         }
         
-        std::string value = webserver.arg(paramName).c_str();
+        std::string value = request->getParam(paramName)->value().c_str();
         
         if (validator && !validator(value)) {
             if (errorMessage) {
-                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, errorMessage);
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, errorMessage);
             } else {
                 std::string msg = std::string("Invalid ") + paramName;
-                ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, msg);
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, msg);
             }
             return "";
         }
@@ -241,11 +285,12 @@ public:
     
     /**
      * @brief Check if parameter exists (no validation)
+     * @param request Pointer to AsyncWebServerRequest
      * @param paramName Parameter name to check
      * @return Parameter value if exists, empty string and sends error if not
      */
-    static std::string requireParam(const char* paramName) {
-        return getValidatedParam(paramName);
+    static std::string requireParam(AsyncWebServerRequest *request, const char* paramName) {
+        return getValidatedParam(request, paramName);
     }
 };
 
@@ -258,7 +303,8 @@ public:
 class ServiceStatusHelper {
 public:
     /**
--     * @brief Check if service is running, send 503 error if not
+     * @brief Check if service is running, send 503 error if not
+     * @param request Pointer to AsyncWebServerRequest
      * @param service Pointer to service instance (can be nullptr, will be checked)
      * @param serviceName Service name for error message (PROGMEM string safe)
      * @return true if service is running and started, false if not (error response already sent)
@@ -272,8 +318,8 @@ public:
      * 
      * @example Usage within service class (check self)
      * @code
-     * void MyService::handleRoute() {
-     *     if (!ServiceStatusHelper::ensureServiceRunning(this, "MyService")) return;
+     * void MyService::handleRoute(AsyncWebServerRequest *request) {
+     *     if (!ServiceStatusHelper::ensureServiceRunning(request, this, "MyService")) return;
      *     // Service is guaranteed running here
      *     // ... route handler logic ...
      * }
@@ -281,8 +327,8 @@ public:
      * 
      * @example Usage for external service dependency
      * @code
-     * void MyService::handleRoute() {
-     *     if (!ServiceStatusHelper::ensureServiceRunning(g_settingsServiceInstance, "Settings")) return;
+     * void MyService::handleRoute(AsyncWebServerRequest *request) {
+     *     if (!ServiceStatusHelper::ensureServiceRunning(request, g_settingsServiceInstance, "Settings")) return;
      *     // SettingsService is guaranteed running here
      *     // ... route handler logic ...
      * }
@@ -291,10 +337,10 @@ public:
      * @see IsServiceInterface::isServiceStarted()
      * @see ResponseHelper::sendError()
      */
-    static bool ensureServiceRunning(IsServiceInterface* service, const char* serviceName) {
+    static bool ensureServiceRunning(AsyncWebServerRequest *request, IsServiceInterface* service, const char* serviceName) {
         if (!service || !service->isServiceStarted()) {
             std::string msg = std::string(serviceName) + " service not initialized";
-            ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE, msg);
+            ResponseHelper::sendError(request, ResponseHelper::SERVICE_UNAVAILABLE, msg);
             return false;
         }
         return true;

@@ -1,9 +1,10 @@
 #pragma once
 
+// Include ESPAsyncWebServer first to avoid HTTP method enum conflicts with ESP-IDF
+#include <ESPAsyncWebServer.h>
 #include <vector>
 #include <string>
 #include <set>
-#include <WebServer.h>
 #include <ArduinoJson.h>
 #include "IsServiceInterface.h"
 
@@ -11,7 +12,7 @@
  * @file IsOpenAPIInterface.h
  * @brief Interface for services that provide OpenAPI specification data and HTTP route registration
  * @details Classes implementing this interface can contribute to the aggregated OpenAPI spec
- *          and register their HTTP routes with a WebServer instance.
+ *          and register their HTTP routes with an AsyncWebServer instance.
  */
 
 // Common constants for OpenAPI routes (stored in PROGMEM to save RAM)
@@ -192,7 +193,7 @@ struct OpenAPIRoute
 };
 
 // Forward declaration - webserver is instantiated in main.cpp
-extern WebServer webserver;
+extern AsyncWebServer webserver;
 
 struct IsOpenAPIInterface : public IsServiceInterface
 {
@@ -317,24 +318,25 @@ protected:
     
     /**
      * @brief Check if service is started and send 423 error if not
+     * @param request Pointer to AsyncWebServerRequest
      * @return true if service is started, false otherwise (and 423 response sent)
      */
-    bool checkServiceStarted()
+    bool checkServiceStarted(AsyncWebServerRequest *request)
     {
         if (!isServiceStarted())
         {
-            webserver.send(423, RoutesConsts::mime_json, 
+            request->send(423, RoutesConsts::mime_json, 
                           getResultJsonString(RoutesConsts::result_err, 
                                             reinterpret_cast<const char*>(FPSTR(RoutesConsts::resp_service_not_started))).c_str());
             return false;
         }
         return true;
     }
-    bool checkLoggerDefined(const std::shared_ptr<RollingLogger>& loggerPtr)
+    bool checkLoggerDefined(const std::shared_ptr<RollingLogger>& loggerPtr, AsyncWebServerRequest *request)
     {
         if (!loggerPtr)
         {
-            webserver.send(423, RoutesConsts::mime_json, 
+            request->send(423, RoutesConsts::mime_json, 
                           getResultJsonString(RoutesConsts::result_err, "Logger not defined").c_str());
             return false;
         }
@@ -345,32 +347,32 @@ protected:
      * @param serviceName Service name for OpenAPI grouping
      * @param serviceInstance Pointer to IsServiceInterface instance
      */
-    void registerSettingsRoutes(const char* serviceName, IsServiceInterface* serviceInstance)
+    void registerSettingsRoutes( IsServiceInterface* serviceInstance)
     {
         // Save settings route
         std::string savePath = getPath("saveSettings");
         std::vector<OpenAPIResponse> saveResponses;
         saveResponses.push_back(OpenAPIResponse(200, "Settings saved successfully"));
-        registerOpenAPIRoute(OpenAPIRoute(savePath.c_str(), RoutesConsts::method_get, "Save own service settings (if exists).", serviceName, false, {}, saveResponses));
-        webserver.on(savePath.c_str(), HTTP_GET, [this, serviceInstance]() {
+        registerOpenAPIRoute(OpenAPIRoute(savePath.c_str(), RoutesConsts::method_get, "Save own service settings (if exists).", getServiceName().c_str(), false, {}, saveResponses));
+        webserver.on(savePath.c_str(), HTTP_GET, [this, serviceInstance](AsyncWebServerRequest *request) {
             bool success = serviceInstance->saveSettings();
             std::string response = this->getResultJsonString(
                 success ? RoutesConsts::result_ok : RoutesConsts::result_err,
                 "saveSettings");
-            webserver.send(success ? 200 : 500, RoutesConsts::mime_json, response.c_str());
+            request->send(success ? 200 : 500, RoutesConsts::mime_json, response.c_str());
         });
 
         // Load settings route
         std::string loadPath = getPath("loadSettings");
         std::vector<OpenAPIResponse> loadResponses;
         loadResponses.push_back(OpenAPIResponse(200, "Settings loaded successfully"));
-        registerOpenAPIRoute(OpenAPIRoute(loadPath.c_str(), RoutesConsts::method_get, "Load own service settings (if exists).", serviceName, false, {}, loadResponses));
-        webserver.on(loadPath.c_str(), HTTP_GET, [this, serviceInstance]() {
+        registerOpenAPIRoute(OpenAPIRoute(loadPath.c_str(), RoutesConsts::method_get, "Load own service settings (if exists).", getServiceName().c_str(), false, {}, loadResponses));
+        webserver.on(loadPath.c_str(), HTTP_GET, [this, serviceInstance](AsyncWebServerRequest *request) {
             bool success = serviceInstance->loadSettings();
             std::string response = this->getResultJsonString(
                 success ? RoutesConsts::result_ok : RoutesConsts::result_err,
                 "loadSettings");
-            webserver.send(success ? 200 : 500, RoutesConsts::mime_json, response.c_str());
+            request->send(success ? 200 : 500, RoutesConsts::mime_json, response.c_str());
         });
     }
 
@@ -379,7 +381,7 @@ protected:
      * @param serviceName Service name for OpenAPI grouping
      * @param serviceInstance Pointer to IsServiceInterface instance
      */
-    void registerServiceStatusRoute(const char* serviceName, IsServiceInterface* serviceInstance)
+    void registerServiceStatusRoute(IsServiceInterface* serviceInstance)
     {
         std::string statusPath = getPath("serviceStatus");
         std::vector<OpenAPIResponse> statusResponses;
@@ -389,9 +391,9 @@ protected:
         statusResponses.push_back(statusOk);
         
         registerOpenAPIRoute(OpenAPIRoute(statusPath.c_str(), RoutesConsts::method_get, 
-                                         "Get service status", serviceName, false, {}, statusResponses));
+                                         "Get service status", getServiceName().c_str(), false, {}, statusResponses));
         
-        webserver.on(statusPath.c_str(), HTTP_GET, [this, serviceInstance]() {
+        webserver.on(statusPath.c_str(), HTTP_GET, [this, serviceInstance](AsyncWebServerRequest *request) {
             JsonDocument doc;
             doc["service"] = serviceInstance->getServiceName();
             doc["status"] = serviceInstance->getStatusString();
@@ -399,7 +401,7 @@ protected:
             
             String output;
             serializeJson(doc, output);
-            webserver.send(200, RoutesConsts::mime_json, output.c_str());
+            request->send(200, RoutesConsts::mime_json, output.c_str());
         });
     }
 };

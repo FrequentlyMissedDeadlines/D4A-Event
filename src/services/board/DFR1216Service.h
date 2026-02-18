@@ -5,7 +5,7 @@
  * @details
  * - Provides DFR1216 initialization, control, and HTTP route registration.
  * - Implements IsServiceInterface and IsOpenAPIInterface
- * - Uses the global `WebServer webserver` instance that is created in `main.cpp`.
+ * - Uses the global `AsyncWebServer webserver` instance that is created in `main.cpp`.
  */
 #pragma once
 
@@ -53,7 +53,7 @@ public:
     /**
      * @fn: registerRoutes
      * @brief: Register HTTP routes for DFR1216 control.
-     * @details Uses the global `webserver` instance (see `IsOpenAPIInterface.h`).
+     * @details Uses the global `AsyncWebServer webserver` instance (see `IsOpenAPIInterface.h`).
      * @return: true if route registration was successful, false otherwise.
      */
     bool registerRoutes() override;
@@ -83,7 +83,7 @@ private:
     DFRobot_UnihikerExpansion_I2C controller;
 
     // HTTP handler methods
-    void handle_set_servo_angle();
-    void handle_set_motor_speed();
-    void handle_get_status();
+    void handle_set_servo_angle(AsyncWebServerRequest *request);
+    void handle_set_motor_speed(AsyncWebServerRequest *request);
+    void handle_get_status(AsyncWebServerRequest *request);
 };

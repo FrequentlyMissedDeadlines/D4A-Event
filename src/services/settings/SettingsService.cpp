@@ -10,7 +10,7 @@
 #include "SettingsService.h"
 #include "../FlashStringHelper.h"
 #include "../ResponseHelper.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <pgmspace.h>
 #include <Preferences.h>
@@ -45,7 +45,7 @@ namespace SettingsConsts
 static SettingsService* g_settingsServiceInstance = nullptr;
 
 // External reference to global webserver
-extern WebServer webserver;
+extern AsyncWebServer webserver;
 
 SettingsService::SettingsService() 
 {
@@ -235,15 +235,16 @@ std::string SettingsService::buildSettingsJson(const std::vector<Setting>& setti
     return std::string(output.c_str());
 }
 
-void SettingsService::handleGetSettings()
+void SettingsService::handleGetSettings(AsyncWebServerRequest *request)
 {
     // Check service status
-    if (!ServiceStatusHelper::ensureServiceRunning(g_settingsServiceInstance, "Settings")) {
+    if (!ServiceStatusHelper::ensureServiceRunning(request, g_settingsServiceInstance, "Settings")) {
         return;
     }
     
     // Validate domain parameter
     std::string domain = ParamValidator::getValidatedParam(
+        request,
         RoutesConsts::param_domain,
         FPSTR(SettingsConsts::msg_missing_domain),
         [](const std::string& d) { return isValidDomain(d); }
@@ -251,8 +252,9 @@ void SettingsService::handleGetSettings()
     if (domain.empty()) return;
     
     // Check if specific key is requested
-    if (webserver.hasArg(RoutesConsts::param_key)) {
+    if (request->hasArg(RoutesConsts::param_key)) {
         std::string key = ParamValidator::getValidatedParam(
+            request,
             RoutesConsts::param_key,
             FPSTR(SettingsConsts::msg_invalid_key),
             [](const std::string& k) { return isValidKey(k); }
@@ -262,7 +264,7 @@ void SettingsService::handleGetSettings()
         std::string value = g_settingsServiceInstance->getSetting(domain, key, "");
         
         // Return plain text for single value
-        webserver.send(200, RoutesConsts::mime_plain_text, value.c_str());
+        request->send(200, RoutesConsts::mime_plain_text, value.c_str());
     } else {
         // Get all settings in domain (currently limited by ESP32 Preferences)
         std::vector<Setting> settings = g_settingsServiceInstance->getAllSettings(domain);
@@ -273,19 +275,20 @@ void SettingsService::handleGetSettings()
         doc[RoutesConsts::message] = "ESP32 Preferences does not support key enumeration";
         doc[FPSTR(SettingsConsts::json_settings)] = serialized("{}");
         
-        ResponseHelper::sendJsonResponse(503, doc);
+        ResponseHelper::sendJsonResponse(request, 503, doc);
     }
 }
 
-void SettingsService::handlePostSettings()
+void SettingsService::handlePostSettings(AsyncWebServerRequest *request)
 {
     // Check service status
-    if (!ServiceStatusHelper::ensureServiceRunning(g_settingsServiceInstance, "Settings")) {
+    if (!ServiceStatusHelper::ensureServiceRunning(request, g_settingsServiceInstance, "Settings")) {
         return;
     }
     
     // Validate domain parameter
     std::string domain = ParamValidator::getValidatedParam(
+        request,
         RoutesConsts::param_domain,
         FPSTR(SettingsConsts::msg_missing_domain),
         [](const std::string& d) { return isValidDomain(d); }
@@ -293,15 +296,16 @@ void SettingsService::handlePostSettings()
     if (domain.empty()) return;
     
     // Check if single key/value update via query parameters
-    if (webserver.hasArg(RoutesConsts::param_key) && webserver.hasArg(RoutesConsts::param_value)) {
+    if (request->hasArg(RoutesConsts::param_key) && request->hasArg(RoutesConsts::param_value)) {
         std::string key = ParamValidator::getValidatedParam(
+            request,
             RoutesConsts::param_key,
             FPSTR(SettingsConsts::msg_invalid_key),
             [](const std::string& k) { return isValidKey(k); }
         );
         if (key.empty()) return;
         
-        std::string value = webserver.arg(RoutesConsts::param_value).c_str();
+        std::string value = request->arg(RoutesConsts::param_value).c_str();
         
         bool success = g_settingsServiceInstance->setSetting(domain, key, value);
         
@@ -309,15 +313,15 @@ void SettingsService::handlePostSettings()
             JsonDocument doc;
             doc[FPSTR(SettingsConsts::json_success)] = true;
             doc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
-            ResponseHelper::sendJsonResponse(200, doc);
+            ResponseHelper::sendJsonResponse(request, 200, doc);
         } else {
-            ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE, 
+            ResponseHelper::sendError(request, ResponseHelper::SERVICE_UNAVAILABLE, 
                                      FPSTR(SettingsConsts::msg_operation_failed));
         }
-    } else if (webserver.hasArg("plain")) {
+    } else if (request->hasArg("plain")) {
         // Parse JSON body for multiple settings
         JsonDocument doc;
-        if (!JsonBodyParser::parseBody(doc)) {
+        if (!JsonBodyParser::parseBody(request, doc)) {
             return;
         }
         
@@ -335,13 +339,13 @@ void SettingsService::handlePostSettings()
             JsonDocument responseDoc;
             responseDoc[FPSTR(SettingsConsts::json_success)] = true;
             responseDoc[RoutesConsts::message] = FPSTR(SettingsConsts::msg_success);
-            ResponseHelper::sendJsonResponse(200, responseDoc);
+            ResponseHelper::sendJsonResponse(request, 200, responseDoc);
         } else {
-            ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
+            ResponseHelper::sendError(request, ResponseHelper::SERVICE_UNAVAILABLE,
                                      FPSTR(SettingsConsts::msg_operation_failed));
         }
     } else {
-        ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS,
+        ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS,
                                  FPSTR(RoutesConsts::msg_invalid_request));
     }
 }
@@ -372,7 +376,7 @@ bool SettingsService::registerRoutes()
                                       "Retrieve a single setting value or all settings in a domain",
                                       "Settings", false, getParams, getResponses));
     
-    webserver.on(getPath.c_str(), HTTP_GET, handleGetSettings);
+    webserver.on(getPath.c_str(), HTTP_GET, [](AsyncWebServerRequest *request) { handleGetSettings(request); });
     
     // POST /api/SettingsService/settings - Set settings
     std::string postPath = this->getPath(SettingsConsts::path_settings);
@@ -401,9 +405,10 @@ bool SettingsService::registerRoutes()
                                       "Update or insert setting. Use query parameters.",
                                       "Settings", false, postParams, postResponses));
     
-    webserver.on(postPath.c_str(), HTTP_POST, handlePostSettings);
+    webserver.on(postPath.c_str(), HTTP_POST, [](AsyncWebServerRequest *request) { handlePostSettings(request); });
 
-    registerSettingsRoutes("Settings", this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
     
 
     return true;

@@ -2,7 +2,7 @@
 #include "../FlashStringHelper.h"
 /**
  * @file HTTPService.cpp
- * @brief Implementation for asynchronous HTTP web server integration
+ * @brief Implementation for HTTP web server integration
  * @details Exposed routes:
  *          - GET / - Home page with service dashboard
  *          - GET /api/docs - OpenAPI documentation page
@@ -11,7 +11,6 @@
  */
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <esp_system.h>
 #include <esp_camera.h>
 #include <freertos/FreeRTOS.h>
@@ -20,66 +19,75 @@
 #include <pgmspace.h>
 #include <FS.h>
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 #include <esp_partition.h>
 #include <sstream>
 #include <algorithm>
 #include "../RollingLogger.h"
 #include "../IsOpenAPIInterface.h"
-
+#include <ESPAsyncWebServer.h>
 // Forward declarations for external variables from main.cpp
 std::string master_IP;
 std::string master_TOKEN;
 
 extern UNIHIKER_K10 unihiker;
 
+
+// static const char HOME_HTML_ROUTE_ITEM[] PROGMEM = "      <li>\n        <span class=\"method method-%s\">%s</span>\n        <a href=\"%s\" class=\"path\">%s</a>\n        <div style=\"margin-left: 50px; color: #666; font-size: 13px;\">%s</div>\n      </li>\n";
+// static const char HOME_HTML_TAIL[] PROGMEM = "    </ul>\n  </div>\n</body>\n</html>\n";
+
 // File paths for API test page templates (stored in LittleFS)
 static const char path_api_test_head[] PROGMEM = "/api_test_head.html";
 static const char path_api_test_tail[] PROGMEM = "/api_test_tail.html";
+
 
 bool HTTPService::startService()
 {
   if (logger)
     logger->info("Starting HTTP service...");
 
-  // Initialize LittleFS on partition 'voice_data'
-  bool mounted = LittleFS.begin(false, "/littlefs", 10, "voice_data");
-
+  // Initialize LittleFS on partition 'model' (from large_spiffs_16MB.csv)
+  // The partition table defines: model, data, spiffs, 0x510000, 4563k
+  // PlatformIO uploadfs uploads to this partition when board_build.filesystem = littlefs
+  bool mounted = LittleFS.begin(false, "/littlefs", 10, "voice_data") ;
+  
   if (!mounted)
   {
-    if (logger)
-      logger->error("Failed to mount LittleFS 'voice_data'");
-    setServiceStatus(START_FAILED);
-    return false;
+      if (logger) logger->error("Failed to mount LittleFS  'voice_data'");
+      setServiceStatus(START_FAILED);
+      return false;
   }
-
+  
   if (logger)
   {
     logger->info("LittleFS mounted successfully");
-#ifdef VERBOSE_DEBUG
+    // Debug: List files in LittleFS
+    #ifdef VERBOSE_DEBUG
     listFilesInFS(LittleFS, "/");
-#endif
+    #endif  
   }
 
-  // AsyncWebServer starts automatically when routes are registered
-  try
-  {
-    webserver.begin();
+  // Register base routes but don't start server yet (services need to register first)
+  try{
+  
+  webserver.begin();
   }
   catch (const std::exception &e)
   {
     setServiceStatus(START_FAILED);
-    if (logger)
-      logger->error(std::string("Failed webserver.begin: ") + e.what());
+    logger->error(std::string("Failed webserver.begin ") + e.what());
     return false;
   }
 
-  setServiceStatus(STARTED);
+  setServiceStatus(STARTED );
 
+  
   if (logger)
     logger->info("AsyncWebServer started");
-
+  
+  
 #ifdef VERBOSE_DEBUG
-  logger->debug(getServiceName() + " " + getStatusString());
+  logger->debug(getServiceName() + " "  + getStatusString());   
 #endif
   return true;
 }
@@ -90,7 +98,7 @@ bool HTTPService::stopService()
   {
     if (isServiceStarted())
     {
-      webserver.end();
+      webserver.stop();
       setServiceStatus(STOPPED);
     }
     LittleFS.end();
@@ -103,12 +111,11 @@ bool HTTPService::stopService()
   }
   catch (const std::exception &e)
   {
-    setServiceStatus(STOP_FAILED);
-    if (logger)
-      logger->error(std::string(e.what()));
+          setServiceStatus(STOP_FAILED);
+
+    logger->error(std::string(e.what()));
   }
-  if (logger)
-    logger->error(getServiceName() + " " + getStatusString());
+  logger->error(getServiceName() + " " + getStatusString());
   return false;
 }
 
@@ -119,8 +126,7 @@ void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
     openAPIServices.push_back(service);
 #ifdef VERBOSE_DEBUG
     if (logger)
-      logger->debug("Registered services #" + std::to_string(openAPIServices.size()) +
-                    ": " + std::to_string(service->getOpenAPIRoutes().size()));
+      logger->debug("Registered services #" + std::to_string(openAPIServices.size()) + ": " + std::to_string(service->getOpenAPIRoutes().size()));
 #endif
   }
 }
@@ -128,19 +134,22 @@ void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
 /**
  * Handle home page request with route listing
  */
-void HTTPService::handleHomeClient(AsyncWebServerRequest *request)
+void HTTPService::handleHomeClient(AsyncWebServer *webserver)
 {
-  if (!request)
+  if (!webserver)
   {
     return;
   }
-  logRequest(request);
-  // Redirect root to index.html
-  request->redirect("/index.html");
+  logRequest(webserver);
+  //redirect root to index.html
+  webserver->sendHeader("Location", "/index.html");
+  webserver->send(302, "text/plain", "Redirecting to home page...");
 }
 
 /**
  * @brief Read file content from LittleFS into a string
+ * @param path Path to the file in LittleFS
+ * @return File content as string, empty string on failure
  */
 std::string HTTPService::readFileToString(const char *path)
 {
@@ -182,15 +191,99 @@ std::string HTTPService::readFileToString(const char *path)
 }
 
 /**
- * Handle OpenAPI spec request
+ * Handle test page request with interactive forms for all routes
  */
-void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
+void HTTPService::handleTestClient(AsyncWebServer *webserver)
 {
-  if (!request)
+  if (!webserver)
   {
     return;
   }
-  logRequest(request);
+  logRequest(webserver);
+
+  // Read HTML header from LittleFS
+  std::string html_head = readFileToString(path_api_test_head);
+  if (html_head.empty())
+  {
+    webserver->send(500, RoutesConsts::mime_plain_text, "Template file not found");
+    return;
+  }
+
+  std::stringstream ss;
+  ss << html_head;
+
+  // Generate forms for each route
+  int formId = 0;
+  for (auto service : openAPIServices)
+  {
+    std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
+    for (const auto &route : routes)
+    {
+      ss << "    <div class=\"route-container\">\n";
+      ss << "      <div class=\"route-header\">\n";
+      ss << "        <span class=\"method method-" << route.method << "\">" << route.method << "</span>\n";
+      ss << "        <span class=\"path\">" << route.path << "</span>\n";
+      ss << "      </div>\n";
+      ss << "      <div class=\"description\">" << route.description << "</div>\n";
+      ss << "      <form id=\"form" << formId << "\" onsubmit=\"return testRoute(" << formId << ", '"
+         << route.method << "', '" << route.path << "')\">\n";
+
+      // Add input fields for parameters
+      for (const auto &param : route.parameters)
+      {
+        ss << "        <div class=\"param-group\">\n";
+        ss << "          <label class=\"param-label\">" << param.name;
+        if (param.required)
+          ss << " <span style=\"color:red;\">*</span>";
+        ss << " (" << param.in << ", " << param.type << ")</label>\n";
+        ss << "          <input type=\"text\" class=\"param-input\" name=\"" << param.name
+           << "\" data-param-in=\"" << param.in << "\" placeholder=\"" << param.description;
+        if (!param.example.empty())
+          ss << " (e.g., " << param.example << ")";
+        ss << "\"";
+        if (!param.defaultValue.empty())
+          ss << " value=\"" << param.defaultValue << "\"";
+        if (param.required)
+          ss << " required";
+        ss << ">\n";
+        ss << "        </div>\n";
+      }
+
+      ss << "        <button type=\"submit\" class=\"btn btn-primary\">Send " << route.method << " Request</button>\n";
+      ss << "      </form>\n";
+      ss << "      <div class=\"response-area\" id=\"response" << formId << "\">\n";
+      ss << "        <h4>Response:</h4>\n";
+      ss << "        <div class=\"response-content\" id=\"responseContent" << formId << "\"></div>\n";
+      ss << "      </div>\n";
+      ss << "    </div>\n";
+
+      formId++;
+    }
+  }
+
+  // Read JavaScript/HTML tail from LittleFS
+  std::string html_tail = readFileToString(path_api_test_tail);
+  if (html_tail.empty())
+  {
+    webserver->send(500, RoutesConsts::mime_plain_text, "Template tail file not found");
+    return;
+  }
+  ss << html_tail;
+
+  std::string html_content = ss.str();
+  webserver->send_P(200, "text/html; charset=utf-8", html_content.c_str());
+}
+
+/**
+ * Handle OpenAPI spec request
+ */
+void HTTPService::handleOpenAPIRequest(AsyncWebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
 
   JsonDocument doc;
 
@@ -206,17 +299,14 @@ void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
 
   JsonObject paths = doc["paths"].to<JsonObject>();
 #ifdef VERBOSE_DEBUG
-  if (logger)
-    logger->debug("Generating OpenAPI services: " + std::to_string(openAPIServices.size()));
+  logger->debug("Generating OpenAPI services: " + std::to_string(openAPIServices.size()));
 #endif
-
   // Aggregate all routes from registered OpenAPI services
   for (auto service : openAPIServices)
   {
     std::vector<OpenAPIRoute> routes = service->getOpenAPIRoutes();
 #ifdef VERBOSE_DEBUG
-    if (logger)
-      logger->debug("Generating OpenAPI routes: " + std::to_string(routes.size()));
+    logger->debug("Generating OpenAPI routes:  " + std::to_string(routes.size()));
 #endif
     for (const auto &route : routes)
     {
@@ -225,6 +315,7 @@ void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
 
       // Create method object
       std::string methodLower = route.method;
+      // Convert to lowercase for OpenAPI spec
       for (char &c : methodLower)
         c = tolower(c);
 
@@ -232,7 +323,7 @@ void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
       methodObj["summary"] = route.summary.empty() ? route.description.c_str() : route.summary.c_str();
       methodObj["description"] = route.description.c_str();
 
-      // Add tags
+      // Add tags if available
       if (!route.tags.empty())
       {
         JsonArray tagsArr = methodObj["tags"].to<JsonArray>();
@@ -242,6 +333,7 @@ void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
         }
       }
 
+      // Add deprecated flag if set
       if (route.deprecated)
       {
         methodObj["deprecated"] = true;
@@ -283,6 +375,7 @@ void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
         JsonObject contentObj = reqBodyObj["content"].to<JsonObject>();
         JsonObject mediaTypeObj = contentObj[route.requestBody.contentType.c_str()].to<JsonObject>();
 
+        // Parse and add schema if it's a JSON string
         if (!route.requestBody.schema.empty())
         {
           mediaTypeObj["schema"] = serialized(route.requestBody.schema.c_str());
@@ -321,6 +414,7 @@ void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
       }
       else
       {
+        // Fallback to basic response
         JsonObject response200 = responses["200"].to<JsonObject>();
         response200["description"] = "Successful response";
       }
@@ -363,69 +457,70 @@ void HTTPService::handleOpenAPIRequest(AsyncWebServerRequest *request)
 
   String output;
   serializeJson(doc, output);
-  request->send(200, RoutesConsts::mime_json, output.c_str());
+  webserver->send(200, RoutesConsts::mime_json, output.c_str());
+}
+
+/**LittleFS
+ * @brief Handle requests without a registered route
+ * @param webserver Pointer to AsyncWebServer instance
+ */
+void HTTPService::handleNotFoundClient(AsyncAsyncWebServer *webserver)
+{
+  if (!webserver)
+  {
+    return;
+  }
+  logRequest(webserver);
+  String path = webserver->uri();
+  const int queryIndex = path.indexOf('?');
+  if (tryServeLittleFS(webserver))
+  {
+    return;
+  }
+  
+   
+  logger->warning( std::string(path.c_str())+" 404 ");
+  webserver->send(404, RoutesConsts::mime_plain_text, (path + ": Not Found").c_str());
 }
 
 /**
- * @brief Handle requests without a registered route
+ * @brief Convert HTTPMethod enum to string representation
+ * @param method HTTP method enum value
+ * @return Method name as C-string
  */
-void HTTPService::handleNotFoundClient(AsyncWebServerRequest *request)
+static const char *http_method_to_string(HTTPMethod method)
 {
-  if (!request)
+  switch (method)
   {
-    return;
+    case HTTP_GET:     return "GET";
+    case HTTP_POST:    return "POST";
+    case HTTP_PUT:     return "PUT";
+    case HTTP_DELETE:  return "DELETE";
+    case HTTP_PATCH:   return "PATCH";
+    case HTTP_HEAD:    return "HEAD";
+    case HTTP_OPTIONS: return "OPTIONS";
+    default:           return "UNKNOWN";
   }
-  logRequest(request);
+}
 
-  String path = request->url();
-
-  if (tryServeLittleFS(request))
+void HTTPService::handleClient(AsyncWebServer *webserver)
+{
+  if (webserver)
   {
-    return;
+    webserver->handleClient();
   }
-
-  if (logger)
-    logger->warning(std::string(path.c_str()) + " 404");
-  request->send(404, RoutesConsts::mime_plain_text, (path + ": Not Found").c_str());
 }
 
 /**
  * @brief Log incoming HTTP request method and URI
+ * @param webserver Pointer to AsyncWebServer instance
  */
-void HTTPService::logRequest(AsyncWebServerRequest *request)
+void HTTPService::logRequest(AsyncWebServer *webserver)
 {
-  if (request && logger)
+  if (webserver && logger)
   {
-    std::string method_str;
-    switch (request->method())
-    {
-    case HTTP_GET:
-      method_str = "GET";
-      break;
-    case HTTP_POST:
-      method_str = "POST";
-      break;
-    case HTTP_PUT:
-      method_str = "PUT";
-      break;
-    case HTTP_DELETE:
-      method_str = "DELETE";
-      break;
-    case HTTP_PATCH:
-      method_str = "PATCH";
-      break;
-    case HTTP_HEAD:
-      method_str = "HEAD";
-      break;
-    case HTTP_OPTIONS:
-      method_str = "OPTIONS";
-      break;
-    default:
-      method_str = "UNKNOWN";
-      break;
-    }
-
-    std::string log_msg = method_str + " " + std::string(request->url().c_str());
+    std::string log_msg = std::string(http_method_to_string(webserver->method())) +
+                          " " + webserver->uri().c_str();
     logger->info(log_msg);
   }
 }
@@ -444,54 +539,60 @@ bool HTTPService::registerRoutes()
   registerOpenAPIRoute(OpenAPIRoute(
       path.c_str(),
       RoutesConsts::method_get,
-      "Get OpenAPI 3.0.0 specification for all registered services",
+      "Get OpenAPI 3.0.0 specification for all registered services including paths, parameters, request bodies, and response schemas",
       "OpenAPI",
       false, {}, openApiResponses));
 
-  webserver.on("/", HTTP_GET, [this](AsyncWebServerRequest *request)
+  webserver.on("/", HTTP_GET, [this]()
                { 
-                 if (!checkServiceStarted(request)) return;
-                 this->handleHomeClient(request); });
+                 if (!checkServiceStarted()) return;
+                 this->handleHomeClient(&webserver); 
+               });
 
   // Test interface endpoint
-  // webserver.on("/api/docs", HTTP_GET, [this](AsyncWebServerRequest *request)
-  //              {
-  //                if (!checkServiceStarted(request)) return;
-  //                this->handleTestClient(request);
-  //              });
+  webserver.on("/api/docs", HTTP_GET, [this]()
+               { 
+                 if (!checkServiceStarted()) return;
+                 this->handleTestClient(&webserver); 
+               });
 
   // OpenAPI specification endpoint
-  webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
+  webserver.on(path.c_str(), HTTP_GET, [this]()
                { 
-                 if (!checkServiceStarted(request)) return;
-                 this->handleOpenAPIRequest(request); });
+                 if (!checkServiceStarted()) return;
+                 this->handleOpenAPIRequest(&webserver); 
+               });
 
-  webserver.onNotFound([this](AsyncWebServerRequest *request)
-                       { this->handleNotFoundClient(request); });
+  webserver.onNotFound([this]()
+                       { 
+                         if (!checkServiceStarted()) return;
+                         this->handleNotFoundClient(&webserver); 
+                       });
 
-  registerServiceStatusRoute(this);
-  registerSettingsRoutes(this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
   return true;
 }
 
 /**
- * @brief Attempt to serve a file from LittleFS
+ * @brief Attempt to serve a file from LittleFS for the current request
+ * @param webserver Pointer to AsyncWebServer instance
+ * @return true if a file was found and sent
  */
-bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
+bool HTTPService::tryServeLittleFS(AsyncAsyncWebServer *webserver)
 {
-  if (!request)
+  if (!webserver)
   {
     return false;
   }
 
-  String path = request->url();
-
-#ifdef VERBOSE_DEBUG
-  if (logger)
-    logger->debug(std::string("Serving: ") + path.c_str());
-#endif
-
+  String path = webserver->uri();
+  #ifdef VERBOSE_DEBUG
+    
+  logger->debug(std::string("read ") + path.c_str() );
+  #endif
+  
   // Strip query parameters
   const int queryIndex = path.indexOf('?');
   if (queryIndex >= 0)
@@ -515,13 +616,19 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
   if (path.indexOf("..") >= 0)
   {
     if (logger)
-      logger->warning("Path traversal blocked!");
+    {
+      logger->warning("Traversal path blocked!" );
+    }
     return false;
   }
 
   // Check if file exists in LittleFS
   if (!LittleFS.exists(path))
   {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " not found.");
+    }
     return false;
   }
 
@@ -529,6 +636,10 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
   File file = LittleFS.open(path, "r");
   if (!file || file.isDirectory())
   {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " not readable.");
+    }
     if (file)
       file.close();
     return false;
@@ -537,26 +648,54 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
   size_t fileSize = file.size();
   if (fileSize == 0)
   {
+    if (logger)
+    {
+      logger->warning(std::string(path.c_str()) + " is empty.");
+    }
     file.close();
     return false;
   }
 
-  file.close();
-
-  // Get content type and serve file
+  // Get content type and set response headers
   const String contentType = getContentTypeForPath(path);
-  request->send(LittleFS, path, contentType);
+  webserver->setContentLength(fileSize);
+  webserver->send(200, contentType.c_str(), "");
 
-#ifdef VERBOSE_DEBUG
+  // Stream file in chunks
+  constexpr size_t kStreamChunkSize = 2048;
+  uint8_t buffer[kStreamChunkSize];
+  size_t bytesRead = 0;
+  
+  while (file.available() && bytesRead < fileSize)
+  {
+    size_t toRead = (fileSize - bytesRead > kStreamChunkSize) ? kStreamChunkSize : (fileSize - bytesRead);
+    size_t readBytes = file.read(buffer, toRead);
+    
+    if (readBytes == 0)
+    {
+      break;
+    }
+    
+    webserver->sendContent(reinterpret_cast<const char *>(buffer), readBytes);
+    bytesRead += readBytes;
+    delay(0); // Feed watchdog
+  }
+
+  file.close();
+  #ifdef VERBOSE_DEBUG
   if (logger)
+  {
     logger->debug(std::string(path.c_str()) + " sent.");
-#endif
+  }
+  #endif
 
   return true;
 }
 
 /**
  * @brief Resolve MIME type based on file extension
+ * @param path Request path
+ * @return MIME type string
  */
 String HTTPService::getContentTypeForPath(const String &path)
 {
@@ -608,6 +747,9 @@ std::string HTTPService::getServiceSubPath()
 
 /**
  * @brief List all files in LittleFS recursively (for debugging)
+ * @param fs Filesystem to list
+ * @param dirname Directory to start from
+ * @param level Current recursion level
  */
 void HTTPService::listFilesInFS(fs::FS &fs, const char *dirname, uint8_t levels, uint8_t currentLevel)
 {
@@ -628,19 +770,19 @@ void HTTPService::listFilesInFS(fs::FS &fs, const char *dirname, uint8_t levels,
   {
     std::string indent = "";
     for (uint8_t i = 0; i < currentLevel; i++)
-      indent += "  ";
+      indent += " ";
 
     if (file.isDirectory())
     {
-      logger->info(indent + std::string(file.name()) + "/");
+      logger->info(indent +  std::string(file.name())+"/");
       if (levels > 0)
       {
-        listFilesInFS(fs, file.path(), levels, currentLevel + 1);
+        listFilesInFS(fs, file.path(), levels , currentLevel + 1);
       }
     }
     else
     {
-      logger->info(indent + std::string(file.name()) + " (" + std::to_string(file.size()) + "B)");
+      logger->info(indent + "" + std::string(file.name()) + " (" + std::to_string(file.size()) + "B)");
     }
     file = root.openNextFile();
   }

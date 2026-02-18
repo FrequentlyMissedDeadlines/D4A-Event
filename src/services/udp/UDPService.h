@@ -2,7 +2,7 @@
 #pragma once
 
 #include <AsyncUDP.h>
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <set>
 #include <string>
 #include <vector>
@@ -25,7 +25,7 @@ using UDPMessageHandler = std::function<bool(const std::string& message, const I
  * @file UDPService.h
  * @brief Header for UDP server module.
  * @details Provides methods to receive UDP messages and maintain statistics.
- * Inherits from withRoutes to register HTTP routes with a WebServer instance.
+ * Inherits from withRoutes to register HTTP routes with a AsyncWebServer instance.
  * Supports callback registration for message handling by other classes.
  *
  */

@@ -18,7 +18,7 @@
 
 #include "ServoService.h"
 #include "../ResponseHelper.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <pgmspace.h>
 #include <ArduinoJson.h>
 #include "../../devices/DFR1216/DFRobot_UnihikerExpansion.h"
@@ -79,7 +79,7 @@ namespace ServoConsts
     constexpr const char status_unknown[] PROGMEM = "Unknown";
     constexpr const char settings_key_servos[] PROGMEM = "attached_servos";
     constexpr const char tag_servo[] PROGMEM = "Servo";
-
+    constexpr const char tag[] PROGMEM = "servo";
     // OpenAPI tags and descriptions
     constexpr const char tag_servos[] PROGMEM = "Servos";
     constexpr const char desc_servo_channel[] PROGMEM = "Servo channel (0-7)";
@@ -393,44 +393,53 @@ std::string ServoService::getAttachedServo(uint8_t channel)
  */
 bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_angle;
+    std::string path = getPath(ServoConsts::action_set_angle);
     logRouteRegistration(path);
 
-    OpenAPIRoute angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    OpenAPIRoute angle_route(path.c_str(), RoutesConsts::method_post, 
+                           reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_angle)), 
+                           reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                           false, {}, standard_responses);
     angle_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_angle_control)),
                                                 ServoConsts::req_channel_angle_07, true);
     angle_route.requestBody.example = ServoConsts::ex_channel_angle;
     registerOpenAPIRoute(angle_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-    {
-        if (!checkServiceStarted()) return;
-        
-        // Parse and validate JSON body
-        JsonDocument doc;
-        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
-            return d[ServoConsts::servo_channel].is<uint8_t>() && 
-                   d[ServoConsts::servo_angle].is<uint16_t>();
-        })) return;
-
-        uint8_t ch = doc[ServoConsts::servo_channel].as<uint8_t>();
-        uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
-
-        if (angle > 360 || ch > 7)
+    webserver.on(path.c_str(), HTTP_POST, 
+        [this](AsyncWebServerRequest *request)
         {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
-            return;
-        }
+            if (!checkServiceStarted(request)) return;
+            
+            // Parse and validate JSON body
+            JsonDocument doc;
+            if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
+                return d[ServoConsts::servo_channel].is<uint8_t>() && 
+                       d[ServoConsts::servo_angle].is<uint16_t>();
+            })) return;
 
-        if (setServoAngle(ch, angle))
-        {
-            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_angle));
+            uint8_t ch = doc[ServoConsts::servo_channel].as<uint8_t>();
+            uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
+
+            if (angle > 360 || ch > 7)
+            {
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
+                return;
+            }
+
+            if (setServoAngle(ch, angle))
+            {
+                ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_angle));
+            }
+            else
+            {
+                ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_angle));
+            }
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonBodyParser::storeBody(request, data, len, index, total);
         }
-        else
-        {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_angle));
-        }
-    });
+    );
 
     return true;
 }
@@ -440,44 +449,53 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse>& sta
  */
 bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_speed;
+    std::string path = getPath(ServoConsts::action_set_speed);
     logRouteRegistration(path);
 
-    OpenAPIRoute speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    OpenAPIRoute speed_route(path.c_str(), RoutesConsts::method_post, 
+                           reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_speed)), 
+                           reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                           false, {}, standard_responses);
     speed_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_servo_speed_control)),
                                                 ServoConsts::req_channel_speed, true);
     speed_route.requestBody.example = ServoConsts::ex_channel_speed;
     registerOpenAPIRoute(speed_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-    {
-        if (!checkServiceStarted()) return;
-        
-        // Parse and validate JSON body
-        JsonDocument doc;
-        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
-            return d[ServoConsts::servo_channel].is<int>() && 
-                   d[ServoConsts::servo_speed].is<int>();
-        })) return;
-        
-        uint8_t channel = doc[ServoConsts::servo_channel].as<uint8_t>();
-        int8_t speed = doc[ServoConsts::servo_speed].as<int>();
-        
-        if (channel > 7 || speed < -100 || speed > 100)
+    webserver.on(path.c_str(), HTTP_POST, 
+        [this](AsyncWebServerRequest *request)
         {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
-            return;
+            if (!checkServiceStarted(request)) return;
+            
+            // Parse and validate JSON body
+            JsonDocument doc;
+            if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
+                return d[ServoConsts::servo_channel].is<int>() && 
+                       d[ServoConsts::servo_speed].is<int>();
+            })) return;
+            
+            uint8_t channel = doc[ServoConsts::servo_channel].as<uint8_t>();
+            int8_t speed = doc[ServoConsts::servo_speed].as<int>();
+            
+            if (channel > 7 || speed < -100 || speed > 100)
+            {
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
+                return;
+            }
+            
+            if (this->setServoSpeed(channel, speed))
+            {
+                ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_speed));
+            }
+            else
+            {
+                ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_speed));
+            }
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonBodyParser::storeBody(request, data, len, index, total);
         }
-        
-        if (this->setServoSpeed(channel, speed))
-        {
-            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_speed));
-        }
-        else
-        {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_speed));
-        }
-    });
+    );
 
     return true;
 }
@@ -487,23 +505,27 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse>& sta
  */
 bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_stop_all;
+    std::string path = getPath(ServoConsts::action_stop_all);
     logRouteRegistration(path);
 
-    OpenAPIRoute stop_all_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_stop_all)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    // Note: No request body needed - parameterless POST operation
+    OpenAPIRoute stop_all_route(path.c_str(), RoutesConsts::method_post, 
+                              reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_stop_all)), 
+                              reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                              false, {}, standard_responses);
     registerOpenAPIRoute(stop_all_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
+    webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
     {
-        if (!checkServiceStarted()) return;
+        if (!checkServiceStarted(request)) return;
         
         if (this->setAllServoSpeed(0))
         {
-            ResponseHelper::sendSuccess(ServoConsts::action_stop_all);
+            ResponseHelper::sendSuccess(request, ServoConsts::action_stop_all);
         }
         else
         {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, ServoConsts::action_stop_all);
+            ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, ServoConsts::action_stop_all);
         }
     });
 
@@ -515,7 +537,7 @@ bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse>& standard_
  */
 bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_get_status;
+    std::string path = getPath(ServoConsts::action_get_status);
     logRouteRegistration(path);
 
     std::vector<OpenAPIParameter> status_params;
@@ -528,15 +550,19 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standar
     status_responses.push_back(status_ok);
     status_responses.push_back(createMissingParamsResponse());
 
-    OpenAPIRoute status_route(path.c_str(), RoutesConsts::method_get, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_status)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), true, status_params, status_responses);
+    OpenAPIRoute status_route(path.c_str(), RoutesConsts::method_get, 
+                            reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_status)), 
+                            reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                            true, status_params, status_responses);
     registerOpenAPIRoute(status_route);
 
-    webserver.on(path.c_str(), HTTP_GET, [this]()
+    webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
     {
-        if (!checkServiceStarted()) return;
+        if (!checkServiceStarted(request)) return;
         
         // Validate channel parameter with range check
         std::string channel_str = ParamValidator::getValidatedParam(
+            request,
             ServoConsts::servo_channel,
             RoutesConsts::msg_invalid_params,
             [](const std::string& val) {
@@ -549,7 +575,7 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standar
         uint8_t channel = (uint8_t)std::atoi(channel_str.c_str());
         
         std::string status = getAttachedServo(channel);
-        webserver.send(200, RoutesConsts::mime_json, status.c_str());
+        request->send(200, RoutesConsts::mime_json, status.c_str());
     });
 
     return true;
@@ -560,7 +586,7 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse>& standar
  */
 bool ServoService::addRouteGetAllStatus()
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_get_all_status;
+    std::string path = getPath(ServoConsts::action_get_all_status);
     logRouteRegistration(path);
 
     std::vector<OpenAPIResponse> all_status_responses;
@@ -569,15 +595,18 @@ bool ServoService::addRouteGetAllStatus()
     all_status_ok.example = ServoConsts::ex_all_servos;
     all_status_responses.push_back(all_status_ok);
 
-    OpenAPIRoute all_status_route(path.c_str(), RoutesConsts::method_get, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_all_status)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, all_status_responses);
+    OpenAPIRoute all_status_route(path.c_str(), RoutesConsts::method_get, 
+                                reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_get_all_status)), 
+                                reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                                false, {}, all_status_responses);
     registerOpenAPIRoute(all_status_route);
 
-    webserver.on(path.c_str(), HTTP_GET, [this]()
+    webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
     {
-        if (!checkServiceStarted()) return;
+        if (!checkServiceStarted(request)) return;
         
         std::string status = getAllAttachedServos();
-        webserver.send(200, RoutesConsts::mime_json, status.c_str());
+        request->send(200, RoutesConsts::mime_json, status.c_str());
     });
 
     return true;
@@ -588,42 +617,51 @@ bool ServoService::addRouteGetAllStatus()
  */
 bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_all_angle;
+    std::string path = getPath(ServoConsts::action_set_all_angle);
     logRouteRegistration(path);
 
-    OpenAPIRoute all_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_angle)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    OpenAPIRoute all_angle_route(path.c_str(), RoutesConsts::method_post, 
+                               reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_angle)), 
+                               reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                               false, {}, standard_responses);
     all_angle_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_angle_for_all)),
                                                    ServoConsts::req_angle, true);
     all_angle_route.requestBody.example = ServoConsts::ex_angle;
     registerOpenAPIRoute(all_angle_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-    {
-        if (!checkServiceStarted()) return;
-        
-        // Parse and validate JSON body
-        JsonDocument doc;
-        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
-            return d[ServoConsts::servo_angle].is<uint16_t>();
-        })) return;
+    webserver.on(path.c_str(), HTTP_POST, 
+        [this](AsyncWebServerRequest *request)
+        {
+            if (!checkServiceStarted(request)) return;
+            
+            // Parse and validate JSON body
+            JsonDocument doc;
+            if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
+                return d[ServoConsts::servo_angle].is<uint16_t>();
+            })) return;
 
-        uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
-        
-        if (angle > 360)
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
-            return;
+            uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
+            
+            if (angle > 360)
+            {
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
+                return;
+            }
+            
+            if (setAllServoAngle(angle))
+            {
+                ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_all_angle));
+            }
+            else
+            {
+                ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_all_angle));
+            }
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonBodyParser::storeBody(request, data, len, index, total);
         }
-        
-        if (setAllServoAngle(angle))
-        {
-            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_all_angle));
-        }
-        else
-        {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_all_angle));
-        }
-    });
+    );
 
     return true;
 }
@@ -633,53 +671,51 @@ bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse>& stand
  */
 bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_all_speed;
+    std::string path = getPath(ServoConsts::action_set_all_speed);
     logRouteRegistration(path);
 
-    OpenAPIRoute all_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_speed)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    OpenAPIRoute all_speed_route(path.c_str(), RoutesConsts::method_post, 
+                               reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_all_speed)), 
+                               reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                               false, {}, standard_responses);
     all_speed_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_speed_for_all)),
                                                    ServoConsts::req_speed, true);
     all_speed_route.requestBody.example = ServoConsts::ex_speed;
     registerOpenAPIRoute(all_speed_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-    {
-        if (!checkServiceStarted()) return;
-        
-        String body = webserver.arg(FPSTR(ServoConsts::str_plain));
-        
-        if (body.isEmpty())
+    webserver.on(path.c_str(), HTTP_POST, 
+        [this](AsyncWebServerRequest *request)
         {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
-        
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, body.c_str());
-        
-        if (error || !doc[ServoConsts::servo_speed].is<int8_t>())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+            if (!checkServiceStarted(request)) return;
+            
+            // Parse and validate JSON body
+            JsonDocument doc;
+            if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
+                return d[FPSTR(ServoConsts::servo_speed)].is<int8_t>();
+            })) return;
 
-        int8_t speed = doc[ServoConsts::servo_speed].as<int8_t>();
-        
-        if (speed < -100 || speed > 100)
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
-            return;
+            int8_t speed = doc[FPSTR(ServoConsts::servo_speed)].as<int8_t>();
+            
+            if (speed < -100 || speed > 100)
+            {
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
+                return;
+            }
+            
+            if (setAllServoSpeed(speed))
+            {
+                ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_all_speed));
+            }
+            else
+            {
+                ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_all_speed));
+            }
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonBodyParser::storeBody(request, data, len, index, total);
         }
-        
-        if (setAllServoSpeed(speed))
-        {
-            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_all_speed));
-        }
-        else
-        {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_all_speed));
-        }
-    });
+    );
 
     return true;
 }
@@ -689,54 +725,61 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse>& stand
  */
 bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_servos_speed_multiple;
-#ifdef VERBOSE_DEBUG
-    logger->debug(progmem_to_string(RoutesConsts::str_plus) + path);
-#endif    
+    std::string path = getPath(ServoConsts::action_set_servos_speed_multiple);
     logRouteRegistration(path);
-    OpenAPIRoute multi_speed_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    
+    OpenAPIRoute multi_speed_route(path.c_str(), RoutesConsts::method_post, 
+                                 reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)), 
+                                 reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                                 false, {}, standard_responses);
     multi_speed_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_speed_multiple)),
                                                      ServoConsts::req_servos_speed_multiple, true);
     multi_speed_route.requestBody.example = ServoConsts::ex_servos_speed_multiple;
     registerOpenAPIRoute(multi_speed_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-    {
-        if (!checkServiceStarted()) return;
-        
-        // Parse and validate JSON body
-        JsonDocument doc;
-        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
-            return d[ServoConsts::servos].is<JsonArray>();
-        })) return;
+    webserver.on(path.c_str(), HTTP_POST, 
+        [this](AsyncWebServerRequest *request)
+        {
+            if (!checkServiceStarted(request)) return;
+            
+            // Parse and validate JSON body
+            JsonDocument doc;
+            if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
+                return d[ServoConsts::servos].is<JsonArray>();
+            })) return;
 
-        JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
-        std::vector<ServoSpeedOp> ops;
-        for (JsonObject servo_obj : arr)
-        {
-            if (!servo_obj[ServoConsts::servo_channel].is<uint8_t>() || !servo_obj[ServoConsts::servo_speed].is<int8_t>())
-                continue;
-            ServoSpeedOp op;
-            op.channel = servo_obj[ServoConsts::servo_channel].as<uint8_t>();
-            op.speed = servo_obj[ServoConsts::servo_speed].as<int8_t>();
-            ops.push_back(op);
-        }
+            JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
+            std::vector<ServoSpeedOp> ops;
+            for (JsonObject servo_obj : arr)
+            {
+                if (!servo_obj[ServoConsts::servo_channel].is<uint8_t>() || !servo_obj[ServoConsts::servo_speed].is<int8_t>())
+                    continue;
+                ServoSpeedOp op;
+                op.channel = servo_obj[ServoConsts::servo_channel].as<uint8_t>();
+                op.speed = servo_obj[ServoConsts::servo_speed].as<int8_t>();
+                ops.push_back(op);
+            }
 
-        if (ops.empty())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+            if (ops.empty())
+            {
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
+                return;
+            }
 
-        if (setServosSpeedMultiple(ops))
-        {
-            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_servos_speed_multiple));
+            if (setServosSpeedMultiple(ops))
+            {
+                ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_servos_speed_multiple));
+            }
+            else
+            {
+                ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_servos_speed_multiple));
+            }
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonBodyParser::storeBody(request, data, len, index, total);
         }
-        else
-        {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_servos_speed_multiple));
-        }
-    });
+    );
 
     return true;
 }
@@ -746,54 +789,61 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
  */
 bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIResponse>& standard_responses)
 {
-    std::string path = std::string(RoutesConsts::path_api) + getServiceSubPath() + progmem_to_string(RoutesConsts::str_slash) + ServoConsts::action_set_servos_angle_multiple;
-#ifdef VERBOSE_DEBUG
-    logger->debug(progmem_to_string(RoutesConsts::str_plus) + path);
-    #endif
+    std::string path = getPath(ServoConsts::action_set_servos_angle_multiple);
     logRouteRegistration(path);
-    OpenAPIRoute multi_angle_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    
+    OpenAPIRoute multi_angle_route(path.c_str(), RoutesConsts::method_post, 
+                                 reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)), 
+                                 reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                                 false, {}, standard_responses);
     multi_angle_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_set_servos_angle_multiple)),
                                                      ServoConsts::req_servos_angle_multiple, true);
     multi_angle_route.requestBody.example = ServoConsts::ex_servos_angle_multiple;
     registerOpenAPIRoute(multi_angle_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-    {
-        if (!checkServiceStarted()) return;
-        
-        // Parse and validate JSON body
-        JsonDocument doc;
-        if (!JsonBodyParser::parseBody(doc, [](const JsonDocument& d) {
-            return d[ServoConsts::servos].is<JsonArray>();
-        })) return;
+    webserver.on(path.c_str(), HTTP_POST, 
+        [this](AsyncWebServerRequest *request)
+        {
+            if (!checkServiceStarted(request)) return;
+            
+            // Parse and validate JSON body
+            JsonDocument doc;
+            if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
+                return d[ServoConsts::servos].is<JsonArray>();
+            })) return;
 
-        JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
-        std::vector<ServoAngleOp> ops;
-        for (JsonObject servo_obj : arr)
-        {
-            if (!servo_obj[ServoConsts::servo_channel].is<uint8_t>() || !servo_obj[ServoConsts::servo_angle].is<uint16_t>())
-                continue;
-            ServoAngleOp op;
-            op.channel = servo_obj[ServoConsts::servo_channel].as<uint8_t>();
-            op.angle = servo_obj[ServoConsts::servo_angle].as<uint16_t>();
-            ops.push_back(op);
-        }
+            JsonArray arr = doc[ServoConsts::servos].as<JsonArray>();
+            std::vector<ServoAngleOp> ops;
+            for (JsonObject servo_obj : arr)
+            {
+                if (!servo_obj[ServoConsts::servo_channel].is<uint8_t>() || !servo_obj[ServoConsts::servo_angle].is<uint16_t>())
+                    continue;
+                ServoAngleOp op;
+                op.channel = servo_obj[ServoConsts::servo_channel].as<uint8_t>();
+                op.angle = servo_obj[ServoConsts::servo_angle].as<uint16_t>();
+                ops.push_back(op);
+            }
 
-        if (ops.empty())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
+            if (ops.empty())
+            {
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
+                return;
+            }
 
-        if (setServosAngleMultiple(ops))
-        {
-            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_set_servos_angle_multiple));
+            if (setServosAngleMultiple(ops))
+            {
+                ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_servos_angle_multiple));
+            }
+            else
+            {
+                ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_servos_angle_multiple));
+            }
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonBodyParser::storeBody(request, data, len, index, total);
         }
-        else
-        {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_set_servos_angle_multiple));
-        }
-    });
+    );
 
     return true;
 }
@@ -804,56 +854,53 @@ bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIRespo
 bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse>& standard_responses)
 {
     std::string path = getPath(ServoConsts::action_attach_servo);
-#ifdef VERBOSE_DEBUG
-    logger->debug(progmem_to_string(RoutesConsts::str_plus) + path);
-#endif
     logRouteRegistration(path);
-    OpenAPIRoute attach_route(path.c_str(), RoutesConsts::method_post, reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attach_servo)), reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), false, {}, standard_responses);
+    
+    OpenAPIRoute attach_route(path.c_str(), RoutesConsts::method_post, 
+                            reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attach_servo)), 
+                            reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servos)), 
+                            false, {}, standard_responses);
     attach_route.requestBody = OpenAPIRequestBody(reinterpret_cast<const char *>(FPSTR(ServoConsts::desc_attachment_config)),
                                                  ServoConsts::req_channel_connection, true);
     attach_route.requestBody.example = ServoConsts::ex_channel_connection;
     registerOpenAPIRoute(attach_route);
 
-    webserver.on(path.c_str(), HTTP_POST, [this]()
-    {
-        if (!checkServiceStarted()) return;
-        
-        String body = webserver.arg(FPSTR(ServoConsts::str_plain));
-        
-        if (body.isEmpty())
+    webserver.on(path.c_str(), HTTP_POST, 
+        [this](AsyncWebServerRequest *request)
         {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
+            if (!checkServiceStarted(request)) return;
+            
+            // Parse and validate JSON body
+            JsonDocument doc;
+            if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
+                return d[FPSTR(ServoConsts::servo_channel)].is<uint8_t>() && 
+                       d[FPSTR(ServoConsts::connection)].is<uint8_t>();
+            })) return;
+            
+            uint8_t channel = doc[FPSTR(ServoConsts::servo_channel)].as<uint8_t>();
+            uint8_t connection = doc[FPSTR(ServoConsts::connection)].as<uint8_t>();
+            
+            if (channel > 7 || connection > 3)
+            {
+                ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
+                return;
+            }
+            
+            ServoConnection servo_connection = static_cast<ServoConnection>(connection);
+            if (attachServo(channel, servo_connection))
+            {
+                ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_attach_servo));
+            }
+            else
+            {
+                ResponseHelper::sendError(request, ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_attach_servo));
+            }
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonBodyParser::storeBody(request, data, len, index, total);
         }
-        
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, body.c_str());
-        
-        if (error || !doc[ServoConsts::servo_channel].is<uint8_t>() || !doc[ServoConsts::connection].is<uint8_t>())
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_params);
-            return;
-        }
-        
-        uint8_t channel = doc[ServoConsts::servo_channel].as<uint8_t>();
-        uint8_t connection = doc[ServoConsts::connection].as<uint8_t>();
-        
-        if (channel > 7 || connection > 3)
-        {
-            ResponseHelper::sendError(ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
-            return;
-        }
-        
-        ServoConnection servo_connection = static_cast<ServoConnection>(connection);
-        if (attachServo(channel, servo_connection))
-        {
-            ResponseHelper::sendSuccess(FPSTR(ServoConsts::action_attach_servo));
-        }
-        else
-        {
-            ResponseHelper::sendError(ResponseHelper::OPERATION_FAILED, FPSTR(ServoConsts::action_attach_servo));
-        }
-    });
+    );
 
     return true;
 }
@@ -885,8 +932,8 @@ bool ServoService::registerRoutes()
     addRouteSetServosSpeedMultiple(standard_responses);
     addRouteSetServosAngleMultiple(standard_responses);
     addRouteAttachServo(standard_responses);
-
-    registerSettingsRoutes(reinterpret_cast<const char *>(FPSTR(ServoConsts::tag_servo)), this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
     return true;
 }

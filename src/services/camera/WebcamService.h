@@ -70,20 +70,24 @@ private:
 
     /**
      * @brief Handle snapshot HTTP request
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleSnapshot();
+    void handleSnapshot(AsyncWebServerRequest *request);
     /**
      * @brief Handle streaming HTTP request
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleStream();
+    void handleStream(AsyncWebServerRequest *request);
     /**
      * @brief Handle camera status HTTP request
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleStatus();
+    void handleStatus(AsyncWebServerRequest *request);
     /**
      * @brief Handle camera settings update HTTP request
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleSettings();
+    void handleSettings(AsyncWebServerRequest *request);
 
     /**
      * @brief Reinitialize camera with new framesize

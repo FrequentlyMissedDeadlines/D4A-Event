@@ -6,13 +6,14 @@
  */
 
 #include <stdio.h>
+// Include AsyncWebServer BEFORE Arduino.h to avoid HTTP method enum conflicts
+#include <ESPAsyncWebServer.h>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <freertos/task.h>
 #include <TFT_eSPI.h>
 #include <esp_log.h>
 
-#include <WebServer.h>
 #include <AsyncUDP.h>
 #include <LittleFS.h>
 #include <SPIFFS.h>
@@ -61,9 +62,9 @@ namespace MainConsts
 namespace
 {
   constexpr uint16_t web_port = 80;
-  constexpr TickType_t udp_task_delay_ticks = pdMS_TO_TICKS(1000);
-  constexpr TickType_t display_task_delay_ticks = pdMS_TO_TICKS(250);
-  constexpr TickType_t display_update_interval_ticks = pdMS_TO_TICKS(250);
+  constexpr TickType_t udp_task_delay_ticks = pdMS_TO_TICKS(10);
+  constexpr TickType_t display_task_delay_ticks = pdMS_TO_TICKS(500);
+  constexpr TickType_t display_update_interval_ticks = pdMS_TO_TICKS(500);
   constexpr TickType_t web_server_task_delay_ticks = pdMS_TO_TICKS(10);
   constexpr uint8_t wifi_max_attempts = 20;
   constexpr uint16_t wifi_attempt_delay_ms = 500;
@@ -89,7 +90,7 @@ TFT_eSPI tft;
 UNIHIKER_K10 unihiker;
 Music music;
 WifiService wifi_service = WifiService();
-WebServer webserver(web_port);
+AsyncWebServer webserver(web_port);
 UDPService udp_service = UDPService();
 HTTPService http_service = HTTPService();
 SettingsService settings_service = SettingsService();
@@ -161,23 +162,20 @@ void task_DISPLAY(void *pvParameters)
 }
 
 /**
- * @brief FreeRTOS Task: Handle web server on Core 1
+ * @brief FreeRTOS Task: Handle web server on Core 1 (async - no longer needs loop)
  * @param pvParameters Task parameters (unused)
+ * @note AsyncWebServer handles requests automatically, so this task is minimal
  */
 void task_HTTP_SVR(void *pvParameters)
 {
   debug_logger.info(progmem_to_string(MainConsts::msg_http_task_started));
-  int loop_count = 0;
+  
+  // AsyncWebServer runs in background, this task just keeps alive
   for (;;)
   {
-    http_service.handleClient(&webserver);
-    loop_count++;
-    if (loop_count % 1000 == 0)
-    {
-      debug_logger.trace(progmem_to_string(MainConsts::msg_webserver_running));
-    }
-    // Very short delay to allow other tasks to run
-    vTaskDelay(web_server_task_delay_ticks);
+    // Async server handles everything automatically
+    // Just yield to other tasks
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 

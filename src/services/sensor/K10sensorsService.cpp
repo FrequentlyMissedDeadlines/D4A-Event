@@ -1,6 +1,6 @@
 #include "../sensor/K10sensorsService.h"
 #include "../ResponseHelper.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <inttypes.h>
 #include <cstdio>
 #include <cstdint>
@@ -100,14 +100,14 @@ bool K10SensorsService::registerRoutes()
   }
 
   // Single route handler with all logic inside
-  webserver.on(path.c_str(), HTTP_GET, [this, initResult]()
+  webserver.on(path.c_str(), HTTP_GET, [this, initResult](AsyncWebServerRequest *request)
   {
-    if (!checkServiceStarted()) return;
+    if (!checkServiceStarted(request)) return;
     
     // Check if AHT20 initialization failed
     if (initResult != 0)
     {
-      ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
+      ResponseHelper::sendError(request, ResponseHelper::SERVICE_UNAVAILABLE,
         progmem_to_string(K10SensorsConsts::msg_failed_init_aht20).c_str());
       return;
     }
@@ -115,7 +115,7 @@ bool K10SensorsService::registerRoutes()
     // Check if sensor is ready
     if (!sensorReady())
     {
-      ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
+      ResponseHelper::sendError(request, ResponseHelper::SERVICE_UNAVAILABLE,
         progmem_to_string(K10SensorsConsts::msg_aht20_not_ready_init).c_str());
       return;
     }
@@ -124,16 +124,16 @@ bool K10SensorsService::registerRoutes()
     try
     {
       std::string json = this->getSensorJson();
-      webserver.send(200, RoutesConsts::mime_json, json.c_str());
+      request->send(200, RoutesConsts::mime_json, json.c_str());
     }
     catch (...)
     {
-      ResponseHelper::sendError(ResponseHelper::SERVICE_UNAVAILABLE,
+      ResponseHelper::sendError(request, ResponseHelper::SERVICE_UNAVAILABLE,
         progmem_to_string(K10SensorsConsts::msg_get_sensor_failed).c_str());
     }
   });
-
-  registerSettingsRoutes(progmem_to_string(K10SensorsConsts::settings_domain_sensors).c_str(), this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
   return true;
 }
 

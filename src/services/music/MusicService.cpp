@@ -8,7 +8,7 @@
  */
 
 #include "MusicService.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <unihiker_k10.h>
 #include <ArduinoJson.h>
 
@@ -98,14 +98,14 @@ bool MusicService::registerRoutes()
     OpenAPIRoute routePlay(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_play_melody, MusicConsts::tag, false, playParams, responses);
     registerOpenAPIRoute(routePlay);
     
-    webserver.on(path.c_str(), HTTP_POST, [this]() {
-        if (!checkServiceStarted()) return;
+    webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!checkServiceStarted(request)) return;
         
-        String melodyStr = webserver.arg(MusicConsts::param_melody);
-        String optionStr = webserver.arg(MusicConsts::param_option);
+        String melodyStr = request->arg(MusicConsts::param_melody);
+        String optionStr = request->arg(MusicConsts::param_option);
         
         if (melodyStr.isEmpty()) {
-            webserver.send(400, RoutesConsts::mime_json, FPSTR(MusicConsts::json_error_melody_required));
+            request->send(400, RoutesConsts::mime_json, FPSTR(MusicConsts::json_error_melody_required));
             return;
         }
         
@@ -114,7 +114,7 @@ bool MusicService::registerRoutes()
         
         music.playMusic(static_cast<Melodies>(melody), static_cast<MelodyOptions>(option));
         
-        webserver.send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_status_ok));
+        request->send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_status_ok));
     });
     
     // Register play tone route
@@ -129,14 +129,14 @@ bool MusicService::registerRoutes()
     OpenAPIRoute routeTone(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_play_tone, MusicConsts::tag, false, toneParams, responses);
     registerOpenAPIRoute(routeTone);
     
-    webserver.on(path.c_str(), HTTP_POST, [this]() {
-        if (!checkServiceStarted()) return;
+    webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!checkServiceStarted(request)) return;
         
-        String freqStr = webserver.arg(MusicConsts::param_freq);
-        String beatStr = webserver.arg(MusicConsts::param_beat);
+        String freqStr = request->arg(MusicConsts::param_freq);
+        String beatStr = request->arg(MusicConsts::param_beat);
         
         if (freqStr.isEmpty()) {
-            webserver.send(400, RoutesConsts::mime_json, FPSTR(MusicConsts::json_error_freq_required));
+            request->send(400, RoutesConsts::mime_json, FPSTR(MusicConsts::json_error_freq_required));
             return;
         }
         
@@ -145,7 +145,7 @@ bool MusicService::registerRoutes()
         
         music.playTone(freq, beat);
         
-        webserver.send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_status_ok));
+        request->send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_status_ok));
     });
     
     // Register stop tone route
@@ -155,28 +155,29 @@ bool MusicService::registerRoutes()
     OpenAPIRoute routeStop(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_stop_tone, MusicConsts::tag, false, {}, responses);
     registerOpenAPIRoute(routeStop);
     
-    webserver.on(path.c_str(), HTTP_POST, [this]() {
-        if (!checkServiceStarted()) return;
+    webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!checkServiceStarted(request)) return;
         
         music.stopPlayTone();
-        webserver.send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_status_ok));
+        request->send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_status_ok));
     });
 
     // Register status route
-    registerServiceStatusRoute(MusicConsts::tag, this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
  path = getPath(MusicConsts::action_get_melodies);
 #ifdef VERBOSE_DEBUG
     logger->debug(progmem_to_string(RoutesConsts::msg_registering) + path);
     #endif
     logRouteRegistration(path);
-    OpenAPIRoute routeMelodies(path.c_str(), RoutesConsts::method_post, MusicConsts::desc_get_melodies, MusicConsts::tag, false, {}, responses);
+    OpenAPIRoute routeMelodies(path.c_str(), RoutesConsts::method_get, MusicConsts::desc_get_melodies, MusicConsts::tag, false, {}, responses);
     registerOpenAPIRoute(routeMelodies  );
     
-    webserver.on(path.c_str(), HTTP_POST, [this]() {
-        if (!checkServiceStarted()) return;
+    webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request) {
+        if (!checkServiceStarted(request)) return;
         
-        webserver.send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_melodies_list));
+        request->send(200, RoutesConsts::mime_json, FPSTR(MusicConsts::json_melodies_list));
     });
 
     

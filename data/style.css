@@ -84,6 +84,58 @@ h2 {
 	border-bottom: none;
 }
 
+/* Route tree */
+.route-tree {
+	font-family: Arial, sans-serif;
+}
+.tree-node {
+	margin: 2px 0;
+}
+.tree-node-header {
+	display: flex;
+	align-items: center;
+	padding: 5px 0;
+	cursor: pointer;
+	user-select: none;
+}
+.tree-node-header:hover {
+	background: #f5f5f5;
+}
+.tree-toggle {
+	display: inline-block;
+	width: 20px;
+	font-size: 12px;
+	color: #666;
+	margin-right: 5px;
+	cursor: pointer;
+}
+.tree-spacer {
+	display: inline-block;
+	width: 20px;
+	margin-right: 5px;
+}
+.tree-label {
+	font-weight: 600;
+	color: #4CAF50;
+	font-family: monospace;
+	font-size: 14px;
+}
+.tree-content {
+	overflow: hidden;
+	transition: max-height 0.3s ease-out;
+	max-height: 5000px;
+}
+.tree-content.collapsed {
+	max-height: 0;
+}
+.tree-route {
+	padding: 5px 0;
+	display: flex;
+	align-items: center;
+	border-left: 2px solid #e0e0e0;
+	margin-left: 10px;
+}
+
 /* HTTP method badges */
 .method {
 	display: inline-block;

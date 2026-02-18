@@ -9,7 +9,7 @@
  */
 
 #include "WebcamService.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <unihiker_k10.h>
 #include "../IsOpenAPIInterface.h"
@@ -20,7 +20,7 @@
 #include <esp_log.h>
 
 // External webserver instance
-extern WebServer webserver;
+extern AsyncWebServer webserver;
 extern UNIHIKER_K10 unihiker;
 QueueHandle_t xQueueCamera; // Camera frame queue from unihiker_k10
 
@@ -384,109 +384,147 @@ camera_fb_t *WebcamService::captureSnapshot()
  * @brief Handle MJPEG streaming request
  * @details Continuously captures frames and sends them as multipart/x-mixed-replace stream
  *          Each frame is sent with proper MIME boundaries for MJPEG protocol
+ *          Uses AsyncWebServer's chunked response pattern for efficient streaming
+ * 
+ * @note AsyncWebServer uses AsyncWebServerResponse with chunked sending
+ * @note Reference: https://github.com/me-no-dev/ESPAsyncWebServer#request-variables
  */
-void WebcamService::handleStream()
+void WebcamService::handleStream(AsyncWebServerRequest *request)
 {
     logger->info("Handling streaming request for " + getServiceName() + "...");
     if (!initialized_)
     {
-        webserver.send(503, RoutesConsts::mime_plain_text, progmem_to_string(ServiceInterfaceConsts::service_status_not_initialized).c_str());
+        request->send(503, RoutesConsts::mime_plain_text, progmem_to_string(ServiceInterfaceConsts::service_status_not_initialized).c_str());
         return;
     }
 
-    // Set streaming flag to block snapshot requests
+    // Mark streaming as active to prevent snapshot conflicts
     streaming_active_ = true;
-
-    // Send multipart stream headers
-    webserver.setContentLength(CONTENT_LENGTH_UNKNOWN);
-    webserver.send(200, WebcamConsts::mime_multipart, "");
-
-    // Continuous streaming loop
-    while (webserver.client().connected())
-    {
-        camera_fb_t *fb = captureSnapshot();
-        if (!fb)
-        {
-            delay(WebcamConsts::stream_delay_ms);
-            continue;
-        }
-
-        // Validate frame buffer
-        if (!fb->buf || fb->len == 0)
-        {
-            esp_camera_fb_return(fb);
-            delay(WebcamConsts::stream_delay_ms);
-            continue;
-        }
-
-        uint8_t *jpg_buf = nullptr;
-        size_t jpg_len = 0;
-        bool needs_free = false;
-
-        // Check for valid JPEG (magic bytes 0xFF 0xD8)
-        bool is_valid_jpeg = (fb->len >= 2 && fb->buf[0] == 0xFF && fb->buf[1] == 0xD8);
-
-        if (is_valid_jpeg)
-        {
-            jpg_buf = fb->buf;
-            jpg_len = fb->len;
-        }
-        else
-        {
-            // Convert to JPEG
-            bool conversion_ok = frame2jpg(fb, 80, &jpg_buf, &jpg_len);
-            if (!conversion_ok || !jpg_buf || jpg_len == 0)
+    
+    // Create async chunked response for MJPEG streaming
+    AsyncWebServerResponse *response = request->beginChunkedResponse(
+        progmem_to_string(WebcamConsts::mime_multipart).c_str(),
+        [this](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+            // Stop streaming if service is stopped
+            if (!initialized_ || service_status_ == STOPPED)
             {
-                esp_camera_fb_return(fb);
-                if (jpg_buf)
-                    free(jpg_buf);
-                delay(WebcamConsts::stream_delay_ms);
-                continue;
+                streaming_active_ = false;
+                return 0;  // End stream
             }
-            needs_free = true;
+            
+            // Non-blocking frame capture - only get if immediately available
+            camera_fb_t *fb = nullptr;
+            camera_fb_t *latest_fb = nullptr;
+            
+            // Flush queue and get latest frame without blocking
+            while (xQueueReceive(xQueueCamera, &fb, 0) == pdTRUE)
+            {
+                if (latest_fb != nullptr)
+                {
+                    esp_camera_fb_return(latest_fb);
+                }
+                latest_fb = fb;
+            }
+            
+            // If no frame available, return 0 to temporarily pause (client will keep connection alive)
+            if (!latest_fb || !latest_fb->buf || latest_fb->len == 0)
+            {
+                if (latest_fb) esp_camera_fb_return(latest_fb);
+                return 0;  // No data ready, will be called again
+            }
+            
+            // Convert to JPEG if needed
+            uint8_t *jpg_buf = nullptr;
+            size_t jpg_len = 0;
+            bool needs_free = false;
+            
+            // Check for JPEG magic bytes
+            bool is_valid_jpeg = (latest_fb->len >= 2 && latest_fb->buf[0] == 0xFF && latest_fb->buf[1] == 0xD8);
+            
+            if (is_valid_jpeg)
+            {
+                jpg_buf = latest_fb->buf;
+                jpg_len = latest_fb->len;
+            }
+            else
+            {
+                // Convert RGB565 to JPEG
+                bool conversion_ok = frame2jpg(latest_fb, 80, &jpg_buf, &jpg_len);
+                if (!conversion_ok || !jpg_buf || jpg_len == 0)
+                {
+                    esp_camera_fb_return(latest_fb);
+                    if (jpg_buf) free(jpg_buf);
+                    return 0;  // Conversion failed, try again next call
+                }
+                needs_free = true;
+            }
+            
+            // Build MJPEG frame with boundary
+            String boundary_header = String(FPSTR(WebcamConsts::boundary_start)) + 
+                                   String(jpg_len) + 
+                                   String(FPSTR(WebcamConsts::boundary_end));
+            
+            size_t total_size = boundary_header.length() + jpg_len;
+            
+            // Check if buffer has enough space
+            if (total_size > maxLen)
+            {
+                logger->error("Stream buffer too small: need " + std::to_string(total_size) + 
+                            ", have " + std::to_string(maxLen));
+                if (needs_free && jpg_buf) free(jpg_buf);
+                esp_camera_fb_return(latest_fb);
+                return 0;  // Buffer too small
+            }
+            
+            // Copy boundary header and JPEG data to output buffer
+            memcpy(buffer, boundary_header.c_str(), boundary_header.length());
+            memcpy(buffer + boundary_header.length(), jpg_buf, jpg_len);
+            
+            // Cleanup
+            if (needs_free && jpg_buf) free(jpg_buf);
+            esp_camera_fb_return(latest_fb);
+            
+            return total_size;  // Return number of bytes written
         }
-
-        // Send multipart boundary and frame
-        webserver.sendContent(WebcamConsts::boundary_start);
-        webserver.sendContent(String(jpg_len));
-        webserver.sendContent(WebcamConsts::boundary_end);
-        webserver.sendContent(reinterpret_cast<const char *>(jpg_buf), jpg_len);
-
-        // Cleanup
-        if (needs_free && jpg_buf)
-        {
-            free(jpg_buf);
-        }
-        esp_camera_fb_return(fb);
-
-        // Small delay to control frame rate
-        delay(WebcamConsts::stream_delay_ms);
-    }
-
-    // Clear streaming flag to allow snapshots again
-    streaming_active_ = false;
-    logger->info("Stream ended for " + getServiceName());
+    );
+    
+    // Add headers for streaming
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+    response->addHeader(progmem_to_string(WebcamConsts::access_control).c_str(), "*");
+    
+    // Set callback to clear streaming flag when connection closes
+    response->setCode(200);
+    request->onDisconnect([this]() {
+        streaming_active_ = false;
+        logger->info("Client disconnected from stream");
+    });
+    
+    request->send(response);
+    logger->info("MJPEG stream started");
 }
-void WebcamService::handleSnapshot()
+
+void WebcamService::handleSnapshot(AsyncWebServerRequest *request)
 {
     logger->info("Handling snapshot request for " + getServiceName() + "...");
     if (!initialized_)
     {
-        webserver.send(503, RoutesConsts::mime_plain_text, progmem_to_string(WebcamConsts::msg_not_initialized).c_str());
+        request->send(503, RoutesConsts::mime_plain_text, progmem_to_string(WebcamConsts::msg_not_initialized).c_str());
         return;
     }
 
     // Reject snapshot if streaming is active
     if (streaming_active_)
     {
-        webserver.send(409, RoutesConsts::mime_plain_text, progmem_to_string(WebcamConsts::msg_streaming_active).c_str());
+        request->send(409, RoutesConsts::mime_plain_text, progmem_to_string(WebcamConsts::msg_streaming_active).c_str());
         return;
     }
 
     camera_fb_t *fb = captureSnapshot();
     if (!fb)
     {
-        webserver.send(503, RoutesConsts::mime_plain_text, progmem_to_string(WebcamConsts::msg_capture_error).c_str());
+        request->send(503, RoutesConsts::mime_plain_text, progmem_to_string(WebcamConsts::msg_capture_error).c_str());
         return;
     }
 
@@ -495,7 +533,7 @@ void WebcamService::handleSnapshot()
     {
         logger->error("Frame buffer is empty or invalid");
         esp_camera_fb_return(fb);
-        webserver.send(503, RoutesConsts::mime_plain_text, "Frame buffer is empty");
+        request->send(503, RoutesConsts::mime_plain_text, "Frame buffer is empty");
         return;
     }
 
@@ -527,19 +565,18 @@ void WebcamService::handleSnapshot()
             esp_camera_fb_return(fb);
             if (jpg_buf)
                 free(jpg_buf);
-            webserver.send(503, RoutesConsts::mime_plain_text, "JPEG conversion failed");
+            request->send(503, RoutesConsts::mime_plain_text, "JPEG conversion failed");
             return;
         }
         needs_free = true;
         logger->info("Converted to JPEG, size: " + std::to_string(jpg_len) + " bytes");
     }
 
-    // Send JPEG image
-    webserver.sendHeader(progmem_to_string(WebcamConsts::content_disposition).c_str(), progmem_to_string(WebcamConsts::inline_filename).c_str());
-    webserver.sendHeader(progmem_to_string(WebcamConsts::access_control).c_str(), "*");
-    webserver.setContentLength(jpg_len);
-    webserver.send(200, progmem_to_string(WebcamConsts::mime_image_jpeg).c_str(), "");
-    webserver.sendContent(reinterpret_cast<const char *>(jpg_buf), jpg_len);
+    // Send JPEG image using AsyncWebServer
+    AsyncWebServerResponse *response = request->beginResponse(200, progmem_to_string(WebcamConsts::mime_image_jpeg).c_str(), jpg_buf, jpg_len);
+    response->addHeader(progmem_to_string(WebcamConsts::content_disposition).c_str(), progmem_to_string(WebcamConsts::inline_filename).c_str());
+    response->addHeader(progmem_to_string(WebcamConsts::access_control).c_str(), "*");
+    request->send(response);
 
     // Clean up
     if (needs_free && jpg_buf)
@@ -549,7 +586,7 @@ void WebcamService::handleSnapshot()
     esp_camera_fb_return(fb);
 }
 
-void WebcamService::handleStatus()
+void WebcamService::handleStatus(AsyncWebServerRequest *request)
 {
     JsonDocument doc;
 
@@ -619,7 +656,7 @@ void WebcamService::handleStatus()
 
     String response;
     serializeJson(doc, response);
-    webserver.send(200, RoutesConsts::mime_json, response);
+    request->send(200, RoutesConsts::mime_json, response);
 }
 
 /**
@@ -627,13 +664,13 @@ void WebcamService::handleStatus()
  * @details Accepts JSON body with optional fields: quality, framesize, brightness, contrast, saturation
  *          Only provided fields will be updated. Values are validated before applying.
  */
-void WebcamService::handleSettings()
+void WebcamService::handleSettings(AsyncWebServerRequest *request)
 {
     logger->info("Handling settings update request for " + getServiceName() + "...");
     
     if (!initialized_)
     {
-        webserver.send(503, RoutesConsts::mime_json, 
+        request->send(503, RoutesConsts::mime_json, 
                       getResultJsonString(RoutesConsts::result_err, 
                                         progmem_to_string(WebcamConsts::msg_not_initialized)).c_str());
         return;
@@ -642,28 +679,29 @@ void WebcamService::handleSettings()
     sensor_t *s = esp_camera_sensor_get();
     if (!s)
     {
-        webserver.send(503, RoutesConsts::mime_json,
+        request->send(503, RoutesConsts::mime_json,
                       getResultJsonString(RoutesConsts::result_err, 
                                         "Failed to get camera sensor").c_str());
         return;
     }
     
-    // Parse JSON body
-    if (!webserver.hasArg("plain"))
+    // Parse JSON body from request
+    if (!request->hasParam("plain", true))
     {
-        webserver.send(400, RoutesConsts::mime_json,
+        request->send(400, RoutesConsts::mime_json,
                       getResultJsonString(RoutesConsts::result_err, 
                                         progmem_to_string(RoutesConsts::msg_invalid_json)).c_str());
         return;
     }
     
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, webserver.arg("plain"));
+    const AsyncWebParameter* p = request->getParam("plain", true);
+    DeserializationError error = deserializeJson(doc, p->value());
     
     if (error)
     {
         logger->error("JSON parse error: " + std::string(error.c_str()));
-        webserver.send(400, RoutesConsts::mime_json,
+        request->send(400, RoutesConsts::mime_json,
                       getResultJsonString(RoutesConsts::result_err, 
                                         progmem_to_string(WebcamConsts::resp_invalid_json)).c_str());
         return;
@@ -684,7 +722,7 @@ void WebcamService::handleSettings()
         }
         else
         {
-            webserver.send(422, RoutesConsts::mime_json,
+            request->send(422, RoutesConsts::mime_json,
                           getResultJsonString(RoutesConsts::result_err, 
                                             "quality must be 0-63").c_str());
             return;
@@ -721,7 +759,7 @@ void WebcamService::handleSettings()
             else if (fs_name == "UXGA") framesize = 13;
             else
             {
-                webserver.send(422, RoutesConsts::mime_json,
+                request->send(422, RoutesConsts::mime_json,
                               getResultJsonString(RoutesConsts::result_err, 
                                                 ("Invalid framesize name: " + fs_name + ". Valid names: 96X96, QQVGA, QCIF, HQVGA, 240X240, QVGA, CIF, HVGA, VGA, SVGA, XGA, HD, SXGA, UXGA").c_str()).c_str());
                 return;
@@ -732,7 +770,7 @@ void WebcamService::handleSettings()
             framesize = doc[FPSTR(WebcamConsts::field_framesize)];
             if (framesize < 0 || framesize > 13)
             {
-                webserver.send(422, RoutesConsts::mime_json,
+                request->send(422, RoutesConsts::mime_json,
                               getResultJsonString(RoutesConsts::result_err, 
                                                 "framesize must be 0-13 or a valid name (VGA, SVGA, etc.)").c_str());
                 return;
@@ -740,7 +778,7 @@ void WebcamService::handleSettings()
         }
         else
         {
-            webserver.send(422, RoutesConsts::mime_json,
+            request->send(422, RoutesConsts::mime_json,
                           getResultJsonString(RoutesConsts::result_err, 
                                             "framesize must be a number (0-13) or name (VGA, SVGA, etc.)").c_str());
             return;
@@ -763,14 +801,14 @@ void WebcamService::handleSettings()
                 updateMsg += "framesize=" + fs_name + " (will apply on service restart) ";
                 logger->info("Framesize " + fs_name + " (" + std::to_string(framesize) + ") saved to preferences - restart service to apply");
                 
-                webserver.send(200, RoutesConsts::mime_json,
+                request->send(200, RoutesConsts::mime_json,
                               getResultJsonString(RoutesConsts::result_ok, 
                                                 ("Framesize " + fs_name + " saved. Restart camera service to apply: POST /api/webcam/v1/stop then POST /api/webcam/v1/start").c_str()).c_str());
                 return;
             }
             else
             {
-                webserver.send(503, RoutesConsts::mime_json,
+                request->send(503, RoutesConsts::mime_json,
                               getResultJsonString(RoutesConsts::result_err, 
                                                 "Failed to save framesize preference").c_str());
                 return;
@@ -791,7 +829,7 @@ void WebcamService::handleSettings()
         }
         else
         {
-            webserver.send(422, RoutesConsts::mime_json,
+            request->send(422, RoutesConsts::mime_json,
                           getResultJsonString(RoutesConsts::result_err, 
                                             "brightness must be -2 to 2").c_str());
             return;
@@ -811,7 +849,7 @@ void WebcamService::handleSettings()
         }
         else
         {
-            webserver.send(422, RoutesConsts::mime_json,
+            request->send(422, RoutesConsts::mime_json,
                           getResultJsonString(RoutesConsts::result_err, 
                                             "contrast must be -2 to 2").c_str());
             return;
@@ -831,7 +869,7 @@ void WebcamService::handleSettings()
         }
         else
         {
-            webserver.send(422, RoutesConsts::mime_json,
+            request->send(422, RoutesConsts::mime_json,
                           getResultJsonString(RoutesConsts::result_err, 
                                             "saturation must be -2 to 2").c_str());
             return;
@@ -840,13 +878,13 @@ void WebcamService::handleSettings()
     
     if (updated)
     {
-        webserver.send(200, RoutesConsts::mime_json,
+        request->send(200, RoutesConsts::mime_json,
                       getResultJsonString(RoutesConsts::result_ok, 
                                         updateMsg.c_str()).c_str());
     }
     else
     {
-        webserver.send(400, RoutesConsts::mime_json,
+        request->send(400, RoutesConsts::mime_json,
                       getResultJsonString(RoutesConsts::result_err, 
                                         "No valid settings provided").c_str());
     }
@@ -867,24 +905,21 @@ bool WebcamService::registerRoutes()
     snapshotResponses.push_back(snapshotOk);
     snapshotResponses.push_back(OpenAPIResponse(503, WebcamConsts::resp_camera_not_init));
     snapshotResponses.push_back(createServiceNotStartedResponse());
-    logger->info("Add " + path + " route");
     registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get,
                                       WebcamConsts::desc_snapshot,
                                       WebcamConsts::tag, false, {}, snapshotResponses));
-    webserver.on(path.c_str(), HTTP_GET, [this]()
+    webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
                  { 
-        if (!checkServiceStarted()) return;
-        handleSnapshot(); });
+        if (!checkServiceStarted(request)) return;
+        handleSnapshot(request); });
 
-    // Status endpoint - returns JSON with camera info
-    registerServiceStatusRoute(WebcamConsts::tag, this);
+
 
     // Settings endpoint - accepts JSON body to update camera settings
     path = getPath(WebcamConsts::action_settings);
 #ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
-    logger->info("Add " + path + " route");
     
     std::vector<OpenAPIParameter> settingsParams;
     std::vector<OpenAPIResponse> settingsResponses;
@@ -914,17 +949,16 @@ bool WebcamService::registerRoutes()
     settingsRoute.requestBody = settingsBody;
     registerOpenAPIRoute(settingsRoute);
     
-    webserver.on(path.c_str(), HTTP_PUT, [this]()
+    webserver.on(path.c_str(), HTTP_PUT, [this](AsyncWebServerRequest *request)
                  { 
-        if (!checkServiceStarted()) return;
-        handleSettings(); });
+        if (!checkServiceStarted(request)) return;
+        handleSettings(request); });
 
     // Stream endpoint - returns MJPEG stream
     path = getPath(WebcamConsts::action_stream);
 #ifdef VERBOSE_DEBUG
     logger->debug("+" + path);
 #endif
-    logger->info("Add " + path + " route");
     std::vector<OpenAPIResponse> streamResponses;
     OpenAPIResponse streamOk(200, WebcamConsts::resp_stream_ok);
     streamOk.contentType = WebcamConsts::mime_multipart;
@@ -936,46 +970,45 @@ bool WebcamService::registerRoutes()
     registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_get,
                                       WebcamConsts::desc_stream,
                                       WebcamConsts::tag, false, {}, streamResponses));
-    webserver.on(path.c_str(), HTTP_GET, [this]()
+    webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
                  { 
-        if (!checkServiceStarted()) return;
-        handleStream(); });
+        if (!checkServiceStarted(request)) return;
+        handleStream(request); });
 
     // Stop service route - allows stopping the camera service via HTTP
     path = getPath("stop");
-    logger->info("Add " + path + " route");
     std::vector<OpenAPIResponse> stopResponses;
     stopResponses.push_back(OpenAPIResponse(200, "Service stopped successfully"));
     stopResponses.push_back(OpenAPIResponse(500, "Failed to stop service"));
     registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_post,
                                       "Stop the camera service (useful before changing framesize)",
                                       WebcamConsts::tag, false, {}, stopResponses));
-    webserver.on(path.c_str(), HTTP_POST, [this]()
+    webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
         bool success = this->stopService();
-        webserver.send(success ? 200 : 500, RoutesConsts::mime_json,
+        request->send(success ? 200 : 500, RoutesConsts::mime_json,
                       getResultJsonString(success ? RoutesConsts::result_ok : RoutesConsts::result_err,
                                         success ? "Service stopped" : "Failed to stop service").c_str());
     });
 
     // Start service route - allows starting the camera service via HTTP
     path = getPath("start");
-    logger->info("Add " + path + " route");
     std::vector<OpenAPIResponse> startResponses;
     startResponses.push_back(OpenAPIResponse(200, "Service started successfully"));
     startResponses.push_back(OpenAPIResponse(500, "Failed to start service"));
     registerOpenAPIRoute(OpenAPIRoute(path.c_str(), RoutesConsts::method_post,
                                       "Start the camera service (applies saved framesize from preferences)",
                                       WebcamConsts::tag, false, {}, startResponses));
-    webserver.on(path.c_str(), HTTP_POST, [this]()
+    webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
         bool success = this->startService();
-        webserver.send(success ? 200 : 500, RoutesConsts::mime_json,
+        request->send(success ? 200 : 500, RoutesConsts::mime_json,
                       getResultJsonString(success ? RoutesConsts::result_ok : RoutesConsts::result_err,
                                         success ? "Service started" : "Failed to start service").c_str());
     });
 
-    registerSettingsRoutes("Webcam", this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
     return true;
 }

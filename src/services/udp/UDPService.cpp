@@ -13,7 +13,7 @@
 #include <AsyncUDP.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
 // UDPService constants namespace
@@ -311,13 +311,14 @@ bool UDPService::registerRoutes()
                                      UDPConsts::desc_route,
                                      UDPConsts::tag_udp, false, {}, responses));
   
-  webserver.on(path.c_str(), HTTP_GET, [this]()
+  webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
              {
-    if (!checkServiceStarted()) return;
+    if (!checkServiceStarted(request)) return;
     std::string json = this->buildJson();
-    webserver.send(200, RoutesConsts::mime_json, json.c_str()); });
+    request->send(200, RoutesConsts::mime_json, json.c_str()); });
 
-  registerSettingsRoutes("UDP", this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
   return true;
 }

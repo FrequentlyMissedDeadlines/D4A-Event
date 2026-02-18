@@ -1,55 +1,43 @@
 /**
  * @file HTTPService.h
- * @brief Header for WebServer module integration with the main application
- * @details Provides methods to initialize and handle a WebServer instance.
+ * @brief Header for AsyncWebServer module integration with the main application
+ * @details Provides methods to initialize and handle an AsyncWebServer instance.
  */
 #pragma once
-#include <WebServer.h>
+
+// Include ESPAsyncWebServer first to avoid HTTP method enum conflicts
+#include <ESPAsyncWebServer.h>
 #include <vector>
 #include "../IsServiceInterface.h"
 #include "../IsOpenAPIInterface.h"
 
 /**
  * @class HTTPService
- * @brief Service for managing HTTP web server and OpenAPI routes
+ * @brief Service for managing asynchronous HTTP web server and OpenAPI routes
  */
 class HTTPService : public IsOpenAPIInterface
 {
 public:
     /**
-     * @fn begin
-     * @brief Initialize the web server with given WebServer instance
-     * @param webserver Pointer to WebServer instance
-     * @return true if initialization was successful, false otherwise
-     */
-    bool begin(WebServer *webserver);
-    /**
-     * @fn handleClient
-     * @brief Handle incoming client requests - to be called in main loop
-     * @param webserver Pointer to WebServer instance
-     */
-    void handleClient(WebServer *webserver);
-
-    /**
      * @fn logRequest
      * @brief Log HTTP request method and URI
-     * @param webserver Pointer to WebServer instance
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void logRequest(WebServer *webserver);
+    void logRequest(AsyncWebServerRequest *request);
     
     /**
      * @brief Handle home page request with route listing
      * @details Renders the home page with available routes and interactive test forms
-     * @param webserver Pointer to WebServer instance
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleHomeClient(WebServer *webserver);
+    void handleHomeClient(AsyncWebServerRequest *request);
 
     /**
      * @brief Handle test page request with interactive forms for all routes
      * @details Serves the API test page with dynamically generated forms for testing endpoints
-     * @param webserver Pointer to WebServer instance
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleTestClient(WebServer *webserver);
+    void handleTestClient(AsyncWebServerRequest *request);
 
     /**
      * @brief Handle master registration conflict
@@ -91,16 +79,16 @@ public:
 
     /**
      * Handle OpenAPI spec request
-     * @param webserver Pointer to WebServer instance
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleOpenAPIRequest(WebServer *webserver);
+    void handleOpenAPIRequest(AsyncWebServerRequest *request);
 
 
     /**
      * @brief Handle requests without a registered route
-     * @param webserver Pointer to WebServer instance
+     * @param request Pointer to AsyncWebServerRequest
      */
-    void handleNotFoundClient(WebServer *webserver);
+    void handleNotFoundClient(AsyncWebServerRequest *request);
 
     /**
      * Start the webserver after all routes are registered
@@ -121,10 +109,10 @@ protected:
 
     /**
      * @brief Attempt to serve a file from LittleFS for the current request
-     * @param webserver Pointer to WebServer instance
+     * @param request Pointer to AsyncWebServerRequest
      * @return true if a file was found and sent
      */
-    bool tryServeLittleFS(WebServer *webserver);
+    bool tryServeLittleFS(AsyncWebServerRequest *request);
 
     /**
      * @brief Read file content from LittleFS into a string

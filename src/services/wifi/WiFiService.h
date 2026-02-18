@@ -4,7 +4,7 @@
  * @details Provides methods to manage WiFi connections and access points.
  */
 #pragma once
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include "../IsServiceInterface.h"
 
 /**
@@ -16,7 +16,7 @@ class WifiService : public IsServiceInterface
 public:
     bool wifi_activation();
 
-    bool registerRoutes(WebServer *webserver);
+    bool registerRoutes(AsyncWebServer *webserver);
     
     std::string getIP();
     std::string getSSID();

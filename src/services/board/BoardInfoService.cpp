@@ -7,7 +7,7 @@
  */
 
 #include "BoardInfoService.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <unihiker_k10.h>
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
@@ -48,9 +48,9 @@ bool BoardInfoService::registerRoutes()
   OpenAPIRoute route(path.c_str(), RoutesConsts::method_get, route_desc, "Board Info", false, {}, responses);
   registerOpenAPIRoute(route);
   
-  webserver.on(path.c_str(), HTTP_GET, [this]()
+  webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
                {
-               if (!checkServiceStarted()) return;
+               if (!checkServiceStarted(request)) return;
                
                // Gather ESP32 metrics
                JsonDocument doc;
@@ -70,9 +70,10 @@ bool BoardInfoService::registerRoutes()
 
                String output;
                serializeJson (doc, output);
-               webserver.send (200, RoutesConsts::mime_json, output.c_str ()); });
+               request->send (200, RoutesConsts::mime_json, output.c_str ()); });
 
-  registerSettingsRoutes("Board Info", this);
+registerServiceStatusRoute( this);
+  registerSettingsRoutes( this);
 
   return true;
   // Add board-related routes here

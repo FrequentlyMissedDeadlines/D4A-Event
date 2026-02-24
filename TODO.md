@@ -2,22 +2,24 @@
 
 1. Services dynamic setup 
    1. Persist wifi settings to survive reboot
-1. logs
-   1. handle ESP_LOG (ref `esp_log.h`)
-   1. fix log on screen
+   1. Persist servo settings to survive reboot
 1. Camera 
    1. allow fine settings <-- no way at this time
+   1. improve streaming speed
+   1. add snapshot and streaming over udp ?
 1. Features
    1. ServoService
       1. add synchronized servo actions (speed x for motor a,b,c)
+   1. Motors : add control for 1-4 motors
    1. AI
       1. add MicroTFService ?
       1. add HuskylensService ? 
-1. Add call to NTP for current time  (?)
-1. Settings
-   1. code the settings load and save where needed
+   1. Add call to NTP for current time  (?)
 1. Web pages
   1. review service status
   1. add load / update / save settings
-1. Add tests !!!
-1. check if esp_webserver brings any benefit
+1. Servos
+  1. increase speed for continuous rotation servo
+  1. fix the angle conversion for 270 : 90 is in fact 0 and angle should be -135>+135
+   1. fix the angle conversion for 180 : 90 is in fact 0 and angle should be -90>+90
+1. Add tests

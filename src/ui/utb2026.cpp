@@ -10,12 +10,12 @@
 
 #include "utb2026.h"
 #include <TFT_eSPI.h>
-#include "../services/servo/ServoService.h"
+#include "services/ServoService.h"
 #include <stdio.h>
 #include <string.h>
 #include <vector>
-#include "../services/udp/UDPService.h"
-#include "../services/http/HTTPService.h"
+#include "services/UDPService.h"
+#include "services/HTTPService.h"
 #include <ESPAsyncWebServer.h>
 
 namespace UTB2026Consts

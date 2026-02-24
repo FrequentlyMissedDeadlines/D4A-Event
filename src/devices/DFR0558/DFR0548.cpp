@@ -7,7 +7,8 @@
  * @brief read more at https://www.dfrobot.com/product-1738.html
  */
 
-#include "DFR0548.h"
+
+#include "DFR0558/DFR0548.h"
 
 // Constructor
 DFR0548_Controller::DFR0548_Controller() : _i2cAddr(DFR0548_DEFAULT_I2C_ADDR), _initialized(false)

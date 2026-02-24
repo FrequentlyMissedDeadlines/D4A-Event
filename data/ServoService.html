@@ -21,16 +21,16 @@
       color: #333;
     }
     .servo-card.type-1 {
-      background: #90EE90;
+      background: #9ecc50;
       color: #1a1a1a;
     }
     .servo-card.type-2 {
-      background: #cccccc;
+      background: #f0f0f0;
       color: #1a1a1a;
     }
     .servo-card.type-3 {
-      background: #666666;
-      color: #ffffff;
+      background: #9db8d3;
+      color: #000000;
     }
     .servo-header {
       display: flex;
@@ -271,23 +271,36 @@
               </div>
             </div>
             <div class="button-group">
-              <button onclick="setServoSpeed(${servo.channel})" class="btn btn-apply">▶ Apply Speed</button>
-              <button onclick="detachServo(${servo.channel})" class="btn btn-detach">🔪 Detach</button>
+              <button onclick="setServoSpeed(${servo.channel})" class="btn btn-apply">▶ Send</button>
+              <button onclick="detachServo(${servo.channel})" class="btn btn-detach">🚽 Detach</button>
             </div>
           ` : ''}
-
-          ${isAttached && (servo.type === 2 || servo.type === 3) ? `
+          ${isAttached && (servo.type === 2) ? `
             <div class="control-group">
-              <label class="control-label">Angle (0° to ${servo.type === 2 ? '180' : '270'}°):</label>
+              <label class="control-label">Angle (-90° to 90°):</label>
               <div class="slider-container">
-                <input type="range" id="angle-${servo.channel}" min="0" max="${servo.type === 2 ? '180' : '270'}" 
+                <input type="range" id="angle-${servo.channel}" min="-90" max="90" 
                        value="${servo.value}" oninput="updateSliderValue(${servo.channel}, this.value, 'angle')">
                 <span class="slider-value" id="angle-value-${servo.channel}">${servo.value}°</span>
               </div>
             </div>
             <div class="button-group">
-              <button onclick="setServoAngle(${servo.channel})" class="btn btn-apply">▶ Apply Angle</button>
-              <button onclick="detachServo(${servo.channel})" class="btn btn-detach">🔪 Detach</button>
+              <button onclick="setServoAngle(${servo.channel})" class="btn btn-apply">▶ Send</button>
+              <button onclick="detachServo(${servo.channel})" class="btn btn-detach">🚽 Detach</button>
+            </div>
+          `: ''}
+          ${isAttached && ( servo.type === 3) ? `
+            <div class="control-group">
+              <label class="control-label">Angle (-135° to 135°):</label>
+              <div class="slider-container">
+                <input type="range" id="angle-${servo.channel}" min="-135" max="135" 
+                       value="${servo.value}" oninput="updateSliderValue(${servo.channel}, this.value, 'angle')">
+                <span class="slider-value" id="angle-value-${servo.channel}">${servo.value}°</span>
+              </div>
+            </div>
+            <div class="button-group">
+              <button onclick="setServoAngle(${servo.channel})" class="btn btn-apply">▶ Send</button>
+              <button onclick="detachServo(${servo.channel})" class="btn btn-detach">🚽 Detach</button>
             </div>
           ` : ''}
         </div>

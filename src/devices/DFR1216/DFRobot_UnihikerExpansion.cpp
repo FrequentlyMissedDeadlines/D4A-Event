@@ -8,7 +8,7 @@
  * @date 2025-04-03
  * @url https://github.com/DFRobot/DFRobot_UnihikerExpansion
  */
-#include "DFRobot_UnihikerExpansion.h"
+#include "DFR1216/DFRobot_UnihikerExpansion.h"
 
 DFRobot_UnihikerExpansion::DFRobot_UnihikerExpansion(){}
 DFRobot_UnihikerExpansion::~DFRobot_UnihikerExpansion(){}

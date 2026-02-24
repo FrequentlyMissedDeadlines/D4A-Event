@@ -13,7 +13,6 @@
 #include <freertos/task.h>
 #include <TFT_eSPI.h>
 #include <esp_log.h>
-
 #include <AsyncUDP.h>
 #include <LittleFS.h>
 #include <SPIFFS.h>
@@ -21,19 +20,19 @@
 #include <unihiker_k10.h>
 #include <esp_camera.h>
 #include <img_converters.h>
-#include "services/RollingLogger.h"
-#include "services/esp_to_rolling.h"
-#include "services/board/BoardInfoService.h"
- #include "services/camera/WebcamService.h"
-#include "services/servo/ServoService.h"
-#include "services/udp/UDPService.h"
-#include "services/http/HTTPService.h"
-#include "services/settings/SettingsService.h"
-#include "services/sensor/K10sensorsService.h"
-#include "services/log/RollingLoggerService.h"
-#include "services/music/MusicService.h"
-#include "services/wifi/WiFiService.h"
-#include "ui/utb2026.h"
+#include "RollingLogger.h"
+#include "ESPLogToRolling.h"
+#include "services/BoardInfoService.h"
+#include "services/WebcamService.h"
+#include "services/ServoService.h"
+#include "services/UDPService.h"
+#include "services/HTTPService.h"
+#include "services/SettingsService.h"
+#include "services/K10sensorsService.h"
+#include "services/RollingLoggerService.h"
+#include "services/MusicService.h"
+#include "services/WiFiService.h"
+#include "utb2026.h"
 
 #define LOAD_FONT8N   // TFT font - special case for library config
 #define VERBOSE_DEBUG // Enable verbose debug logging
@@ -50,6 +49,7 @@ namespace MainConsts
   constexpr const char msg_openapi_registered[] PROGMEM = "OpenAPI registered ";
   constexpr const char msg_register_failed[] PROGMEM = "registerOpenAPIService failed for ";
   constexpr const char msg_no_openapi[] PROGMEM = "No OpenAPI for ";
+  constexpr const char msg_udp_handler_registered[] PROGMEM = "UDP handler registered: ";
   constexpr const char msg_starting_services[] PROGMEM = "Starting services...";
   constexpr const char msg_fatal_wifi_failed[] PROGMEM = "FATAL : WiFi failed to start.";
   constexpr const char msg_failed_udp[] PROGMEM = "Failed to start UDP service";
@@ -321,6 +321,26 @@ void setup()
 
   if (start_service(udp_service))
   {
+    // Auto-register UDP message handlers for services implementing IsUDPMessageHandlerInterface
+    IsServiceInterface *udp_aware_services[] = {
+        &servo_service,
+        &k10sensors_service,
+        &board_info,
+        &music_service,
+    };
+    for (IsServiceInterface *svc : udp_aware_services)
+    {
+      IsUDPMessageHandlerInterface *udp_iface = svc->asUDPMessageHandlerInterface();
+      if (udp_iface)
+      {
+        udp_service.registerMessageHandler(
+            [udp_iface](const std::string &msg, const IPAddress &ip, uint16_t port)
+            { return udp_iface->messageHandler(msg, ip, port); });
+#ifdef VERBOSE_DEBUG
+        debug_logger.debug(progmem_to_string(MainConsts::msg_udp_handler_registered) + svc->getServiceName());
+#endif
+      }
+    }
     xTaskCreatePinnedToCore(xtask_UDP_SVR, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);
   }
   else

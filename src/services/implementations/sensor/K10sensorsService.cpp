@@ -4,6 +4,8 @@
 #include <inttypes.h>
 #include <cstdio>
 #include <cstdint>
+#include <ArduinoJson.h>
+#include "services/UDPService.h"
 
 // K10SensorsService constants namespace
 namespace K10SensorsConsts
@@ -23,10 +25,19 @@ namespace K10SensorsConsts
     constexpr const char settings_domain_sensors[] PROGMEM = "Sensors";
     constexpr const char str_service_name[] PROGMEM = "K10 Sensors Service";
     constexpr const char tag_sensors[] PROGMEM = "Sensors";
+
+    // UDP binary protocol (request: [action:1B], response: [action:1B][resp:1B][payload])
+    // Action byte layout: [service_id:4bits][base_action:4bits]
+    // Response codes are shared — see UDPProto namespace in isUDPMessageHandlerInterface.h
+    constexpr uint8_t udp_service_id         = 0x02; ///< Unique ID for this service (high nibble of action byte)
+    constexpr uint8_t udp_action_get_sensors = (udp_service_id << 4) | 0x01; ///< → [action][ok][JSON sensors]
+    constexpr uint8_t udp_action_min         = (udp_service_id << 4) | 0x01;
+    constexpr uint8_t udp_action_max         = (udp_service_id << 4) | 0x01;
 }
 
 DFRobot_AHT20 aht20_sensor;
 extern UNIHIKER_K10 unihiker;
+extern UDPService   udp_service;
 
 
 bool K10SensorsService::sensorReady()
@@ -151,4 +162,77 @@ std::string K10SensorsService::getPath(const std::string& finalpathstring)
     baseServicePath = std::string(RoutesConsts::path_api) + getServiceSubPath() + "/";
   }
   return baseServicePath + finalpathstring;
+}
+
+// ─── UDP binary protocol ─────────────────────────────────────────────────────
+
+static inline void udp_build(uint8_t action, uint8_t resp, const char *msg, std::string &out)
+{
+    out.clear();
+    out += static_cast<char>(action);
+    out += static_cast<char>(resp);
+    if (msg && *msg) out.append(msg);
+}
+static inline void udp_build(uint8_t action, uint8_t resp, const std::string &msg, std::string &out)
+{
+    out.clear();
+    out += static_cast<char>(action);
+    out += static_cast<char>(resp);
+    out += msg;
+}
+
+/**
+ * @brief Handle an incoming binary UDP message for K10SensorsService.
+ *
+ * REQUEST  : [action:1B]
+ *   0x01 GET_SENSORS  → [action][ok][JSON sensor payload]
+ *
+ * RESPONSE : [action:1B][resp_code:1B][optional_payload]
+ *   0x00=ok  0x01=sensor_not_ready  0x04=not_started  0x05=unknown_cmd
+ *
+ * @return true if first byte is a recognised action code (message claimed)
+ */
+bool K10SensorsService::messageHandler(const std::string &message,
+                                       const IPAddress &remoteIP,
+                                       uint16_t remotePort)
+{
+    if (message.size() < 1) return false;
+
+    const uint8_t action = static_cast<uint8_t>(message[0]);
+    if (action < K10SensorsConsts::udp_action_min || action > K10SensorsConsts::udp_action_max) return false;
+
+    static std::string resp;
+    resp.clear();
+
+    if (!isServiceStarted())
+    {
+        udp_build(action, UDPProto::udp_resp_not_started, nullptr, resp);
+        udp_service.sendReply(resp, remoteIP, remotePort);
+        return true;
+    }
+
+    switch (action)
+    {
+    // 0x01 GET_SENSORS → JSON payload
+    case K10SensorsConsts::udp_action_get_sensors:
+        if (!sensorReady())
+            udp_build(action, UDPProto::udp_resp_operation_failed, nullptr, resp);
+        else
+            udp_build(action, UDPProto::udp_resp_ok, getSensorJson(), resp);
+        break;
+    default:
+        udp_build(action, UDPProto::udp_resp_unknown_cmd, nullptr, resp);
+        break;
+    }
+
+#ifdef VERBOSE_DEBUG
+    if (resp.size() >= 2)
+        logger->debug("UDP bin a=0x" + std::string(String(resp[0], HEX).c_str()) +
+                      " r=0x"        + std::string(String(resp[1], HEX).c_str()) +
+                      (resp.size() > 2 ? " +" + std::to_string(resp.size() - 2) + "B" : ""));
+#endif
+
+    if (!resp.empty())
+        udp_service.sendReply(resp, remoteIP, remotePort);
+    return true;
 }

@@ -23,6 +23,7 @@
 #include "RollingLogger.h"
 #include "ESPLogToRolling.h"
 #include "services/BoardInfoService.h"
+#include "services/DFR1216Service.h"
 #include "services/WebcamService.h"
 #include "services/ServoService.h"
 #include "services/UDPService.h"
@@ -105,6 +106,7 @@ RollingLoggerService rolling_logger_service = RollingLoggerService();
 UTB2026 ui = UTB2026();
 
 MusicService music_service = MusicService();
+DFR1216Service dfr1216_service = DFR1216Service();
 
 // define CONFIG_GC2145_SUPPORT 1
 
@@ -314,6 +316,7 @@ void setup()
   start_service(servo_service);
   start_service(webcam_service);
   start_service(music_service);
+  start_service(dfr1216_service);
 
   // Set up rolling logger service with logger instances (including esp_logger)
   rolling_logger_service.set_logger_instances(&debug_logger, &app_info_logger, &esp_logger);
@@ -327,6 +330,7 @@ void setup()
         &k10sensors_service,
         &board_info,
         &music_service,
+        &dfr1216_service
     };
     for (IsServiceInterface *svc : udp_aware_services)
     {

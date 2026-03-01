@@ -16,6 +16,10 @@
 #include <pgmspace.h>
 #include <ArduinoJson.h>
 #include "IsOpenAPIInterface.h"
+#include "services/UDPService.h"
+
+extern UDPService udp_service;
+
 // DFR1216-specific OpenAPI constants namespace (stored in PROGMEM to save RAM)
 namespace DFR1216Consts
 {
@@ -71,6 +75,14 @@ namespace DFR1216Consts
     constexpr const char resp_motor_speed_example[] PROGMEM = "{\"result\":\"ok\",\"motor\":1,\"speed\":75}";
     constexpr const char resp_status_schema[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"message\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"}}}";
     constexpr const char resp_status_example[] PROGMEM = "{\"message\":\"DFR1216Service\",\"status\":\"started\"}";
+
+    // UDP binary protocol constants
+    constexpr uint8_t udp_service_id = 0x03;  ///< Unique ID for DFR1216 Service (high nibble of action byte)
+    constexpr uint8_t udp_action_set_led_color = (udp_service_id << 4) | 0x01;  ///< [led:1B][r:1B][g:1B][b:1B][brightness:1B]
+    constexpr uint8_t udp_action_turn_off_led = (udp_service_id << 4) | 0x02;  ///< [led:1B]
+    constexpr uint8_t udp_action_turn_off_all_leds = (udp_service_id << 4) | 0x03;  ///< (no params)
+    constexpr uint8_t udp_action_get_led_status = (udp_service_id << 4) | 0x04;  ///< (no params) → [action][ok][JSON]
+    constexpr uint8_t udp_action_max = (udp_service_id << 4) | 0x04;  ///< highest valid action code
 }
 
 
@@ -268,6 +280,60 @@ bool DFR1216Service::registerRoutes()
                  [this](AsyncWebServerRequest *request)
                  { this->handle_get_status(request); });
 
+    // LED control routes
+    std::vector<OpenAPIParameter> led_color_params;
+    led_color_params.push_back(OpenAPIParameter("led", RoutesConsts::type_integer, RoutesConsts::in_query, "LED index (0-2)", true));
+    led_color_params.push_back(OpenAPIParameter("red", RoutesConsts::type_integer, RoutesConsts::in_query, "Red value (0-255)", true));
+    led_color_params.push_back(OpenAPIParameter("green", RoutesConsts::type_integer, RoutesConsts::in_query, "Green value (0-255)", true));
+    led_color_params.push_back(OpenAPIParameter("blue", RoutesConsts::type_integer, RoutesConsts::in_query, "Blue value (0-255)", true));
+
+    std::vector<OpenAPIResponse> led_set_responses;
+    led_set_responses.push_back(OpenAPIResponse(200, "LED color set successfully"));
+    led_set_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(getPath("setLEDColor").c_str(),
+                     RoutesConsts::method_post,
+                     "Set LED color via WS2812 LED",
+                     FPSTR(DFR1216Consts::tag_dfr1216), false, led_color_params, led_set_responses));
+
+    webserver.on(getPath("setLEDColor").c_str(), HTTP_POST,
+                 [this](AsyncWebServerRequest *request)
+                 { this->handle_set_led_color(request); });
+
+    // Turn off LED route
+    std::vector<OpenAPIParameter> led_off_params;
+    led_off_params.push_back(OpenAPIParameter("led", RoutesConsts::type_integer, RoutesConsts::in_query, "LED index (0-2)", true));
+
+    std::vector<OpenAPIResponse> led_off_responses;
+    led_off_responses.push_back(OpenAPIResponse(200, "LED turned off successfully"));
+    led_off_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(getPath("turnOffLED").c_str(),
+                     RoutesConsts::method_post,
+                     "Turn off a specific LED",
+                     FPSTR(DFR1216Consts::tag_dfr1216), false, led_off_params, led_off_responses));
+
+    webserver.on(getPath("turnOffLED").c_str(), HTTP_POST,
+                 [this](AsyncWebServerRequest *request)
+                 { this->handle_turn_off_led(request); });
+
+    // Get LED status route
+    std::vector<OpenAPIResponse> led_status_responses;
+    led_status_responses.push_back(OpenAPIResponse(200, "LED status retrieved successfully"));
+    led_status_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(getPath("getLEDStatus").c_str(),
+                     RoutesConsts::method_get,
+                     "Get status of all LEDs",
+                     FPSTR(DFR1216Consts::tag_dfr1216), false, {}, led_status_responses));
+
+    webserver.on(getPath("getLEDStatus").c_str(), HTTP_GET,
+                 [this](AsyncWebServerRequest *request)
+                 { this->handle_get_led_status(request); });
+
 registerServiceStatusRoute( this);
   registerSettingsRoutes( this);
 
@@ -366,6 +432,291 @@ void DFR1216Service::handle_get_status(AsyncWebServerRequest *request)
     std::string response;
     serializeJson(doc, response);
     request->send(200, RoutesConsts::mime_json, response.c_str());
+}
+
+bool DFR1216Service::setLEDColor(uint8_t led_index, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness)
+{
+    if (!isServiceStarted())
+    {
+        IsServiceInterface::logger->error("Service not started");
+        return false;
+    }
+
+    if (led_index > 2)
+    {
+        IsServiceInterface::logger->error("Invalid LED index: " + std::to_string(led_index));
+        return false;
+    }
+
+    try
+    {
+        // WS2812 LED array - set RGB values for the specified LED
+        uint32_t colors[3] = {0, 0, 0};
+        colors[led_index] = (static_cast<uint32_t>(red) << 16) | (static_cast<uint32_t>(green) << 8) | blue;
+        
+        controller.setWS2812(colors, brightness);
+        
+        // Store in cache
+        led_states_[led_index].red = red;
+        led_states_[led_index].green = green;
+        led_states_[led_index].blue = blue;
+        
+        char log_buf[64];
+        snprintf(log_buf, sizeof(log_buf), "Set LED %u to RGB(%u,%u,%u)", led_index, red, green, blue);
+        IsServiceInterface::logger->info(log_buf);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        IsServiceInterface::logger->error("Error setting LED color: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool DFR1216Service::turnOffLED(uint8_t led_index)
+{
+    return setLEDColor(led_index, 0, 0, 0, 0);
+}
+
+bool DFR1216Service::turnOffAllLEDs()
+{
+    bool success = true;
+    for (uint8_t i = 0; i < 3; i++)
+    {
+        if (!turnOffLED(i))
+        {
+            success = false;
+        }
+    }
+    return success;
+}
+
+void DFR1216Service::handle_set_led_color(AsyncWebServerRequest *request)
+{
+    if (!checkServiceStarted(request)) return;
+    
+    if (!request->hasParam("led") || !request->hasParam("red") || 
+        !request->hasParam("green") || !request->hasParam("blue"))
+    {
+        request->send(400, RoutesConsts::mime_json, R"({"error":"Missing required parameters: led, red, green, blue"})");
+        return;
+    }
+
+    uint8_t led_id = request->getParam("led")->value().toInt();
+    uint8_t red = request->getParam("red")->value().toInt();
+    uint8_t green = request->getParam("green")->value().toInt();
+    uint8_t blue = request->getParam("blue")->value().toInt();
+
+    if (setLEDColor(led_id, red, green, blue))
+    {
+        JsonDocument doc;
+        doc["status"] = "success";
+        doc["led"] = led_id;
+        doc["red"] = red;
+        doc["green"] = green;
+        doc["blue"] = blue;
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, RoutesConsts::mime_json, response.c_str());
+    }
+    else
+    {
+        request->send(500, RoutesConsts::mime_json, R"({"error":"Failed to set LED color"})");
+    }
+}
+
+void DFR1216Service::handle_turn_off_led(AsyncWebServerRequest *request)
+{
+    if (!checkServiceStarted(request)) return;
+    
+    if (!request->hasParam("led"))
+    {
+        request->send(400, RoutesConsts::mime_json, R"({"error":"Missing required parameter: led"})");
+        return;
+    }
+
+    uint8_t led_id = request->getParam("led")->value().toInt();
+
+    if (turnOffLED(led_id))
+    {
+        JsonDocument doc;
+        doc["status"] = "success";
+        doc["message"] = "LED turned off";
+        doc["led"] = led_id;
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, RoutesConsts::mime_json, response.c_str());
+    }
+    else
+    {
+        request->send(500, RoutesConsts::mime_json, R"({"error":"Failed to turn off LED"})");
+    }
+}
+
+void DFR1216Service::handle_get_led_status(AsyncWebServerRequest *request)
+{
+    if (!checkServiceStarted(request)) return;
+    
+    JsonDocument doc;
+    JsonArray leds = doc.createNestedArray("leds");
+    
+    for (uint8_t i = 0; i < 3; i++)
+    {
+        JsonObject led = leds.createNestedObject();
+        led["id"] = i;
+        led["red"] = led_states_[i].red;
+        led["green"] = led_states_[i].green;
+        led["blue"] = led_states_[i].blue;
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    request->send(200, RoutesConsts::mime_json, response.c_str());
+}
+
+// UDP helper function to build binary responses
+static inline void udp_build_response(uint8_t action, uint8_t resp, const char *payload, std::string &out)
+{
+    out.clear();
+    out += static_cast<char>(action);
+    out += static_cast<char>(resp);
+    if (payload && *payload) out.append(payload);
+}
+
+bool DFR1216Service::messageHandler(const std::string &message,
+                                     const IPAddress &remoteIP,
+                                     uint16_t remotePort)
+{
+    const size_t len = message.size();
+    if (len < 1) return false;
+
+    const uint8_t *d      = reinterpret_cast<const uint8_t *>(message.data());
+    const uint8_t  action = d[0];
+
+    if (action < 0x31 || action > DFR1216Consts::udp_action_max) return false;
+
+    static std::string resp;
+    resp.clear();
+
+    if (!IsServiceInterface::isServiceStarted())
+    {
+        udp_build_response(action, UDPProto::udp_resp_not_started, nullptr, resp);
+        udp_service.sendReply(resp, remoteIP, remotePort);
+        return true;
+    }
+
+    switch (action)
+    {
+    // 0x31 SET_LED_COLOR [led:1B][r:1B][g:1B][b:1B][brightness:1B]
+    case DFR1216Consts::udp_action_set_led_color:
+    {
+        if (len < 6)
+        {
+            udp_build_response(action, UDPProto::udp_resp_invalid_params, nullptr, resp);
+            break;
+        }
+        const uint8_t led_index  = d[1];
+        const uint8_t red        = d[2];
+        const uint8_t green      = d[3];
+        const uint8_t blue       = d[4];
+        const uint8_t brightness = d[5];
+
+        if (led_index > 2)
+        {
+            udp_build_response(action, UDPProto::udp_resp_invalid_values, nullptr, resp);
+            break;
+        }
+
+        if (setLEDColor(led_index, red, green, blue, brightness))
+        {
+            udp_build_response(action, UDPProto::udp_resp_ok, nullptr, resp);
+        }
+        else
+        {
+            udp_build_response(action, UDPProto::udp_resp_operation_failed, nullptr, resp);
+        }
+        break;
+    }
+
+    // 0x32 TURN_OFF_LED [led:1B]
+    case DFR1216Consts::udp_action_turn_off_led:
+    {
+        if (len < 2)
+        {
+            udp_build_response(action, UDPProto::udp_resp_invalid_params, nullptr, resp);
+            break;
+        }
+        const uint8_t led_index = d[1];
+
+        if (led_index > 2)
+        {
+            udp_build_response(action, UDPProto::udp_resp_invalid_values, nullptr, resp);
+            break;
+        }
+
+        if (turnOffLED(led_index))
+        {
+            udp_build_response(action, UDPProto::udp_resp_ok, nullptr, resp);
+        }
+        else
+        {
+            udp_build_response(action, UDPProto::udp_resp_operation_failed, nullptr, resp);
+        }
+        break;
+    }
+
+    // 0x33 TURN_OFF_ALL_LEDS (no params)
+    case DFR1216Consts::udp_action_turn_off_all_leds:
+    {
+        if (turnOffAllLEDs())
+        {
+            udp_build_response(action, UDPProto::udp_resp_ok, nullptr, resp);
+        }
+        else
+        {
+            udp_build_response(action, UDPProto::udp_resp_operation_failed, nullptr, resp);
+        }
+        break;
+    }
+
+    // 0x34 GET_LED_STATUS (no params) → [action][ok][JSON]
+    case DFR1216Consts::udp_action_get_led_status:
+    {
+        JsonDocument doc;
+        JsonArray leds = doc.createNestedArray("leds");
+        
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            JsonObject led = leds.createNestedObject();
+            led["id"] = i;
+            led["red"] = led_states_[i].red;
+            led["green"] = led_states_[i].green;
+            led["blue"] = led_states_[i].blue;
+        }
+        
+        std::string json_str;
+        serializeJson(doc, json_str);
+        
+        resp.clear();
+        resp += static_cast<char>(action);
+        resp += static_cast<char>(UDPProto::udp_resp_ok);
+        resp += json_str;
+        
+        udp_service.sendReply(resp, remoteIP, remotePort);
+        return true;
+    }
+
+    default:
+    {
+        udp_build_response(action, UDPProto::udp_resp_unknown_cmd, nullptr, resp);
+        break;
+    }
+    }
+
+    udp_service.sendReply(resp, remoteIP, remotePort);
+    return true;
 }
 
 bool DFR1216Service::saveSettings()

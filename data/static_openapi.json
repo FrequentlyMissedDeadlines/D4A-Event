@@ -232,7 +232,7 @@
       "get": {
         "tags": ["Logs"],
         "summary": "Get all logs",
-        "description": "Retrieves all log entries from both debug and app_info loggers",
+        "description": "Retrieves all log entries from debug, app_info, and ESP-IDF loggers",
         "operationId": "getAllLogs",
         "responses": {
           "200": {
@@ -250,6 +250,10 @@
                           "level": {
                             "type": "string"
                           },
+                          "timestamp_ms": {
+                            "type": "integer",
+                            "description": "Milliseconds since boot"
+                          },
                           "message": {
                             "type": "string"
                           }
@@ -264,6 +268,28 @@
                           "level": {
                             "type": "string"
                           },
+                          "timestamp_ms": {
+                            "type": "integer",
+                            "description": "Milliseconds since boot"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "esp": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "level": {
+                            "type": "string"
+                          },
+                          "timestamp_ms": {
+                            "type": "integer",
+                            "description": "Milliseconds since boot"
+                          },
                           "message": {
                             "type": "string"
                           }
@@ -276,13 +302,22 @@
                   "debug": [
                     {
                       "level": "DEBUG",
+                      "timestamp_ms": 12345,
                       "message": "WebServer task running..."
                     }
                   ],
                   "app_info": [
                     {
                       "level": "INFO",
+                      "timestamp_ms": 12400,
                       "message": "WiFi connected"
+                    }
+                  ],
+                  "esp": [
+                    {
+                      "level": "INFO",
+                      "timestamp_ms": 12500,
+                      "message": "ESP-IDF initialized"
                     }
                   ]
                 }
@@ -315,6 +350,10 @@
                         "type": "string",
                         "description": "Log level"
                       },
+                      "timestamp_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds since boot"
+                      },
                       "message": {
                         "type": "string",
                         "description": "Log message content"
@@ -325,10 +364,12 @@
                 "example": [
                   {
                     "level": "INFO",
+                    "timestamp_ms": 12345,
                     "message": "System initialized"
                   },
                   {
                     "level": "DEBUG",
+                    "timestamp_ms": 12350,
                     "message": "Service started"
                   }
                 ]
@@ -360,6 +401,10 @@
                       "level": {
                         "type": "string",
                         "description": "Log level"
+                      },
+                      "timestamp_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds since boot"
                       },
                       "message": {
                         "type": "string",
@@ -399,6 +444,10 @@
                       "level": {
                         "type": "string"
                       },
+                      "timestamp_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds since boot"
+                      },
                       "message": {
                         "type": "string"
                       }
@@ -437,6 +486,10 @@
                         "type": "string",
                         "description": "Log level"
                       },
+                      "timestamp_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds since boot"
+                      },
                       "message": {
                         "type": "string",
                         "description": "Log message content"
@@ -447,10 +500,12 @@
                 "example": [
                   {
                     "level": "INFO",
+                    "timestamp_ms": 12345,
                     "message": "System initialized"
                   },
                   {
                     "level": "DEBUG",
+                    "timestamp_ms": 12350,
                     "message": "Service started"
                   }
                 ]
@@ -507,6 +562,10 @@
                         "type": "string",
                         "description": "Log level"
                       },
+                      "timestamp_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds since boot"
+                      },
                       "message": {
                         "type": "string",
                         "description": "Log message content"
@@ -517,6 +576,7 @@
                 "example": [
                   {
                     "level": "INFO",
+                    "timestamp_ms": 12400,
                     "message": "WiFi connected"
                   }
                 ]
@@ -573,6 +633,10 @@
                         "type": "string",
                         "description": "Log level"
                       },
+                      "timestamp_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds since boot"
+                      },
                       "message": {
                         "type": "string",
                         "description": "Log message content"
@@ -583,6 +647,7 @@
                 "example": [
                   {
                     "level": "INFO",
+                    "timestamp_ms": 12500,
                     "message": "ESP-IDF initialized"
                   }
                 ]

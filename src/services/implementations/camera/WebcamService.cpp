@@ -230,7 +230,6 @@ bool WebcamService::startService()
 
 /**
  * @brief Stop the camera capture task
- * @details Calls unihiker.setBgCamerImage(false) to stop the camera task
  *          and suspend frame capture
  */
 bool WebcamService::stopService()
@@ -420,7 +419,7 @@ camera_fb_t *WebcamService::captureSnapshot()
  */
 void WebcamService::handleStream(AsyncWebServerRequest *request)
 {
-    logger->info("Handling streaming request for " + getServiceName() + "...");
+    logger->info("Start streaming " + getServiceName() + "...");
     if (!initialized_)
     {
         request->send(503, RoutesConsts::mime_plain_text, progmem_to_string(ServiceInterfaceConsts::service_status_not_initialized).c_str());
@@ -440,36 +439,34 @@ void WebcamService::handleStream(AsyncWebServerRequest *request)
                 streaming_active_ = false;
                 return 0;  // End stream
             }
-            
-            // Non-blocking frame capture - only get if immediately available
+
+            // IMPORTANT: This lambda runs on the async network task (lwIP).
+            // Never block here - drain queue with zero timeout only.
             camera_fb_t *fb = nullptr;
             camera_fb_t *latest_fb = nullptr;
-            
-            // Flush queue and get latest frame without blocking
+
+            // Drain stale frames, keep only the latest (all non-blocking)
             while (xQueueReceive(xQueueCamera, &fb, 0) == pdTRUE)
             {
-                if (latest_fb != nullptr)
-                {
-                    esp_camera_fb_return(latest_fb);
-                }
+                if (latest_fb) esp_camera_fb_return(latest_fb);
                 latest_fb = fb;
             }
-            
-            // If no frame available, return 0 to temporarily pause (client will keep connection alive)
+
+            // No frame ready yet - tell AsyncWebServer to call us again shortly
             if (!latest_fb || !latest_fb->buf || latest_fb->len == 0)
             {
                 if (latest_fb) esp_camera_fb_return(latest_fb);
-                return 0;  // No data ready, will be called again
+                return RESPONSE_TRY_AGAIN;
             }
-            
+
             // Convert to JPEG if needed
             uint8_t *jpg_buf = nullptr;
             size_t jpg_len = 0;
             bool needs_free = false;
-            
-            // Check for JPEG magic bytes
+
+            // Check for JPEG magic bytes (0xFF 0xD8)
             bool is_valid_jpeg = (latest_fb->len >= 2 && latest_fb->buf[0] == 0xFF && latest_fb->buf[1] == 0xD8);
-            
+
             if (is_valid_jpeg)
             {
                 jpg_buf = latest_fb->buf;
@@ -483,37 +480,32 @@ void WebcamService::handleStream(AsyncWebServerRequest *request)
                 {
                     esp_camera_fb_return(latest_fb);
                     if (jpg_buf) free(jpg_buf);
-                    return 0;  // Conversion failed, try again next call
+                    return RESPONSE_TRY_AGAIN;  // Conversion failed, retry
                 }
                 needs_free = true;
             }
-            
-            // Build MJPEG frame with boundary
-            String boundary_header = String(FPSTR(WebcamConsts::boundary_start)) + 
-                                   String(jpg_len) + 
-                                   String(FPSTR(WebcamConsts::boundary_end));
-            
-            size_t total_size = boundary_header.length() + jpg_len;
-            
-            // Check if buffer has enough space
-            if (total_size > maxLen)
+
+            // Write MJPEG part header directly into buffer
+            size_t headerLen = snprintf((char *)buffer, maxLen,
+                "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+                (unsigned)jpg_len);
+
+            // Check buffer is large enough for header + JPEG data
+            if (headerLen + jpg_len > maxLen)
             {
-                logger->error("Stream buffer too small: need " + std::to_string(total_size) + 
-                            ", have " + std::to_string(maxLen));
                 if (needs_free && jpg_buf) free(jpg_buf);
                 esp_camera_fb_return(latest_fb);
-                return 0;  // Buffer too small
+                return RESPONSE_TRY_AGAIN;  // Buffer too small, retry
             }
-            
-            // Copy boundary header and JPEG data to output buffer
-            memcpy(buffer, boundary_header.c_str(), boundary_header.length());
-            memcpy(buffer + boundary_header.length(), jpg_buf, jpg_len);
-            
+
+            memcpy(buffer + headerLen, jpg_buf, jpg_len);
+            size_t total = headerLen + jpg_len;
+
             // Cleanup
             if (needs_free && jpg_buf) free(jpg_buf);
             esp_camera_fb_return(latest_fb);
-            
-            return total_size;  // Return number of bytes written
+
+            return total;  // Return number of bytes written
         }
     );
     

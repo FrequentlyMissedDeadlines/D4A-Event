@@ -639,26 +639,6 @@ Not:
 {"command": "forward"}
 ```
 
-### Command Reference (RemoteControlService)
-
-**D-Pad Commands:**
-- `up`
-- `down`
-- `left`
-- `right`
-
-**Button Commands:**
-- `circle`
-- `square`
-- `triangle`
-- `cross`
-
-**Movement Commands:**
-- `forward`: Move forward
-- `backward`: Move backward
-- `turn_left`: Rotate left
-- `turn_right`: Rotate right
-- `stop`: Emergency stop
 
 ### Custom Handler Registration
 
@@ -1264,12 +1244,6 @@ POST /api/music/v1/play         → Play melody
 GET  /api/openapi.json          → Full API spec
 ```
 
-### UDP Commands (port 24642)
-```
-forward, backward, turn_left, turn_right, stop
-up, down, left, right
-circle, square, triangle, cross
-```
 
 ### Status Codes
 ```

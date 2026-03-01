@@ -133,14 +133,24 @@ public:
     int get_max_rows();
 
     /**
-     * @brief Retrieve all log entries for display or processing
-     * @return Const reference to vector of log entries (pairs of LogLevel and message string)
+     * @brief A single log entry holding the severity level, millisecond timestamp, and message.
      */
-    const std::vector<std::pair<LogLevel, std::string>>& get_log_rows() const;
+    struct LogEntry
+    {
+        LogLevel level;           ///< Severity level of the log entry
+        unsigned long timestamp_ms; ///< Timestamp captured via millis() at log time
+        std::string message;      ///< Log message text
+    };
+
+    /**
+     * @brief Retrieve all log entries for display or processing
+     * @return Const reference to vector of LogEntry structs
+     */
+    const std::vector<LogEntry>& get_log_rows() const;
 
 private:
     LogLevel current_log_level = DEBUG;
     int max_rows;
-    std::vector<std::pair<LogLevel, std::string>> log_rows;
+    std::vector<LogEntry> log_rows;
 };
 

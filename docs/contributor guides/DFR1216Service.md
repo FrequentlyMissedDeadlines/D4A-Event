@@ -349,19 +349,6 @@ DFR1216Service can work alongside or replace ServoService:
 - **DFR1216Service**: Uses expansion board's PCA9685 PWM chip
 - Both can coexist for >6 servos total
 
-### With RemoteControlService
-RemoteControlService can use DFR1216 for motor control:
-```cpp
-// In RemoteControlService
-bool handleMessage(const std::string& msg) {
-    if (msg == "forward") {
-        dfr1216_service->setMotorSpeed(1, 100);
-        dfr1216_service->setMotorSpeed(2, 100);
-        return true;
-    }
-    // ...
-}
-```
 
 ### With SettingsService
 All configuration persisted automatically:

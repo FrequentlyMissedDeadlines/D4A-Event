@@ -8,6 +8,7 @@
 #include <unihiker_k10.h>
 #include "IsOpenAPIInterface.h"
 #include "IsServiceInterface.h"
+#include "isUDPMessageHandlerInterface.h"
 
 constexpr size_t kSensorResponseBufferSize = 192;
 
@@ -22,7 +23,7 @@ struct SensorSnapshot
     int16_t accelerometerZ;
 };
 
-class K10SensorsService : public IsOpenAPIInterface
+class K10SensorsService : public IsOpenAPIInterface, public IsUDPMessageHandlerInterface
 {
 public:
 
@@ -30,6 +31,12 @@ public:
     std::string getPath(const std::string& finalpathstring) override;
     std::string getServiceSubPath() override;
     std::string getServiceName() override;
+
+    bool messageHandler(const std::string &message,
+                        const IPAddress &remoteIP,
+                        uint16_t remotePort) override;
+
+    IsUDPMessageHandlerInterface *asUDPMessageHandlerInterface() override { return this; }
 
 private:
 

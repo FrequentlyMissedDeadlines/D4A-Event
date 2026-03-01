@@ -1,5 +1,21 @@
+#pragma once
 #include <string>
 #include <IPAddress.h>
+#include <cstdint>
+
+/**
+ * @brief Shared binary UDP response codes.
+ *        RESPONSE frame: [action:1B][resp_code:1B][optional_payload]
+ */
+namespace UDPProto
+{
+    constexpr uint8_t udp_resp_ok               = 0x00;
+    constexpr uint8_t udp_resp_invalid_params   = 0x01;
+    constexpr uint8_t udp_resp_invalid_values   = 0x02;
+    constexpr uint8_t udp_resp_operation_failed = 0x03;
+    constexpr uint8_t udp_resp_not_started      = 0x04;
+    constexpr uint8_t udp_resp_unknown_cmd      = 0x05;
+} // namespace UDPProto
 
 /**
  * @brief Interface for services that handle incoming UDP messages.

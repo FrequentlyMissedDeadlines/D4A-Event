@@ -42,7 +42,6 @@ It also expose a UDP service that should received commands from a user remote co
 
 For detailed documentation on specific services, see:
 - [WiFiService](WiFiService.md) - WiFi connectivity and network management
-- [RemoteControlService](RemoteControlService.md) - UDP-based robot remote control
 - [DFR1216Service](DFR1216Service.md) - Expansion board servo and motor control
 - [RollingLogger](RollingLogger.md) - Logging system architecture
 - [UDPServiceHandlers](UDPServiceHandlers.md) - UDP message handling
@@ -78,7 +77,6 @@ For detailed documentation on specific services, see:
 ### Application Services
 | Service | API Path | Documentation | Description |
 |---------|----------|---------------|-------------|
-| RemoteControlService | N/A | [📖](RemoteControlService.md) | UDP command to servo motion translation |
 | SettingsService | `/api/settings/v1` | [Below](#8-settingsservice-apisettingsv1) | Configuration persistence (NVS/EEPROM) |
 
 ---
@@ -180,16 +178,6 @@ For detailed documentation on specific services, see:
 - Tone generation
 - Buzzer control
 
-#### 12. **RemoteControlService**
-[📖 Full Documentation](RemoteControlService.md)
-
-- Remote robot control via UDP commands
-- Movement command processing (forward, backward, turn_left, turn_right, stop)
-- PlayStation-style button mapping (circle, square, triangle, cross)
-- Directional control (up, down, left, right)
-- Integrates with UDPService for command reception
-- Integrates with ServoService for motion execution
-- Command handler registration pattern
 
 
 ### Support Components

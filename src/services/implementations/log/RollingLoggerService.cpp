@@ -88,9 +88,10 @@ String RollingLoggerService::serialize_logger_to_json(RollingLogger* logger)
     for (const auto& entry : log_rows)
     {
         JsonObject log_entry = entries.add<JsonObject>();
-        log_entry["level"] = log_level_to_string(entry.first);
+        log_entry["level"] = log_level_to_string(entry.level);
+        log_entry["timestamp_ms"] = entry.timestamp_ms;
         // Sanitize message to remove control characters before JSON serialization
-        std::string sanitized = sanitize_log_message(entry.second);
+        std::string sanitized = sanitize_log_message(entry.message);
         log_entry["message"] = sanitized.c_str();
     }
     
@@ -115,9 +116,9 @@ String RollingLoggerService::serialize_logger_to_text(RollingLogger* logger)
     const auto& log_rows = logger->get_log_rows();
     for (const auto& entry : log_rows)
     {
-        output += log_level_to_string(entry.first);
+        output += log_level_to_string(entry.level);
         output += ": ";
-        output += entry.second.c_str();
+        output += entry.message.c_str();
         output += "\n";
     }
     
@@ -132,8 +133,8 @@ bool RollingLoggerService::registerRoutes()
     static constexpr char response_desc[] PROGMEM = "Log entries retrieved successfully";
     static constexpr char response_not_available[] PROGMEM = "Logger instance not available";
     
-    static constexpr char schema_logs_array[] PROGMEM = "{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"description\":\"Log level\"},\"message\":{\"type\":\"string\",\"description\":\"Log message content\"}}}}";
-    static constexpr char schema_all_logs[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"debug\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}}}},\"app_info\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}}}}}}";
+    static constexpr char schema_logs_array[] PROGMEM = "{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"description\":\"Log level\"},\"timestamp_ms\":{\"type\":\"integer\",\"description\":\"Milliseconds since boot\"},\"message\":{\"type\":\"string\",\"description\":\"Log message content\"}}}}";
+    static constexpr char schema_all_logs[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"debug\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\"},\"timestamp_ms\":{\"type\":\"integer\"},\"message\":{\"type\":\"string\"}}}},\"app_info\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\"},\"timestamp_ms\":{\"type\":\"integer\"},\"message\":{\"type\":\"string\"}}}},\"esp\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\"},\"timestamp_ms\":{\"type\":\"integer\"},\"message\":{\"type\":\"string\"}}}}}}";
     
     static constexpr char example_single_log[] PROGMEM = "[{\"level\":\"INFO\",\"message\":\"System initialized\"},{\"level\":\"DEBUG\",\"message\":\"Service started\"}]";
     static constexpr char example_all_logs[] PROGMEM = "{\"debug\":[{\"level\":\"DEBUG\",\"message\":\"WebServer task running...\"}],\"app_info\":[{\"level\":\"INFO\",\"message\":\"WiFi connected\"}]}";
@@ -167,8 +168,9 @@ bool RollingLoggerService::registerRoutes()
                 for (const auto& entry : debug_rows)
                 {
                     JsonObject log_entry = debug_entries.add<JsonObject>();
-                    log_entry["level"] = log_level_to_string(entry.first);
-                    std::string sanitized = sanitize_log_message(entry.second);
+                    log_entry["level"] = log_level_to_string(entry.level);
+                    log_entry["timestamp_ms"] = entry.timestamp_ms;
+                    std::string sanitized = sanitize_log_message(entry.message);
                     log_entry["message"] = sanitized.c_str();
                 }
             }
@@ -180,8 +182,9 @@ bool RollingLoggerService::registerRoutes()
                 for (const auto& entry : app_info_rows)
                 {
                     JsonObject log_entry = app_info_entries.add<JsonObject>();
-                    log_entry["level"] = log_level_to_string(entry.first);
-                    std::string sanitized = sanitize_log_message(entry.second);
+                    log_entry["level"] = log_level_to_string(entry.level);
+                    log_entry["timestamp_ms"] = entry.timestamp_ms;
+                    std::string sanitized = sanitize_log_message(entry.message);
                     log_entry["message"] = sanitized.c_str();
                 }
             }
@@ -193,8 +196,9 @@ bool RollingLoggerService::registerRoutes()
                 for (const auto& entry : esp_rows)
                 {
                     JsonObject log_entry = esp_entries.add<JsonObject>();
-                    log_entry["level"] = log_level_to_string(entry.first);
-                    std::string sanitized = sanitize_log_message(entry.second);
+                    log_entry["level"] = log_level_to_string(entry.level);
+                    log_entry["timestamp_ms"] = entry.timestamp_ms;
+                    std::string sanitized = sanitize_log_message(entry.message);
                     log_entry["message"] = sanitized.c_str();
                 }
             }

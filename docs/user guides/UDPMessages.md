@@ -30,19 +30,6 @@ Used by services that implement `IsUDPMessageHandlerInterface`.
 Servo Service:setServoAngle:{"channel":0,"angle":90}
 ```
 
-### 2. Plain-text command format (RemoteControlService)
-
-Used by `RemoteControlService`. Commands are single lowercase words, trimmed of surrounding whitespace.
-
-```
-<command>
-```
-
-**Example**
-
-```
-forward
-```
 
 ---
 
@@ -50,13 +37,11 @@ forward
 
 Handler registration happens in `main.cpp` `setup()`. Services must implement `IsUDPMessageHandlerInterface` to be auto-registered.
 
-| Handler order | Service | Format |
-|---|---|---|
-| 1 | **ServoService** | Structured (`Servo Service:<cmd>:<json>`) |
-
-> `K10SensorsService`, `BoardInfoService`, and `MusicService` are listed as UDP-aware candidates in `main.cpp` but do **not** currently implement `IsUDPMessageHandlerInterface`, so they receive no UDP traffic.
-
-> `RemoteControlService` is **defined** in the codebase but is **not instantiated** in `main.cpp`. Its plain-text commands are therefore not active. See the [Not-yet-active handlers](#not-yet-active-handlers-remotecontrolservice) section below.
+| Handler order | Service | Prefix | Commands |
+|---|---|---|---|
+| 1 | **ServoService** | `Servo Service` | setServoAngle, setServoSpeed, stopAll, setAllServoAngle, setAllServoSpeed, setServosAngleMultiple, setServosSpeedMultiple, attachServo, getStatus, getAllStatus, setMotorSpeed, stopAllMotors |
+| 2 | **K10SensorsService** | `K10 Sensors Service` | getSensors |
+| 3 | **MusicService** | `Music` | play, tone, stop, melodies |
 
 ---
 
@@ -234,50 +219,163 @@ Servo Service:getAllStatus
 
 ---
 
-## Not-yet-active handlers: RemoteControlService
+### `setMotorSpeed`
 
-`RemoteControlService` is fully implemented in [src/services/implementations/remotecontrol/RemoteControlService.cpp](../../src/services/implementations/remotecontrol/RemoteControlService.cpp) but is **not instantiated** in `main.cpp`. The commands below will be active once `RemoteControlService` is wired up.
+Set DC motor speed on the DFR1216 expansion board (motors 1–4).
 
-All commands are plain lowercase strings, whitespace-trimmed, case-insensitive.
+**Full message**
 
-| Command | Action | Implementation status |
-|---|---|---|
-| `forward` | Move forward | ⚠️ stub (`executeForward` — TODO) |
-| `backward` | Move backward | ⚠️ stub (`executeBackward` — TODO) |
-| `turn_left` | Turn left | ⚠️ stub (`executeTurnLeft` — TODO) |
-| `turn_right` | Turn right | ⚠️ stub (`executeTurnRight` — TODO) |
-| `stop` | Stop all movement | ⚠️ stub (`executeStop` — TODO) |
+```
+Servo Service:setMotorSpeed:{"motor":<uint8>,"speed":<int8>}
+```
 
-The following constants are also defined in `RemoteControlConsts` but are **not handled** in the current `handleMessage()` implementation:
+| JSON field | Type | Range | Description |
+|---|---|---|---|
+| `motor` | `uint8` | 1–4 | Motor channel |
+| `speed` | `int8` | -100–100 | Speed percentage; negative = reverse |
 
-| Constant | Value | Status |
-|---|---|---|
-| `cmd_up` | `up` | Defined, not handled |
-| `cmd_down` | `down` | Defined, not handled |
-| `cmd_left` | `left` | Defined, not handled |
-| `cmd_right` | `right` | Defined, not handled |
-| `cmd_circle` | `circle` | Defined, not handled |
-| `cmd_square` | `square` | Defined, not handled |
-| `cmd_triangle` | `triangle` | Defined, not handled |
-| `cmd_cross` | `cross` | Defined, not handled |
+---
+
+### `stopAllMotors`
+
+Stop all 4 DC motors immediately. No JSON payload required.
+
+**Full message**
+
+```
+Servo Service:stopAllMotors
+```
+
+---
+
+## K10SensorsService — Structured Commands
+
+**Prefix**: `K10 Sensors Service`  
+**Source file**: [src/services/implementations/sensor/K10sensorsService.cpp](../../src/services/implementations/sensor/K10sensorsService.cpp)
+
+### `getSensors`
+
+Read all on-board sensors in one shot: ambient light, temperature, humidity, microphone and 3-axis accelerometer.
+No JSON payload required.
+
+**Full message**
+
+```
+K10 Sensors Service:getSensors
+```
+
+**Reply (success)**
+
+```json
+{"light":125.5,"hum_rel":45.2,"celcius":23.8,"mic_data":512,"accelerometer":[0.12,-0.05,9.81]}
+```
+
+**Reply (sensor not ready)**
+
+```json
+{"result":"error","message":"AHT20 sensor not ready yet"}
+```
+
+---
+
+## MusicService — Structured Commands
+
+**Prefix**: `Music`  
+**Source file**: [src/services/implementations/music/MusicService.cpp](../../src/services/implementations/music/MusicService.cpp)
+
+### `play`
+
+Play a built-in melody.
+
+**Full message**
+
+```
+Music:play:{"melody":<int>,"option":<int>}
+```
+
+| JSON field | Type | Range | Required | Description |
+|---|---|---|---|---|
+| `melody` | `int` | 0–19 | ✅ | Melody index (see `melodies` command for names) |
+| `option` | `int` | 1/2/4/8 | ❌ | Playback mode: `1`=Once, `2`=Forever, `4`=OnceInBackground *(default)*, `8`=ForeverInBackground |
+
+**Example**
+
+```
+Music:play:{"melody":8,"option":4}
+```
+
+---
+
+### `tone`
+
+Play a raw tone at a given frequency for a given duration.
+
+**Full message**
+
+```
+Music:tone:{"freq":<int>,"beat":<int>}
+```
+
+| JSON field | Type | Range | Required | Description |
+|---|---|---|---|---|
+| `freq` | `int` | > 0 | ✅ | Frequency in Hz |
+| `beat` | `int` | > 0 | ❌ | Duration; 1 beat = 8 000 units *(default: 8000)* |
+
+**Example**
+
+```
+Music:tone:{"freq":440,"beat":8000}
+```
+
+---
+
+### `stop`
+
+Stop any currently playing tone or melody. No JSON payload required.
+
+**Full message**
+
+```
+Music:stop
+```
+
+---
+
+### `melodies`
+
+Return the list of built-in melody names. No JSON payload required.
+
+**Full message**
+
+```
+Music:melodies
+```
+
+**Reply**
+
+```json
+["DADADADUM","ENTERTAINER","PRELUDE","ODE","NYAN","RINGTONE","FUNK","BLUES","BIRTHDAY","WEDDING","FUNERAL","PUNCHLINE","BADDY","CHASE","BA_DING","WAWAWAWAA","JUMP_UP","JUMP_DOWN","POWER_UP","POWER_DOWN"]
+```
 
 ---
 
 ## Reply Format
 
-All `ServoService` commands reply synchronously via UDP to the sender's IP/port.
+All structured-service commands reply synchronously via UDP to the sender's IP/port.
 
 **Success reply**
 
 ```json
-{"status":"ok","action":"<command>"}
+{"result":"ok","message":"<command>"}
 ```
 
 **Error reply**
 
 ```json
-{"status":"error","message":"<reason>"}
+{"result":"error","message":"<reason>"}
 ```
+
+> **Note**: Query commands (`getStatus`, `getAllStatus`, `getSensors`, `melodies`) return their data payload directly instead of the `result`/`message` envelope.
 
 ---
 
@@ -286,11 +384,22 @@ All `ServoService` commands reply synchronously via UDP to the sender's IP/port.
 ### Linux / macOS shell
 
 ```bash
-# Structured format (ServoService)
-echo -n "Servo Service:setServoAngle:{\"channel\":0,\"angle\":90}" | nc -u -w1 <robot-ip> 24642
+ROBOT=<robot-ip>
+PORT=24642
 
-# Stop all servos
-echo -n "Servo Service:stopAll" | nc -u -w1 <robot-ip> 24642
+# ServoService
+echo -n 'Servo Service:setServoAngle:{"channel":0,"angle":90}' | nc -u -w1 $ROBOT $PORT
+echo -n 'Servo Service:stopAll'                                | nc -u -w1 $ROBOT $PORT
+echo -n 'Servo Service:setMotorSpeed:{"motor":1,"speed":75}'  | nc -u -w1 $ROBOT $PORT
+echo -n 'Servo Service:stopAllMotors'                         | nc -u -w1 $ROBOT $PORT
+
+# K10SensorsService
+echo -n 'K10 Sensors Service:getSensors'                      | nc -u -w1 $ROBOT $PORT
+
+# MusicService
+echo -n 'Music:play:{"melody":0,"option":4}'                  | nc -u -w1 $ROBOT $PORT
+echo -n 'Music:tone:{"freq":440,"beat":8000}'                 | nc -u -w1 $ROBOT $PORT
+echo -n 'Music:stop'                                          | nc -u -w1 $ROBOT $PORT
 ```
 
 ### Python
@@ -303,17 +412,34 @@ UDP_PORT = 24642
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-def send_servo_command(command: str, payload: dict | None = None):
-    msg = f"Servo Service:{command}"
+def send(service: str, command: str, payload: dict | None = None) -> None:
+    msg = f"{service}:{command}"
     if payload:
         msg += ":" + json.dumps(payload, separators=(",", ":"))
     sock.sendto(msg.encode(), (ROBOT_IP, UDP_PORT))
 
-# Examples
-send_servo_command("setServoAngle", {"channel": 0, "angle": 90})
-send_servo_command("setServoSpeed", {"channel": 1, "speed": 50})
-send_servo_command("stopAll")
-send_servo_command("setServosAngleMultiple", {"servos": [{"channel": 0, "angle": 90}, {"channel": 1, "angle": 45}]})
+# ServoService
+send("Servo Service", "setServoAngle",          {"channel": 0, "angle": 90})
+send("Servo Service", "setServoSpeed",          {"channel": 1, "speed": 50})
+send("Servo Service", "stopAll")
+send("Servo Service", "setAllServoAngle",       {"angle": 90})
+send("Servo Service", "setAllServoSpeed",       {"speed": 0})
+send("Servo Service", "setServosAngleMultiple", {"servos": [{"channel": 0, "angle": 90}, {"channel": 1, "angle": 45}]})
+send("Servo Service", "setServosSpeedMultiple", {"servos": [{"channel": 0, "speed": 50}, {"channel": 1, "speed": -30}]})
+send("Servo Service", "attachServo",            {"channel": 0, "connection": 2})
+send("Servo Service", "getStatus",              {"channel": 0})
+send("Servo Service", "getAllStatus")
+send("Servo Service", "setMotorSpeed",          {"motor": 1, "speed": 75})
+send("Servo Service", "stopAllMotors")
+
+# K10SensorsService
+send("K10 Sensors Service", "getSensors")
+
+# MusicService
+send("Music", "play",     {"melody": 8, "option": 4})   # Birthday, once in background
+send("Music", "tone",     {"freq": 440, "beat": 8000})
+send("Music", "stop")
+send("Music", "melodies")
 ```
 
 ---
@@ -344,6 +470,8 @@ public:
 // main.cpp — add to udp_aware_services[]
 IsServiceInterface *udp_aware_services[] = {
     &servo_service,
+    &k10sensors_service,
+    &music_service,
     &my_service,   // ← add here
 };
 ```

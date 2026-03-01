@@ -94,6 +94,21 @@ public:
      */
     bool setServosAngleMultiple(const std::vector<ServoAngleOp>& ops);
 
+    /**
+     * @brief Set DC motor speed via DFR1216 expansion board
+     * @param motor Motor number (1-4)
+     * @param speed Speed value (-100 to +100, negative is reverse)
+     * @return true if successful, false otherwise
+     */
+    bool setMotorSpeed(uint8_t motor, int8_t speed);
+
+    /**
+     * @brief Set the same speed on all DC motors
+     * @param speed Speed value (-100 to +100, negative is reverse)
+     * @return true if all motors were set successfully, false otherwise
+     */
+    bool setAllMotorsSpeed(int8_t speed);
+
     // Get servo status
     /**
      * @brief Get the status of a servo channel
@@ -147,16 +162,11 @@ private:
     bool addRouteSetServosSpeedMultiple(const std::vector<OpenAPIResponse>& standard_responses);
     bool addRouteSetServosAngleMultiple(const std::vector<OpenAPIResponse>& standard_responses);
     bool addRouteAttachServo(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteSetMotorSpeed(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteStopAllMotors(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteSetAllMotorsSpeed(const std::vector<OpenAPIResponse>& standard_responses);
+    bool addRouteGetBattery();
 
-    // UDP command handlers — mirror HTTP route handlers
-    bool handleUDP_setServoAngle(const JsonDocument &doc, std::string &response);
-    bool handleUDP_setServoSpeed(const JsonDocument &doc, std::string &response);
-    bool handleUDP_stopAll(const JsonDocument &doc, std::string &response);
-    bool handleUDP_setAllAngle(const JsonDocument &doc, std::string &response);
-    bool handleUDP_setAllSpeed(const JsonDocument &doc, std::string &response);
-    bool handleUDP_setServosAngleMultiple(const JsonDocument &doc, std::string &response);
-    bool handleUDP_setServosSpeedMultiple(const JsonDocument &doc, std::string &response);
-    bool handleUDP_attachServo(const JsonDocument &doc, std::string &response);
-    bool handleUDP_getStatus(const JsonDocument &doc, std::string &response);
-    bool handleUDP_getAllStatus(const JsonDocument &doc, std::string &response);
+    // UDP binary helpers
+    std::string getAttachedServosMasked(uint8_t mask);
 };

@@ -1,5 +1,5 @@
 /*!
- * @file DFRobot_UnihikerExpansion.cpp
+ * @file DFR1216.cpp
  * @brief Define the basic structure of the DFRobot_UnihikerExpansion class, the implementation of the basic methods
  * @copyright	Copyright (c) 2025 DFRobot Co.Ltd (http://www.dfrobot.com)
  * @license The MIT License (MIT)
@@ -8,13 +8,13 @@
  * @date 2025-04-03
  * @url https://github.com/DFRobot/DFRobot_UnihikerExpansion
  */
-#include "DFR1216/DFRobot_UnihikerExpansion.h"
+#include "DFR1216/DFR1216.h"
 
-DFRobot_UnihikerExpansion::DFRobot_UnihikerExpansion(){}
-DFRobot_UnihikerExpansion::~DFRobot_UnihikerExpansion(){}
+DFR1216::DFR1216(){}
+DFR1216::~DFR1216(){}
 
 
-void DFRobot_UnihikerExpansion::setMotorPeriod(ePeriod_t number ,uint16_t motorPeriod)
+void DFR1216::setMotorPeriod(ePeriod_t number ,uint16_t motorPeriod)
 {
   uint8_t reg = 0;
   uint8_t result = 0;
@@ -42,7 +42,7 @@ void DFRobot_UnihikerExpansion::setMotorPeriod(ePeriod_t number ,uint16_t motorP
   return;
 }
 
-void DFRobot_UnihikerExpansion::setMotorDuty(eMotorNumber_t number, uint16_t duty)
+void DFR1216::setMotorDuty(eMotorNumber_t number, uint16_t duty)
 {
   uint8_t reg = 0;
   uint8_t result = 0;
@@ -63,7 +63,7 @@ void DFRobot_UnihikerExpansion::setMotorDuty(eMotorNumber_t number, uint16_t dut
 }
 
 
-void DFRobot_UnihikerExpansion::setServo360(eServoNumber_t number, eServo360Direction_t direction, uint8_t speed)
+void DFR1216::setServo360(eServoNumber_t number, eServo360Direction_t direction, uint8_t speed)
 {
   uint8_t reg = 0;
   uint16_t period = 0;
@@ -99,7 +99,7 @@ void DFRobot_UnihikerExpansion::setServo360(eServoNumber_t number, eServo360Dire
   }
 }
 
-void DFRobot_UnihikerExpansion::setServoAngle(eServoNumber_t number, uint8_t angle)
+void DFR1216::setServoAngle(eServoNumber_t number, uint8_t angle)
 {
   uint8_t reg = 0;
   uint16_t period = 0;
@@ -124,7 +124,7 @@ void DFRobot_UnihikerExpansion::setServoAngle(eServoNumber_t number, uint8_t ang
   return;
 }
 
-uint8_t DFRobot_UnihikerExpansion::getBattery(void)
+uint8_t DFR1216::getBattery(void)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -140,7 +140,7 @@ uint8_t DFRobot_UnihikerExpansion::getBattery(void)
   return 0xFF;
 }
 
-uint32_t DFRobot_UnihikerExpansion::getIRData(void)
+uint32_t DFR1216::getIRData(void)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -160,7 +160,7 @@ uint32_t DFRobot_UnihikerExpansion::getIRData(void)
   return 0xFFFFFFFF;
 }
 
-uint8_t DFRobot_UnihikerExpansion::sendIR(uint32_t data)
+uint8_t DFR1216::sendIR(uint32_t data)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -182,7 +182,7 @@ uint8_t DFRobot_UnihikerExpansion::sendIR(uint32_t data)
   return 0xff;
 }
 
-uint8_t DFRobot_UnihikerExpansion::setWS2812(uint32_t *data, uint8_t bright)
+uint8_t DFR1216::setWS2812(uint32_t *data, uint8_t bright)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -207,7 +207,7 @@ uint8_t DFRobot_UnihikerExpansion::setWS2812(uint32_t *data, uint8_t bright)
 }
 
 
-uint8_t DFRobot_UnihikerExpansion::setMode(eIONumber_t number, eIOType_t mode)
+uint8_t DFR1216::setMode(eIONumber_t number, eIOType_t mode)
 {
   uint8_t result = 0;
   uint8_t reg = I2C_IO_MODE_C0+number;
@@ -226,7 +226,7 @@ uint8_t DFRobot_UnihikerExpansion::setMode(eIONumber_t number, eIOType_t mode)
   return 0xff;
 }
 
-uint8_t DFRobot_UnihikerExpansion::setGpioState(eIONumber_t number, eGpioState_t state)
+uint8_t DFR1216::setGpioState(eIONumber_t number, eGpioState_t state)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -245,7 +245,7 @@ uint8_t DFRobot_UnihikerExpansion::setGpioState(eIONumber_t number, eGpioState_t
   return 0xff;
 }
 
-uint8_t DFRobot_UnihikerExpansion::getGpioState(eIONumber_t number)
+uint8_t DFR1216::getGpioState(eIONumber_t number)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -262,7 +262,7 @@ uint8_t DFRobot_UnihikerExpansion::getGpioState(eIONumber_t number)
   return 0xFF;
 }
 
-uint16_t DFRobot_UnihikerExpansion::getADCValue(eIONumber_t number)
+uint16_t DFR1216::getADCValue(eIONumber_t number)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -293,7 +293,7 @@ uint16_t DFRobot_UnihikerExpansion::getADCValue(eIONumber_t number)
   return 0xFFFF;
 }
 
-sDhtData_t DFRobot_UnihikerExpansion::getDHTValue(eIONumber_t number)
+sDhtData_t DFR1216::getDHTValue(eIONumber_t number)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -340,7 +340,7 @@ sDhtData_t DFRobot_UnihikerExpansion::getDHTValue(eIONumber_t number)
   return dhtData;
 }
 
-float DFRobot_UnihikerExpansion::get18b20Value(eIONumber_t number)
+float DFR1216::get18b20Value(eIONumber_t number)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -388,7 +388,7 @@ float DFRobot_UnihikerExpansion::get18b20Value(eIONumber_t number)
   return 0.0;
 }
 
-int16_t  DFRobot_UnihikerExpansion::getSr04Distance(void)
+int16_t  DFR1216::getSr04Distance(void)
 {
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -424,13 +424,13 @@ int16_t  DFRobot_UnihikerExpansion::getSr04Distance(void)
 }
 
 
-DFRobot_UnihikerExpansion_I2C::DFRobot_UnihikerExpansion_I2C(TwoWire *pWire, uint8_t addr)
+DFR1216_I2C::DFR1216_I2C(TwoWire *pWire, uint8_t addr)
 {
   __pWire = pWire;
   this->__I2C_addr = addr;
 }
 
-bool DFRobot_UnihikerExpansion_I2C::begin()
+bool DFR1216_I2C::begin()
 {
   bool result = false;
   uint8_t retry = 0;
@@ -464,7 +464,7 @@ bool DFRobot_UnihikerExpansion_I2C::begin()
   return result;
 }
 
-uint8_t DFRobot_UnihikerExpansion_I2C::writeReg(uint8_t reg, uint8_t *data, uint8_t len)
+uint8_t DFR1216_I2C::writeReg(uint8_t reg, uint8_t *data, uint8_t len)
 {
   uint8_t result = 0;
   __pWire->beginTransmission(this->__I2C_addr);
@@ -476,7 +476,7 @@ uint8_t DFRobot_UnihikerExpansion_I2C::writeReg(uint8_t reg, uint8_t *data, uint
   return result;
 }
 
-int16_t DFRobot_UnihikerExpansion_I2C::readReg(uint8_t reg, uint8_t *data, uint8_t len)
+int16_t DFR1216_I2C::readReg(uint8_t reg, uint8_t *data, uint8_t len)
 {
   uint8_t result = 0;
   uint8_t i = 0;

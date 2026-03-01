@@ -344,7 +344,7 @@ void UTB2026::draw_logger()
                 else
                 {
                     // Set color based on log level
-                    switch (line.first)
+                    switch (line.level)
                     {
                     case RollingLogger::DEBUG:
                         tft.setTextColor(UTB2026Consts::color_debug);
@@ -366,7 +366,7 @@ void UTB2026::draw_logger()
                 
 #ifdef VERBOSE_DEBUG
                 const char *level_name = "?";
-                switch (line.first)
+                switch (line.level)
                 {
                 case RollingLogger::DEBUG:
                     level_name = "d";
@@ -390,7 +390,7 @@ void UTB2026::draw_logger()
 #else
                 tft.setCursor(view.vp_x, view.vp_y + i * UTB2026Consts::line_height);
 #endif
-                tft.print(line.second.c_str());
+                tft.print(line.message.c_str());
             }
         }
     }
@@ -442,7 +442,7 @@ void UTB2026::draw_all()
                     const auto& line = log_rows[start_index + i];
                     tft.setTextColor(TFT_WHITE, TFT_BLACK);
                     tft.setCursor(0, y_pos);
-                    tft.print(line.second.c_str());
+                    tft.print(line.message.c_str());
                 }
             }
         }
@@ -469,7 +469,7 @@ void UTB2026::draw_all()
                     const auto& line = log_rows[start_index + i];
                     // Color by log level
                     uint16_t text_color;
-                    switch (line.first)
+                    switch (line.level)
                     {
                     case RollingLogger::DEBUG:
                         text_color = UTB2026Consts::color_debug;
@@ -489,7 +489,7 @@ void UTB2026::draw_all()
                     }
                     tft.setTextColor(text_color, TFT_BLACK);
                     tft.setCursor(0, y_pos);
-                    tft.print(line.second.c_str());
+                    tft.print(line.message.c_str());
                 }
             }
         }
@@ -516,7 +516,7 @@ void UTB2026::draw_all()
                     const auto& line = log_rows[start_index + i];
                     // Color by log level
                     uint16_t text_color;
-                    switch (line.first)
+                    switch (line.level)
                     {
                     case RollingLogger::DEBUG:
                         text_color = UTB2026Consts::color_debug;
@@ -536,7 +536,7 @@ void UTB2026::draw_all()
                     }
                     tft.setTextColor(text_color, TFT_BLACK);
                     tft.setCursor(0, y_pos);
-                    tft.print(line.second.c_str());
+                    tft.print(line.message.c_str());
                 }
             }
         }

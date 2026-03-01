@@ -62,76 +62,6 @@ int handlerId = udpService->registerMessageHandler(
 udpService->unregisterMessageHandler(handlerId);
 ```
 
-### Class-Based Handler (RemoteControlService)
-
-The included `RemoteControlService` demonstrates a complete implementation:
-
-```cpp
-class RemoteControlService : public IsServiceInterface
-{
-private:
-
-    UDPService* udp_service;
-    ServoService* servo_service;
-    int handler_id;
-    
-    bool handleMessage(const std::string& message, 
-                      const IPAddress& remoteIP, 
-                      uint16_t remotePort)
-    {
-        if (message == FPSTR(RemoteControlConsts::cmd_forward)) {
-            executeForward();
-            return true;
-        }
-        if (message == FPSTR(RemoteControlConsts::cmd_stop)) {
-            executeStop();
-            return true;
-        }
-        return false; // Not our command
-    }
-
-public:
-    RemoteControlService(UDPService* udpService, ServoService* servoService)
-        : udp_service(udpService), servo_service(servoService), handler_id(-1) {}
-    
-    
-    
-    bool startService() override
-    {
-        handler_id = udp_service->registerMessageHandler(
-            [this](const std::string& msg, const IPAddress& ip, uint16_t port) {
-                return this->handleMessage(msg, ip, port);
-            }
-        );
-        
-        if (handler_id >= 0) {
-            service_status_ = STARTED;
-            status_timestamp_ = millis();
-            return true;
-        }
-        
-        service_status_ = START_FAILED;
-        status_timestamp_ = millis();
-        return false;
-    }
-    
-    bool stopService() override
-    {
-        if (handler_id >= 0) {
-            udp_service->unregisterMessageHandler(handler_id);
-            handler_id = -1;
-        }
-        service_status_ = STOPPED;
-        status_timestamp_ = millis();
-        return true;
-    }
-    
-    std::string getServiceName() override {
-        return fpstr_to_string(FPSTR(RemoteControlConsts::str_service_name));
-    }
-};
-```
-
 ## How It Works
 
 1. **Registration**: When you call `registerMessageHandler()`, your callback is added to an internal list
@@ -167,27 +97,6 @@ public:
 - Callback overhead is minimal (one `std::function` per handler)
 
 ## Command Examples
-
-With RemoteControlService running, you can send UDP commands:
-
-**Available Commands** (defined in `RemoteControlConsts`):
-- `up`, `down`, `left`, `right` - D-pad controls
-- `circle`, `square`, `triangle`, `cross` - Button commands
-- `forward`, `backward`, `turn_left`, `turn_right` - Movement commands
-- `stop` - Stop all movement
-
-```bash
-# Linux/Mac
-echo "forward" | nc -u <robot-ip> 24642
-echo "turn_left" | nc -u <robot-ip> 24642
-echo "stop" | nc -u <robot-ip> 24642
-
-# Python
-import socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.sendto(b"forward", ("<robot-ip>", 24642))
-sock.sendto(b"stop", ("<robot-ip>", 24642))
-```
 
 ## Best Practices
 

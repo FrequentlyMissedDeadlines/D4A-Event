@@ -207,6 +207,17 @@
         </div>
       </div>
 
+      <!-- Battery Metric -->
+      <div class="metric-panel">
+        <div class="metric-header">
+          <h2>🔋 Battery</h2>
+          <button onclick="refreshBattery()" class="btn">🔄 Refresh</button>
+        </div>
+        <div id="battery-content">
+          <div class="loading-indicator">Loading battery level...</div>
+        </div>
+      </div>
+
 
 
     </div>
@@ -223,7 +234,8 @@
       accel_y: [],
       accel_z: [],
       udp_total: [],
-      udp_dropped: []
+      udp_dropped: [],
+      battery: []
     };
     
     const max_history_length = 100;
@@ -239,7 +251,7 @@
     }
     
     // Draw simple line graph on canvas
-    function drawGraph(canvasId, data, color = '#2196F3') {
+    function drawGraph(canvasId, data, color = '#2196F3', fixedMin = null, fixedMax = null) {
       const canvas = document.getElementById(canvasId);
       if (!canvas || !data || data.length === 0) return;
       
@@ -254,8 +266,8 @@
       ctx.fillRect(0, 0, width, height);
       
       // Find min/max for scaling
-      const min_val = Math.min(...data);
-      const max_val = Math.max(...data);
+      const min_val = fixedMin !== null ? fixedMin : Math.min(...data);
+      const max_val = fixedMax !== null ? fixedMax : Math.max(...data);
       const range = max_val - min_val || 1;
       
       // Draw grid lines
@@ -299,7 +311,7 @@
       const container = document.getElementById('sensors-content');
       
       try {
-        const response = await fetch('/api/sensors/v1');
+        const response = await fetch('/api/sensors/v1/');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -455,7 +467,7 @@
       const container = document.getElementById('udp-content');
       
       try {
-        const response = await fetch('/api/udp/v1');
+        const response = await fetch('/api/udp/v1/');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -573,7 +585,7 @@
       const container = document.getElementById('board-content');
       
       try {
-        const response = await fetch('/api/boardinfo/v1');
+        const response = await fetch('/api/board/v1/');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -713,13 +725,70 @@
       }
     }
     
+    // Fetch Battery level from ServoService
+    async function refreshBattery() {
+      const container = document.getElementById('battery-content');
+
+      try {
+        const response = await fetch('/api/servos/v1/getBattery');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const level = data.battery;
+
+        if (autoRefreshEnabled) {
+          addToHistory(metric_history.battery, level);
+        }
+
+        let levelClass = 'metric-highlight';
+        if (level !== undefined) {
+          if (level <= 10) levelClass = 'metric-error';
+          else if (level <= 30) levelClass = 'metric-warning';
+        }
+
+        let html = `
+          <div class="metric-row">
+            <span class="metric-label">🔋 Battery Level:</span>
+            <span class="metric-value ${levelClass}">${level !== undefined ? level + '%' : 'N/A'}</span>
+          </div>
+        `;
+
+        if (autoRefreshEnabled && metric_history.battery.length > 1) {
+          html += `
+            <div class="graph-container">
+              <div class="graph-title">Battery History</div>
+              <canvas id="graph-battery" class="metric-graph"></canvas>
+            </div>
+          `;
+        }
+
+        html += `<div class="timestamp">Updated: ${new Date().toLocaleTimeString()}</div>`;
+        container.innerHTML = html;
+
+        if (autoRefreshEnabled && metric_history.battery.length > 1) {
+          setTimeout(() => drawGraph('graph-battery', metric_history.battery, '#4CAF50', 0, 100), 10);
+        }
+
+      } catch (error) {
+        container.innerHTML = `
+          <div class="error-message">
+            ❌ Error loading battery level:<br>
+            ${error.message}
+          </div>
+        `;
+      }
+    }
+
     // Refresh all metrics
     async function refreshAllMetrics() {
       try {
         await Promise.all([
           refreshBoardInfo(),
           refreshSensors(),
-          refreshUDP()
+          refreshUDP(),
+          refreshBattery()
         ]);
         const titleStatus = document.getElementById('titleStatus');
         if (titleStatus) {

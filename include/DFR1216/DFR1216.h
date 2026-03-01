@@ -1,6 +1,6 @@
 /*!
- * @file DFRobot_UnihikerExpansion.h
- * @brief Define the basic structure of the DFRobot_UnihikerExpansion class, the implementation of the basic methods
+ * @file DFR1216.h
+ * @brief Define the basic structure of the DFR1216 class, the implementation of the basic methods
  * @copyright	Copyright (c) 2025 DFRobot Co.Ltd (http://www.dfrobot.com)
  * @license The MIT License (MIT)
  * @author [ZhixinLiu](zhixin.liu@dfrobot.com)
@@ -142,11 +142,11 @@ typedef struct
 #define RETRY_COUNT 10
 #define TEMP_LEN 32
 
-class DFRobot_UnihikerExpansion
+class DFR1216
 {
 public:
-  DFRobot_UnihikerExpansion();
-  ~DFRobot_UnihikerExpansion();
+  DFR1216();
+  ~DFR1216();
   /**
    * @fn: getBattery
    * @brief: Get the k10's power
@@ -289,10 +289,10 @@ private:
   virtual int16_t readReg(uint8_t reg, uint8_t *data, uint8_t len) = 0;
 };
 
-class DFRobot_UnihikerExpansion_I2C : public DFRobot_UnihikerExpansion
+class DFR1216_I2C : public DFR1216
 {
 public:
-  DFRobot_UnihikerExpansion_I2C(TwoWire *pWire = &Wire, uint8_t addr = 0x33);
+  DFR1216_I2C(TwoWire *pWire = &Wire, uint8_t addr = 0x33);
   bool begin(void);
 
 protected:

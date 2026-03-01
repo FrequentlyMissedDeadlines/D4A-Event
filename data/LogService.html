@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Rolling Logs - K10 Bot</title>
+  <title>Rolling Logs - aMaker</title>
   <link rel="stylesheet" href="./style.css">
   <style>
     .log-container {
@@ -116,6 +116,16 @@
       flex: 1;
       word-break: break-word;
       color: #ccc;
+    }
+    
+    .log-timestamp {
+      font-size: 11px;
+      color: #cdcdcd;
+      white-space: nowrap;
+      align-self: center;
+      font-family: 'Courier New', monospace;
+      min-width: 70px;
+      text-align: right;
     }
     
     .log-entry.TRACE {
@@ -339,6 +349,13 @@
       }
     }
     
+    function formatTimestamp(ms) {
+      if (ms === undefined || ms === null) return '';
+      const s = Math.floor(ms / 1000);
+      const m = ms % 1000;
+      return `+${s}.${String(m).padStart(3, '0')}s`;
+    }
+    
     function createLogEntry(entry) {
       if (!shouldShowEntry(entry.level)) {
         return null;
@@ -355,9 +372,14 @@
       messageSpan.className = 'log-message';
       messageSpan.textContent = entry.message;
       
-      div.appendChild(levelSpan);
-      div.appendChild(messageSpan);
+      const tsSpan = document.createElement('span');
+      tsSpan.className = 'log-timestamp';
+      tsSpan.textContent = formatTimestamp(entry.timestamp_ms);
+      tsSpan.title = `${entry.timestamp_ms} ms since boot`;
       
+      div.appendChild(levelSpan);
+      div.appendChild(tsSpan);
+      div.appendChild(messageSpan);      
       return div;
     }
     
@@ -466,7 +488,7 @@
         // Update title status
         const titleStatus = document.getElementById('titleStatus');
         if (titleStatus) {
-          const totalLogs = (data.debug?.length || 0) + (data.app_info?.length || 0);
+          const totalLogs = (data.debug?.length || 0) + (data.app_info?.length || 0) + (data.esp?.length || 0);
           titleStatus.textContent = `[${totalLogs} entries]`;
           titleStatus.style.color = '#4CAF50';
         }
@@ -494,7 +516,8 @@
         const exportData = {
           timestamp: new Date().toISOString(),
           debug: data.debug || [],
-          app_info: data.app_info || []
+          app_info: data.app_info || [],
+          esp: data.esp || []
         };
         
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });

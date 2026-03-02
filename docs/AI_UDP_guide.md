@@ -2,6 +2,7 @@
 
 > **Target audience**: AI agents and code-generation tools.  
 > **Purpose**: Authoritative, machine-friendly reference for all UDP messages accepted by the K10 Bot firmware.  
+> **Source of truth**: Generated from firmware source as of 2026-03-02.  
 > Binary values are exact — do not interpret them as text.
 
 ---
@@ -21,7 +22,7 @@
 
 The firmware supports **two protocols** simultaneously, dispatched in the routing order below.
 
-### A. Fast : Binary Protocol (ServoService, K10SensorsService)
+### A. Fast: Binary Protocol
 
 ```
 REQUEST  : [action:1B][...payload bytes]
@@ -40,17 +41,20 @@ RESPONSE : [action:1B][resp_code:1B][...optional payload bytes]
 
 `action = (service_id << 4) | base_action`
 
-| service_id | Service |
-|---|---|
-| `0x1` | K10SensorsService |
-| `0x2` | ServoService |
+| service_id | Service | Action range |
+|---|---|---|
+| `0x1` | BoardInfoService | `0x11`–`0x14` |
+| `0x2` | ServoService | `0x21`–`0x29` |
+| `0x3` | DFR1216Service | `0x31`–`0x34` |
+
+> ⚠️ **Known bug — K10SensorsService**: The `K10SensorsService` has `service_id = 0x02` hardcoded in the current firmware (should be `0x01`), making its `udp_action_get_sensors = 0x21`. Since `ServoService` is registered first and also claims `0x21`, **K10SensorsService's UDP handler is permanently shadowed and unreachable**. Do not generate code that sends `0x21` expecting sensor data. The GET_SENSORS command is not usable via UDP in the current firmware.
 
 #### Binary response codes (byte 1 of every binary response)
 
 | Code | Constant | Meaning |
 |---|---|---|
 | `0x00` | `udp_resp_ok` | Success |
-| `0x01` | `udp_resp_invalid_params` | Required byte/field missing |
+| `0x01` | `udp_resp_invalid_params` | Required byte/field missing or packet too short |
 | `0x02` | `udp_resp_invalid_values` | Field present but value out of range |
 | `0x03` | `udp_resp_operation_failed` | Hardware-level failure |
 | `0x04` | `udp_resp_not_started` | Service not yet started |
@@ -61,12 +65,14 @@ RESPONSE : [action:1B][resp_code:1B][...optional payload bytes]
 ### B. Text Protocol (MusicService)
 
 ```
-<ServiceName>:<command>[:<JSON>]
+<ServiceName>:<command>[:<payload>]
 ```
 
 - `<ServiceName>` — **exact, case-sensitive** service name string.
 - `<command>` — action token (ASCII, no spaces).
-- `:<JSON>` — optional compact JSON payload. **Omit the colon entirely** if no payload is needed.
+- `:<payload>` — optional payload. **Omit the colon entirely** if no payload is needed.
+  - For most commands: compact JSON.
+  - For `playnotes`: hex-encoded binary string (see section 3).
 
 #### Text response shapes
 
@@ -86,7 +92,7 @@ Common `<reason>` strings:
 |---|---|
 | `"Invalid parameters"` | Required JSON field missing or wrong type |
 | `"Invalid values"` | Field present but value outside allowed range |
-| `"Music action failed"` | Hardware-level failure (MusicService) |
+| `"Music action failed"` | Hardware-level failure |
 | `"UDP unknown command"` | Command token not recognised |
 
 ---
@@ -95,22 +101,24 @@ Common `<reason>` strings:
 
 | Priority | Service | Protocol | Claim condition |
 |---|---|---|---|
-| 1 | ServoService | Binary | `action` byte in `0x21`–`0x29` |
-| 2 | K10SensorsService | Binary | `action` byte in `0x11`–`0x11` |
-| 3 | MusicService | Text | message starts with `Music:` |
+| 1 | ServoService | Binary | `action` byte `0x21`–`0x29` |
+| 2 | K10SensorsService | Binary | `action` byte `0x21` — **⚠️ shadowed by ServoService, unreachable** |
+| 3 | BoardInfoService | Binary | `action` byte `0x11`–`0x14` |
+| 4 | MusicService | Text | message starts with `"Music:"` |
+| 5 | DFR1216Service | Binary | `action` byte `0x31`–`0x34` |
 
 ---
 
 ## 1. ServoService — Binary Protocol
 
 **service_id**: `0x2`  
-**Hardware**: DFR0548 I²C servo controller  
-**Servo channels**: 0–7 · **DC motors**: 1–4
+**Hardware**: DFR1216 I²C servo/motor controller  
+**Servo channels**: 0–7 · **DC motors**: 0–3 (internal index; board labels them 1–4)
 
 ### Channel / motor masks
 
 - **Servo mask** (1 byte): bit N selects servo channel N (N = 0–7). `0xFF` = all channels.
-- **Motor mask** (1 byte): bit N selects motor N+1 (N = 0–3). Bits 4–7 are ignored. `0x0F` = all motors.
+- **Motor mask** (1 byte): bit N selects motor N (internal index 0–3 = board motor N+1). Bits 4–7 ignored. `0x0F` = all motors.
 
 ### Connection type enum (used in ATTACH_SERVO)
 
@@ -121,28 +129,38 @@ Common `<reason>` strings:
 | `2` | `"Angular 180"` | 180° positional servo |
 | `3` | `"Angular 270"` | 270° positional servo |
 
-### Angle encoding (centre-zero int16 LE)
+### Angle encoding (centre-zero int16 LE, used in SET_SERVO_ANGLE)
 
-Angles are sent as a **signed 16-bit integer in little-endian** representing the offset from centre:
+Angles are sent as a **signed 16-bit integer in little-endian** with a skip flag in bit 0:
 
-| Servo type | Valid range | Physical result |
+- `bit 0 = 0` → skip this channel (do nothing)
+- `bit 0 = 1` → angle = `raw >> 1` (arithmetic right-shift, centre-zero degrees)
+
+| Servo type | Valid centre-zero range | Hardware range |
 |---|---|---|
 | Angular 180 | −90 … +90 | 0° … 180° |
 | Angular 270 | −135 … +135 | 0° … 270° |
+
+### Speed encoding (used in SET_SERVO_SPEED and SET_MOTOR_SPEED)
+
+Each speed is encoded as a single unsigned byte: `encoded_byte = speed + 128`
+
+| Speed | Encoded byte (decimal) | Hex |
+|---|---|---|
+| −100 | 28 | `0x1C` |
+| 0 | 128 | `0x80` |
+| +100 | 228 | `0xE4` |
+
+Valid decoded range: −100 … +100.
 
 ---
 
 ### `0x21` SET_SERVO_ANGLE
 
-Set the angle of individual angular servos. The payload is one `int16` (LE) per servo channel,
-starting at channel 0. Missing trailing entries leave those channels unchanged.
-
-**Per-channel int16 encoding:**
-- `bit 0 = 0` → skip this channel (do nothing)
-- `bit 0 = 1` → angle = `raw >> 1` (arithmetic right-shift, centre-zero degrees)
+Set the angle of individual angular servos. One signed int16 LE per channel position.
 
 ```
-REQUEST  : [0x21][ch0:int16_LE][ch1:int16_LE]...[chN:int16_LE]   1 + N×2 B  (N = 1..8)
+REQUEST  : [0x21][ch0:int16_LE]...[chN:int16_LE]   1 + (N+1)×2 bytes  (N = 0..7)
 RESPONSE : [0x21][resp_code:1B]
 ```
 
@@ -150,56 +168,57 @@ RESPONSE : [0x21][resp_code:1B]
 |---|---|---|---|
 | 0 | action | uint8 | `0x21` |
 | 1–2 | ch0 | int16 LE | channel 0 encoded value |
-| 3–4 | ch1 | int16 LE | channel 1 encoded value (optional) |
+| 3–4 | ch1 | int16 LE | channel 1 encoded value |
 | … | … | … | up to 8 channels total |
 
-**Encoding example** – set channel 0 to +45°:  `raw = (45 << 1) | 1 = 91` → bytes `0x5B 0x00`
+**Payload rule**: Include one int16 per channel **from 0 to the highest channel you want to address**. Channels you want to skip must still occupy their slot in the payload with value `0x0000` (bit0=0 = skip). Missing trailing channels are left unchanged.
 
-**Encoding example** – set channel 1 to −90°: `raw = (−90 << 1) | 1 = −179` → bytes `0x4D 0xFF`
+**Encoding formula**: `raw = (angle_degrees << 1) | 1` to set, `raw = 0` to skip.
 
-**Encoding example** – skip channel 2:          `raw = 0` → bytes `0x00 0x00`
+**Examples**:
+- Set channel 0 to +45°: `raw = (45 << 1) | 1 = 91` → bytes `0x5B 0x00`
+- Set channel 1 to −90°: `raw = (-90 << 1) | 1 = -179` → bytes `0x4D 0xFF`
+- Skip channel 2: `raw = 0` → bytes `0x00 0x00`
 
-| Servo type | Valid centre-zero range | Hardware range |
-|---|---|---|
-| Angular 180 | −90 … +90 | 0° … 180° |
-| Angular 270 | −135 … +135 | 0° … 270° |
-
-Response `resp_code`: `ok` · `operation_failed` (channel type mismatch or angle out of range)
+Response `resp_code`: `ok` · `operation_failed` (channel type mismatch or angle out of range for its servo type)
 
 ---
 
 ### `0x22` SET_SERVO_SPEED
 
-Set the speed of one or more continuous-rotation servos selected by mask.
+Set the speed of one or more continuous-rotation servos.
 
 ```
-REQUEST  : [0x22][mask:1B][encoded_speed0:1B][encoded_speed1:1B]...   variable length
+REQUEST  : [0x22][mask:1B][sp_ch0:1B][sp_ch1:1B]...[sp_ch7:1B]   2–10 bytes
 RESPONSE : [0x22][resp_code:1B]
 ```
 
 | Byte | Field | Type | Notes |
 |---|---|---|---|
 | 0 | action | uint8 | `0x22` |
-| 1 | mask | uint8 | servo bitmask; each bit selects corresponding servo channel |
-| 2+ | encoded_speeds | uint8 | One byte per servo in order (0–7); **Formula**: `encoded_byte = speed + 128` |
+| 1 | mask | uint8 | servo bitmask; bit N selects channel N |
+| 2 | sp_ch0 | uint8 | encoded speed for channel 0 |
+| 3 | sp_ch1 | uint8 | encoded speed for channel 1 |
+| … | … | … | one byte per channel position (sequential, channels 0–7) |
 
-**Speed Encoding**: Each speed byte encodes the actual speed via `speed = encoded_byte − 128`, shifting range 28–228 (0x1C–0xE4) to −100 … +100:
-- Speed −100 → byte 0x1C (28)
-- Speed 0 → byte 0x80 (128)
-- Speed +100 → byte 0xE4 (228)
+**Critical payload rule**: Speed bytes are consumed **one per channel position**, sequentially from channel 0, regardless of the mask. To address channel N, you must provide N+1 speed bytes — intermediate bytes for unmasked channels are consumed but ignored. The safest and recommended pattern is to **always send all 8 speed bytes**, using `0x80` (speed=0) for don't-care channels:
 
-**Variable payload**: Send one byte per servo corresponding to each bit set in mask. Example: mask=0x05 (servos 0,2) → send 2 bytes (servo0, servo2).
+```
+[0x22][mask][sp_ch0][sp_ch1][sp_ch2][sp_ch3][sp_ch4][sp_ch5][sp_ch6][sp_ch7]
+```
 
-Response `resp_code`: `ok` · `invalid_params` (< 3 B or insufficient speed bytes) · `invalid_values` (decoded speed out of range) · `operation_failed` (channel not ROTATIONAL)
+**Speed encoding**: `encoded = speed + 128`
+
+Response `resp_code`: `ok` · `invalid_params` (< 3 bytes) · `invalid_values` (decoded speed outside −100…+100) · `operation_failed` (channel not `ROTATIONAL`)
 
 ---
 
 ### `0x23` STOP_SERVOS
 
-Stop all continuous-rotation servos selected by mask (sets speed to 0).
+Stop continuous-rotation servos selected by mask (sets speed to 0).
 
 ```
-REQUEST  : [0x23][mask:1B]   total 2 B
+REQUEST  : [0x23][mask:1B]   2 bytes
 RESPONSE : [0x23][resp_code:1B]
 ```
 
@@ -208,16 +227,18 @@ RESPONSE : [0x23][resp_code:1B]
 | 0 | action | uint8 | `0x23` |
 | 1 | mask | uint8 | servo bitmask; `0xFF` = all |
 
-Response `resp_code`: `ok` · `invalid_params` (< 2 B)
+Only `ROTATIONAL` channels in the mask are stopped; other types are silently skipped.
+
+Response `resp_code`: `ok` · `invalid_params` (< 2 bytes)
 
 ---
 
 ### `0x24` ATTACH_SERVO
 
-Set the servo type on one or more channels. Must be called **before** angle/speed commands.
+Set the servo type on one or more channels. Must be called **before** any angle or speed command.
 
 ```
-REQUEST  : [0x24][mask:1B][type:1B]   total 3 B
+REQUEST  : [0x24][mask:1B][type:1B]   3 bytes
 RESPONSE : [0x24][resp_code:1B]
 ```
 
@@ -227,38 +248,37 @@ RESPONSE : [0x24][resp_code:1B]
 | 1 | mask | uint8 | servo bitmask |
 | 2 | type | uint8 | connection enum 0–3 |
 
-Response `resp_code`: `ok` · `invalid_params` (< 3 B) · `invalid_values` (type > 3)
+All channels whose bit is set in `mask` are set to the same `type`.
+
+Response `resp_code`: `ok` · `invalid_params` (< 3 bytes) · `invalid_values` (type > 3)
 
 ---
 
 ### `0x25` SET_MOTOR_SPEED
 
-Set the speed of individual DC motors. The payload is one encoded speed byte per motor channel,
-starting at motor 0 (= motor 1 on the board). Missing trailing entries leave those motors unchanged.
-
-**Per-motor byte encoding**: Each speed byte encodes the actual speed via `speed = encoded_byte − 128`, 
-shifting range 28–228 (0x1C–0xE4) to −100 … +100:
-- Speed −100 → byte 0x1C (28)
-- Speed 0 → byte 0x80 (128)
-- Speed +100 → byte 0xE4 (228)
+Set the speed of DC motors sequentially, starting from motor 0 (board motor 1). No mask — bytes are applied to motors 0, 1, 2, 3 in order.
 
 ```
-REQUEST  : [0x25][encoded_m0:1B][encoded_m1:1B]...[encoded_mN:1B]   1 + N B  (N = 1..4)
+REQUEST  : [0x25][sp_m0:1B]...[sp_mN:1B]   2–5 bytes  (N = 0..3)
 RESPONSE : [0x25][resp_code:1B]
 ```
 
 | Bytes | Field | Type | Notes |
 |---|---|---|---|
 | 0 | action | uint8 | `0x25` |
-| 1 | m0 | uint8 | motor 0 (board motor 1) encoded speed |
-| 2 | m1 | uint8 | motor 1 (board motor 2) encoded speed (optional) |
+| 1 | sp_m0 | uint8 | encoded speed for motor 0 (board motor 1) |
+| 2 | sp_m1 | uint8 | encoded speed for motor 1 (board motor 2) — optional |
 | … | … | … | up to 4 motors total |
 
-**Encoding example** – motor 0 at +75: `encoded = 75 + 128 = 203` → byte 0xCB
+Sending fewer than 4 speed bytes leaves the remaining motors unchanged.
 
-**Encoding example** – motor 1 at −50: `encoded = -50 + 128 = 78` → byte 0x4E
+**Speed encoding**: `encoded = speed + 128`
 
-Response `resp_code`: `ok` · `invalid_params` (< 2 B) · `invalid_values` (decoded speed out of range) · `operation_failed` (hardware error)
+**Examples**:
+- Motor 0 at +75: `encoded = 75 + 128 = 203` → `0xCB`
+- Motor 1 at −50: `encoded = -50 + 128 = 78` → `0x4E`
+
+Response `resp_code`: `ok` · `invalid_params` (< 2 bytes) · `invalid_values` (decoded speed outside −100…+100)
 
 ---
 
@@ -267,42 +287,43 @@ Response `resp_code`: `ok` · `invalid_params` (< 2 B) · `invalid_values` (deco
 Stop DC motors selected by motor mask.
 
 ```
-REQUEST  : [0x26][mask:1B]   total 2 B
+REQUEST  : [0x26][mask:1B]   2 bytes
 RESPONSE : [0x26][resp_code:1B]
 ```
 
 | Byte | Field | Type | Notes |
 |---|---|---|---|
 | 0 | action | uint8 | `0x26` |
-| 1 | mask | uint8 | motor bitmask; `0x0F` = all |
+| 1 | mask | uint8 | motor bitmask (bit 0 = motor 0 / board motor 1); `0x0F` = all |
 
-Response `resp_code`: `ok` · `invalid_params` (< 2 B)
+Response `resp_code`: `ok` · `invalid_params` (< 2 bytes)
 
 ---
 
 ### `0x27` GET_SERVO_STATUS
 
-Get connection status of servo channels selected by mask as JSON.
+Get connection type of servo channels selected by mask, returned as JSON.
 
 ```
-REQUEST  : [0x27][mask:1B]   total 2 B
+REQUEST  : [0x27][mask:1B]   2 bytes
 RESPONSE : [0x27][0x00][JSON payload]
 ```
 
-Response JSON shape:
+Response JSON shape (only channels whose bit is set in mask appear):
 ```json
 {"attached_servos":[{"channel":0,"connection":"Not Connected"},{"channel":2,"connection":"Angular 180"}]}
 ```
-Only channels whose bit is set in `mask` appear in the array.
+
+Response `resp_code`: `ok` · `invalid_params` (< 2 bytes)
 
 ---
 
 ### `0x28` GET_ALL_STATUS
 
-Get connection status of all 8 servo channels as JSON.
+Get connection type of all 8 servo channels as JSON.
 
 ```
-REQUEST  : [0x28]   total 1 B
+REQUEST  : [0x28]   1 byte
 RESPONSE : [0x28][0x00][JSON payload]
 ```
 
@@ -315,10 +336,10 @@ Response JSON shape (always 8 entries, channels 0–7 in order):
 
 ### `0x29` GET_BATTERY
 
-Read the board battery level (0–100).
+Read the board battery level.
 
 ```
-REQUEST  : [0x29]   total 1 B
+REQUEST  : [0x29]   1 byte
 RESPONSE : [0x29][0x00][batt:1B]
 ```
 
@@ -326,36 +347,80 @@ RESPONSE : [0x29][0x00][batt:1B]
 
 ---
 
-## 2. K10SensorsService — Binary Protocol
+## 2. BoardInfoService — Binary Protocol
 
 **service_id**: `0x1`  
-**Hardware**: AHT20 (temperature/humidity) + onboard light sensor, microphone, accelerometer.
+**Hardware**: 3 onboard RGB LEDs on the UNIHIKER K10 board (indices 0–2).
 
 ---
 
-### `0x11` GET_SENSORS
+### `0x11` SET_LED_COLOR
 
-Read all onboard sensor values. No payload.
+Set the RGB color of one onboard LED.
 
 ```
-REQUEST  : [0x11]   total 1 B
-RESPONSE : [0x11][resp_code:1B][JSON payload]
+REQUEST  : [0x11][led:1B][r:1B][g:1B][b:1B]   5 bytes
+RESPONSE : [0x11][resp_code:1B]
 ```
 
-Response `resp_code`: `ok` · `operation_failed` (AHT20 not ready) · `not_started`
+| Byte | Field | Type | Notes |
+|---|---|---|---|
+| 0 | action | uint8 | `0x11` |
+| 1 | led | uint8 | LED index 0–2 |
+| 2 | r | uint8 | Red channel 0–255 |
+| 3 | g | uint8 | Green channel 0–255 |
+| 4 | b | uint8 | Blue channel 0–255 |
 
-Response JSON shape (on `ok`):
+Response `resp_code`: `ok` · `invalid_params` (< 5 bytes) · `invalid_values` (led > 2) · `operation_failed`
+
+---
+
+### `0x12` TURN_OFF_LED
+
+Turn off (set to black) one onboard LED.
+
+```
+REQUEST  : [0x12][led:1B]   2 bytes
+RESPONSE : [0x12][resp_code:1B]
+```
+
+| Byte | Field | Type | Notes |
+|---|---|---|---|
+| 0 | action | uint8 | `0x12` |
+| 1 | led | uint8 | LED index 0–2 |
+
+Response `resp_code`: `ok` · `invalid_params` (< 2 bytes) · `invalid_values` (led > 2) · `operation_failed`
+
+---
+
+### `0x13` TURN_OFF_ALL_LEDS
+
+Turn off all 3 onboard LEDs.
+
+```
+REQUEST  : [0x13]   1 byte
+RESPONSE : [0x13][resp_code:1B]
+```
+
+Response `resp_code`: `ok` · `operation_failed`
+
+---
+
+### `0x14` GET_LED_STATUS
+
+Get the current RGB state of all 3 onboard LEDs as JSON.
+
+```
+REQUEST  : [0x14]   1 byte
+RESPONSE : [0x14][0x00][JSON payload]
+```
+
+Response JSON shape (always 3 entries):
 ```json
-{"light":125.5,"hum_rel":45.2,"celcius":23.8,"mic_data":512,"accelerometer":[0.12,-0.05,9.81]}
+{"leds":[{"led":0,"red":255,"green":0,"blue":0},{"led":1,"red":0,"green":255,"blue":0},{"led":2,"red":0,"green":0,"blue":255}]}
 ```
 
-| Field | Unit |
-|---|---|
-| `light` | Ambient light (ALS raw) |
-| `hum_rel` | Relative humidity % (AHT20) |
-| `celcius` | Temperature °C (AHT20) |
-| `mic_data` | Raw microphone ADC value |
-| `accelerometer` | `[x, y, z]` m/s² (approx.) |
+Field names: `led` (index), `red`, `green`, `blue`.
 
 ---
 
@@ -425,7 +490,7 @@ Music:tone:{"freq":<int>,"beat":<int>}
 | Field | Type | Constraint | Required | Default |
 |---|---|---|---|---|
 | `freq` | int | > 0 (Hz) | ✅ | — |
-| `beat` | int | > 0 (1 beat ≈ 8000 units) | ❌ | `8000` |
+| `beat` | int | > 0 (sample units; 8000 units ≈ 1 s at 8 kHz sample rate) | ❌ | `8000` |
 
 **Response**: standard text success/error.
 
@@ -439,7 +504,7 @@ Music:tone:{"freq":880,"beat":4000}
 
 ### `stop`
 
-Stop current playback. No JSON payload.
+Stop current playback. No payload.
 
 ```
 Music:stop
@@ -451,16 +516,160 @@ Music:stop
 
 ### `melodies`
 
-Get the list of all available built-in melody names. No JSON payload.
+Get the list of all available built-in melody names. No payload.
 
 ```
 Music:melodies
 ```
 
-**Response** (raw JSON array, no wrapper):
+**Response** (raw JSON array — no wrapper object):
 ```json
 ["DADADADUM","ENTERTAINER","PRELUDE","ODE","NYAN","RINGTONE","FUNK","BLUES","BIRTHDAY","WEDDING","FUNERAL","PUNCHLINE","BADDY","CHASE","BA_DING","WAWAWAWAA","JUMP_UP","JUMP_DOWN","POWER_UP","POWER_DOWN"]
 ```
+
+---
+
+### `playnotes`
+
+Play a custom sequence of MIDI notes with per-note duration control. The payload is a **hex-encoded binary** string (uppercase or lowercase hex accepted).
+
+```
+Music:playnotes:<hex_string>
+```
+
+#### Binary layout (each byte encoded as 2 hex characters)
+
+| Byte index | Field | Description |
+|---|---|---|
+| 0 | `tempo` | Tempo in BPM: 1–240. `0x00` → 120 BPM (default). Values > 240 → clamped to 240. |
+| 1 | `note_byte` (note 0) | `bit7=1` → silence; `bits6-0` = MIDI note number (0–127) |
+| 2 | `duration_byte` (note 0) | Duration in 16th notes (1–255). `0x00` treated as 1. |
+| 3 | `note_byte` (note 1) | Next note |
+| 4 | `duration_byte` (note 1) | Next duration |
+| … | … | … |
+
+#### Validation rules
+
+All of the following must hold, or the device returns `{"result":"error","message":"UDP invalid notes payload"}`:
+
+- Total hex string length ≥ **6** characters (= 3 binary bytes minimum: 1 tempo + 1 note pair).
+- Hex string length must be **even** (complete hex bytes).
+- `(total_bytes − 1)` must be **even**: one tempo byte followed by an even number of note bytes (i.e. complete note/duration pairs).
+
+#### MIDI reference
+
+Standard 12-tone equal temperament, A4 = MIDI note 69 = 440 Hz.  
+Silence: set `bit7` of the note byte (`note_byte | 0x80`); MIDI note bits are irrelevant for silences.
+
+#### Duration reference
+
+| `duration_byte` | Musical value at given BPM |
+|---|---|
+| 1 | 1 sixteenth note |
+| 2 | 1 eighth note |
+| 4 | 1 quarter note |
+| 8 | 1 half note |
+| 16 | 1 whole note |
+
+One sixteenth note duration in ms: `15000 / BPM`
+
+#### Encoding example
+
+Play C4 (MIDI 60) as a quarter note, then a silence of one eighth note, at 120 BPM:
+
+```
+tempo      = 0x78  (120 BPM)     →  "78"
+note C4    = 0x3C  (MIDI 60)     →  "3C"   duration 4 sixteenths → "04"
+silence    = 0x80                →  "80"   duration 2 sixteenths → "02"
+
+hex_string = "783C048002"
+```
+
+```
+Music:playnotes:783C048002
+```
+
+**Response**: `{"result":"ok","message":"playnotes"}` on success.
+
+---
+
+## 4. DFR1216Service — Binary Protocol
+
+**service_id**: `0x3`  
+**Hardware**: DFR1216 expansion board, 3 RGB LEDs (indices 0–2) with per-LED brightness control.
+
+> ℹ️ **Distinct from BoardInfoService LEDs** (section 2). These are the LEDs on the DFR1216 I²C expansion board, not the onboard K10 LEDs. Note also that the GET_LED_STATUS response uses the key `"id"` (not `"led"` as in BoardInfoService).
+
+---
+
+### `0x31` SET_LED_COLOR
+
+Set the RGB color and brightness of one DFR1216 LED.
+
+```
+REQUEST  : [0x31][led:1B][r:1B][g:1B][b:1B][brightness:1B]   6 bytes
+RESPONSE : [0x31][resp_code:1B]
+```
+
+| Byte | Field | Type | Notes |
+|---|---|---|---|
+| 0 | action | uint8 | `0x31` |
+| 1 | led | uint8 | LED index 0–2 |
+| 2 | r | uint8 | Red channel 0–255 |
+| 3 | g | uint8 | Green channel 0–255 |
+| 4 | b | uint8 | Blue channel 0–255 |
+| 5 | brightness | uint8 | Global brightness 0–255 |
+
+Response `resp_code`: `ok` · `invalid_params` (< 6 bytes) · `invalid_values` (led > 2) · `operation_failed`
+
+---
+
+### `0x32` TURN_OFF_LED
+
+Turn off one DFR1216 LED.
+
+```
+REQUEST  : [0x32][led:1B]   2 bytes
+RESPONSE : [0x32][resp_code:1B]
+```
+
+| Byte | Field | Type | Notes |
+|---|---|---|---|
+| 0 | action | uint8 | `0x32` |
+| 1 | led | uint8 | LED index 0–2 |
+
+Response `resp_code`: `ok` · `invalid_params` (< 2 bytes) · `invalid_values` (led > 2) · `operation_failed`
+
+---
+
+### `0x33` TURN_OFF_ALL_LEDS
+
+Turn off all 3 DFR1216 LEDs.
+
+```
+REQUEST  : [0x33]   1 byte
+RESPONSE : [0x33][resp_code:1B]
+```
+
+Response `resp_code`: `ok` · `operation_failed`
+
+---
+
+### `0x34` GET_LED_STATUS
+
+Get the current RGB state of all 3 DFR1216 LEDs as JSON.
+
+```
+REQUEST  : [0x34]   1 byte
+RESPONSE : [0x34][0x00][JSON payload]
+```
+
+Response JSON shape (always 3 entries):
+```json
+{"leds":[{"id":0,"red":255,"green":0,"blue":0},{"id":1,"red":0,"green":255,"blue":0},{"id":2,"red":0,"green":0,"blue":255}]}
+```
+
+Field names: `id` (index), `red`, `green`, `blue`. *(Key is `"id"`, not `"led"` — different from BoardInfoService's `0x14`.)*
 
 ---
 
@@ -468,27 +677,35 @@ Music:melodies
 
 ### Binary commands
 
-| Action byte | Service | Command | Request bytes (after action) | Response payload |
-|---|---|---|---|---|
-| `0x21` | Servo | SET_SERVO_ANGLE | `[ch0:int16_LE]...[chN:int16_LE]`  bit0=0→skip, bit0=1→angle=raw>>1 | — |
-| `0x22` | Servo | SET_SERVO_SPEED | `[mask][encoded_sp0:uint8]...[encoded_spN:uint8]`  formula: `encoded = speed + 128` | — |
-| `0x23` | Servo | STOP_SERVOS | `[mask]` | — |
-| `0x24` | Servo | ATTACH_SERVO | `[mask][type:0-3]` | — |
-| `0x25` | Servo | SET_MOTOR_SPEED | `[encoded_m0:uint8]...[encoded_mN:uint8]`  formula: `encoded = speed + 128` | — |
-| `0x26` | Servo | STOP_MOTORS | `[mask]` | — |
-| `0x27` | Servo | GET_SERVO_STATUS | `[mask]` | JSON (selected channels) |
-| `0x28` | Servo | GET_ALL_STATUS | _(none)_ | JSON (all 8 channels) |
-| `0x29` | Servo | GET_BATTERY | _(none)_ | `[batt:uint8]` 0-100 |
-| `0x11` | Sensors | GET_SENSORS | _(none)_ | JSON sensor object |
+| Action byte | Service | Command | Min bytes | Request payload (after action byte) | Response payload |
+|---|---|---|---|---|---|
+| `0x11` | BoardInfo | SET_LED_COLOR | 5 | `[led:0-2][r][g][b]` | — |
+| `0x12` | BoardInfo | TURN_OFF_LED | 2 | `[led:0-2]` | — |
+| `0x13` | BoardInfo | TURN_OFF_ALL_LEDS | 1 | _(none)_ | — |
+| `0x14` | BoardInfo | GET_LED_STATUS | 1 | _(none)_ | JSON `{leds:[{led,red,green,blue}×3]}` |
+| `0x21` | Servo | SET_SERVO_ANGLE | 3 | `[ch0:int16_LE]...[chN:int16_LE]` — bit0=0 skip, bit0=1 angle=`raw>>1` (centre-zero °) | — |
+| `0x22` | Servo | SET_SERVO_SPEED | 3 | `[mask][sp_ch0]...[sp_ch7]` — 1 byte per channel position, `encoded=speed+128` | — |
+| `0x23` | Servo | STOP_SERVOS | 2 | `[mask]` | — |
+| `0x24` | Servo | ATTACH_SERVO | 3 | `[mask][type:0-3]` | — |
+| `0x25` | Servo | SET_MOTOR_SPEED | 2 | `[sp_m0]...[sp_mN]` — sequential, no mask, `encoded=speed+128` | — |
+| `0x26` | Servo | STOP_MOTORS | 2 | `[mask]` | — |
+| `0x27` | Servo | GET_SERVO_STATUS | 2 | `[mask]` | JSON `{attached_servos:[{channel,connection}]}` |
+| `0x28` | Servo | GET_ALL_STATUS | 1 | _(none)_ | JSON (all 8 channels) |
+| `0x29` | Servo | GET_BATTERY | 1 | _(none)_ | `[batt:uint8]` 0–100 |
+| `0x31` | DFR1216 | SET_LED_COLOR | 6 | `[led:0-2][r][g][b][brightness]` | — |
+| `0x32` | DFR1216 | TURN_OFF_LED | 2 | `[led:0-2]` | — |
+| `0x33` | DFR1216 | TURN_OFF_ALL_LEDS | 1 | _(none)_ | — |
+| `0x34` | DFR1216 | GET_LED_STATUS | 1 | _(none)_ | JSON `{leds:[{id,red,green,blue}×3]}` |
 
-### Text commands (MusicService)
+### Text commands (MusicService, prefix `Music`)
 
-| Prefix | Command | Required JSON fields | Response |
+| Command | Payload | Required fields | Response |
 |---|---|---|---|
-| `Music` | `play` | `melody`(0-19) [, `option`] | standard text |
-| `Music` | `tone` | `freq`(>0) [, `beat`] | standard text |
-| `Music` | `stop` | _(none)_ | standard text |
-| `Music` | `melodies` | _(none)_ | JSON string array |
+| `play` | JSON | `melody` (0–19) [, `option` (1/2/4/8)] | standard text |
+| `tone` | JSON | `freq` (>0 Hz) [, `beat` (>0)] | standard text |
+| `stop` | _(none)_ | — | standard text |
+| `melodies` | _(none)_ | — | JSON string array (raw, no wrapper) |
+| `playnotes` | hex string | tempo byte + note/duration pairs | standard text |
 
 ---
 
@@ -497,18 +714,20 @@ Music:melodies
 ### Binary protocol rules
 
 1. **Action byte first**: always send the action byte as the very first byte.
-2. **Little-endian int16**: angles are 2-byte signed integers, LSB first.
-3. **Bitmasks**: build the mask from target channel/motor indices — do not send channel numbers directly.
-4. **Servo workflow**: send `0x24` ATTACH_SERVO for each channel before any angle/speed command.
-5. **Motor mask** is 0-indexed (bit 0 → motor 1, bit 1 → motor 2, …); servo mask is also 0-indexed.
-6. **No text encoding**: binary frames must **not** be UTF-8 encoded or null-terminated.
+2. **Little-endian int16**: servo angles are 2-byte signed integers, LSB first.
+3. **SET_SERVO_SPEED payload alignment**: speed bytes are consumed **one per channel position** (0, 1, 2, …). To address channel N you must provide N+1 bytes. Recommended: always send all 8 channel bytes, using `0x80` (speed=0) for don't-care channels.
+4. **SET_MOTOR_SPEED is maskless**: bytes set motors 0, 1, 2, 3 in sequence. No mask byte is present.
+5. **Servo workflow**: always send `0x24` ATTACH_SERVO before any angle or speed command.
+6. **Motor mask** is 0-indexed (bit 0 → board motor 1); servo mask is 0-indexed (bit 0 → channel 0).
+7. **No text encoding**: binary frames must **not** be null-terminated.
+8. **K10SensorsService GET_SENSORS is broken via UDP**: do not send `0x21` expecting sensor data — that action byte is owned by ServoService's SET_SERVO_ANGLE.
 
 ### Common rules (both protocols)
 
-7. **Port**: always send to port `24642` unless the device reports a different port via the HTTP API.
-8. **Listen for reply**: bind your socket before sending — the device replies to the **sender IP and port**.
-9. **Timeout**: if the service was not yet started, the binary protocol returns `resp_not_started`; the text protocol silently drops the message. Always implement a receive timeout.
-10. **Max payload**: keep requests and responses within **256 bytes**.
+9. **Port**: always send to port `24642` unless the device reports a different port via the HTTP API.
+10. **Listen for reply**: bind your socket before sending — the device replies to the **sender IP and port**.
+11. **Timeout**: always implement a receive timeout (recommended: 2 s). If the service was not yet started, the binary protocol returns `resp_not_started`; MusicService silently drops the message when not started.
+12. **Max payload**: keep requests and responses within **256 bytes**.
 
 ### Python examples
 
@@ -534,50 +753,109 @@ def send_text(message: str) -> str | None:
     resp = send_raw(message.encode())
     return resp.decode() if resp else None
 
-# ── Binary examples ───────────────────────────────────────────────────────────
+# ── ServoService (0x2x) ───────────────────────────────────────────────────────
 
 # ATTACH_SERVO: channel 0 → Angular 180 (mask=0x01, type=2)
 send_raw(bytes([0x24, 0x01, 0x02]))
 
-# SET_SERVO_ANGLE: channel 0 → +45°, channel 1 → skip, channel 2 → −90°
-# Encode: raw = (angle << 1) | 1  to activate, or 0 to skip
-ch0 = struct.pack('<h', (45  << 1) | 1)   # b'\x5b\x00'
+# SET_SERVO_ANGLE: channel 0 → +45°, skip channel 1, channel 2 → −90°
+ch0 = struct.pack('<h', (45  << 1) | 1)   # 0x5B 0x00
 ch1 = struct.pack('<h', 0)                 # skip
-ch2 = struct.pack('<h', (-90 << 1) | 1)   # b'\x4d\xff'
+ch2 = struct.pack('<h', (-90 << 1) | 1)   # 0x4D 0xFF
 send_raw(bytes([0x21]) + ch0 + ch1 + ch2)
 
-# SET_SERVO_SPEED: channels 0 and 1 → speed +50 each (mask=0x03)
-# Encode: speed_byte = speed + 128  (50 + 128 = 178 = 0xB2)
-send_raw(bytes([0x22, 0x03, 0xB2, 0xB2]))
+# SET_SERVO_SPEED: channels 0 and 2 → +50 each (mask=0x05)
+# Safe pattern: always send all 8 bytes, 0x80 for don't-care
+# encoded = speed + 128  →  50 + 128 = 178 = 0xB2
+send_raw(bytes([0x22, 0x05, 0xB2, 0x80, 0xB2, 0x80, 0x80, 0x80, 0x80, 0x80]))
 
-# STOP_SERVOS: all channels (mask=0xFF)
-send_raw(bytes([0x23, 0xFF]))
+# STOP_SERVOS: channels 0 and 2 (mask=0x05)
+send_raw(bytes([0x23, 0x05]))
 
 # ATTACH_SERVO: channel 0 → Rotational (mask=0x01, type=1)
 send_raw(bytes([0x24, 0x01, 0x01]))
 
-# SET_MOTOR_SPEED: motor 0 → +75, motor 1 → −50
-# Encode: motor_byte = speed + 128  (75 + 128 = 203 = 0xCB, −50 + 128 = 78 = 0x4E)
+# SET_MOTOR_SPEED: motor 0 → +75, motor 1 → −50 (no mask)
+# encoded: 75+128=203=0xCB,  -50+128=78=0x4E
 send_raw(bytes([0x25, 0xCB, 0x4E]))
 
 # STOP_MOTORS: all motors (mask=0x0F)
 send_raw(bytes([0x26, 0x0F]))
 
-# GET_SENSORS
-resp = send_raw(bytes([0x11]))
+# GET_ALL_STATUS
+resp = send_raw(bytes([0x28]))
 if resp and len(resp) >= 2 and resp[1] == 0x00:
     import json
-    sensors = json.loads(resp[2:].decode())
+    status = json.loads(resp[2:].decode())
 
 # GET_BATTERY
 resp = send_raw(bytes([0x29]))
 if resp and len(resp) == 3 and resp[1] == 0x00:
     battery_pct = resp[2]
 
-# ── Text examples (MusicService) ──────────────────────────────────────────────
+# ── BoardInfoService (0x1x) — onboard RGB LEDs ────────────────────────────────
+
+# SET_LED_COLOR: LED 0 → red
+send_raw(bytes([0x11, 0, 255, 0, 0]))
+
+# SET_LED_COLOR: LED 1 → green
+send_raw(bytes([0x11, 1, 0, 255, 0]))
+
+# TURN_OFF_LED: LED 1
+send_raw(bytes([0x12, 1]))
+
+# TURN_OFF_ALL_LEDS
+send_raw(bytes([0x13]))
+
+# GET_LED_STATUS  →  {"leds":[{"led":0,"red":...}, ...]}
+resp = send_raw(bytes([0x14]))
+if resp and len(resp) >= 2 and resp[1] == 0x00:
+    import json
+    leds = json.loads(resp[2:].decode())["leds"]
+
+# ── DFR1216Service (0x3x) — expansion board RGB LEDs ─────────────────────────
+
+# SET_LED_COLOR: LED 0 → green, brightness 128
+send_raw(bytes([0x31, 0, 0, 255, 0, 128]))
+
+# TURN_OFF_LED: LED 2
+send_raw(bytes([0x32, 2]))
+
+# TURN_OFF_ALL_LEDS
+send_raw(bytes([0x33]))
+
+# GET_LED_STATUS  →  {"leds":[{"id":0,"red":...}, ...]}
+resp = send_raw(bytes([0x34]))
+if resp and len(resp) >= 2 and resp[1] == 0x00:
+    import json
+    leds = json.loads(resp[2:].decode())["leds"]
+
+# ── MusicService — text protocol ──────────────────────────────────────────────
 
 send_text('Music:play:{"melody":8,"option":4}')
 send_text('Music:tone:{"freq":440}')
 send_text('Music:stop')
 send_text('Music:melodies')
+
+# playnotes helper
+def build_playnotes(bpm: int, notes: list[tuple[int | None, int]]) -> str:
+    """
+    Build a hex payload for Music:playnotes.
+    notes: list of (midi_note, sixteenths) where midi_note=None → silence.
+    """
+    tempo = min(max(bpm, 1), 240)
+    payload = bytes([tempo])
+    for midi, dur in notes:
+        note_byte = 0x80 if midi is None else (midi & 0x7F)
+        dur_byte  = max(1, min(dur, 255))
+        payload  += bytes([note_byte, dur_byte])
+    return payload.hex().upper()
+
+# Play A4 (MIDI 69) quarter note then silence eighth at 140 BPM
+hex_str = build_playnotes(140, [(69, 4), (None, 2)])
+send_text(f'Music:playnotes:{hex_str}')
+
+# Manual example: C4 quarter note + silence eighth at 120 BPM
+# tempo=0x78, note=0x3C dur=0x04, silence=0x80 dur=0x02  →  "783C048002"
+send_text('Music:playnotes:783C048002')
 ```

@@ -11,6 +11,7 @@
 #include "services/WebcamService.h"
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <memory>
 #include <unihiker_k10.h>
 #include "IsOpenAPIInterface.h"
 #include "FlashStringHelper.h"
@@ -411,11 +412,13 @@ camera_fb_t *WebcamService::captureSnapshot()
 /**
  * @brief Handle MJPEG streaming request
  * @details Continuously captures frames and sends them as multipart/x-mixed-replace stream
- *          Each frame is sent with proper MIME boundaries for MJPEG protocol
- *          Uses AsyncWebServer's chunked response pattern for efficient streaming
- * 
+ *          Each frame is sent with proper MIME boundaries for MJPEG protocol.
+ *          Uses AsyncWebServer's chunked response with RESPONSE_TRY_AGAIN to stream
+ *          JPEG frames that are larger than the TCP send buffer (~2.8 KB) by splitting
+ *          each frame (boundary header + JPEG data) across multiple callback invocations.
+ *
  * @note AsyncWebServer uses AsyncWebServerResponse with chunked sending
- * @note Reference: https://github.com/me-no-dev/ESPAsyncWebServer#request-variables
+ * @note Reference: https://github.com/ESP32Async/ESPAsyncWebServer
  */
 void WebcamService::handleStream(AsyncWebServerRequest *request)
 {
@@ -428,100 +431,180 @@ void WebcamService::handleStream(AsyncWebServerRequest *request)
 
     // Mark streaming as active to prevent snapshot conflicts
     streaming_active_ = true;
-    
+
+    /**
+     * @brief Persistent state for streaming across multiple chunked callback invocations
+     * @details Each JPEG frame (typically 10-50 KB) is much larger than the TCP
+     *          send buffer (~2.8 KB). This struct tracks our position within the
+     *          current frame so we can send it in pieces across multiple callbacks.
+     *          Freed automatically via shared_ptr when the response is destroyed.
+     */
+    struct StreamState
+    {
+        uint8_t *jpg_buf = nullptr;   ///< Current JPEG frame data (malloc'd)
+        size_t jpg_len = 0;           ///< Total JPEG data length
+        size_t offset = 0;            ///< Bytes already sent from (header + jpeg)
+        char header[80] = {};         ///< MJPEG part boundary header for current frame
+        size_t header_len = 0;        ///< Length of header string
+
+        ~StreamState()
+        {
+            if (jpg_buf)
+            {
+                free(jpg_buf);
+                jpg_buf = nullptr;
+            }
+        }
+    };
+
+    auto state = std::make_shared<StreamState>();
+
     // Create async chunked response for MJPEG streaming
     AsyncWebServerResponse *response = request->beginChunkedResponse(
         progmem_to_string(WebcamConsts::mime_multipart).c_str(),
-        [this](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+        [this, state](uint8_t *buffer, size_t maxLen, size_t index) -> size_t
+        {
             // Stop streaming if service is stopped
             if (!initialized_ || service_status_ == STOPPED)
             {
                 streaming_active_ = false;
-                return 0;  // End stream
+                return 0; // End stream
             }
 
-            // IMPORTANT: This lambda runs on the async network task (lwIP).
-            // Never block here - drain queue with zero timeout only.
-            camera_fb_t *fb = nullptr;
-            camera_fb_t *latest_fb = nullptr;
-
-            // Drain stale frames, keep only the latest (all non-blocking)
-            while (xQueueReceive(xQueueCamera, &fb, 0) == pdTRUE)
+            // --- Acquire a new frame if we don't have one in progress ---
+            if (!state->jpg_buf)
             {
-                if (latest_fb) esp_camera_fb_return(latest_fb);
-                latest_fb = fb;
-            }
+                // IMPORTANT: This lambda runs on the async network task (lwIP).
+                // Never block here - drain queue with zero timeout only.
+                camera_fb_t *fb = nullptr;
+                camera_fb_t *latest_fb = nullptr;
 
-            // No frame ready yet - tell AsyncWebServer to call us again shortly
-            if (!latest_fb || !latest_fb->buf || latest_fb->len == 0)
-            {
-                if (latest_fb) esp_camera_fb_return(latest_fb);
-                return RESPONSE_TRY_AGAIN;
-            }
-
-            // Convert to JPEG if needed
-            uint8_t *jpg_buf = nullptr;
-            size_t jpg_len = 0;
-            bool needs_free = false;
-
-            // Check for JPEG magic bytes (0xFF 0xD8)
-            bool is_valid_jpeg = (latest_fb->len >= 2 && latest_fb->buf[0] == 0xFF && latest_fb->buf[1] == 0xD8);
-
-            if (is_valid_jpeg)
-            {
-                jpg_buf = latest_fb->buf;
-                jpg_len = latest_fb->len;
-            }
-            else
-            {
-                // Convert RGB565 to JPEG
-                bool conversion_ok = frame2jpg(latest_fb, 80, &jpg_buf, &jpg_len);
-                if (!conversion_ok || !jpg_buf || jpg_len == 0)
+                // Drain stale frames, keep only the latest (all non-blocking)
+                while (xQueueReceive(xQueueCamera, &fb, 0) == pdTRUE)
                 {
-                    esp_camera_fb_return(latest_fb);
-                    if (jpg_buf) free(jpg_buf);
-                    return RESPONSE_TRY_AGAIN;  // Conversion failed, retry
+                    if (latest_fb)
+                    {
+                        esp_camera_fb_return(latest_fb);
+                    }
+                    latest_fb = fb;
                 }
-                needs_free = true;
-            }
 
-            // Write MJPEG part header directly into buffer
-            size_t headerLen = snprintf((char *)buffer, maxLen,
-                "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
-                (unsigned)jpg_len);
+                // No frame ready yet - tell AsyncWebServer to call us again
+                if (!latest_fb || !latest_fb->buf || latest_fb->len == 0)
+                {
+                    if (latest_fb)
+                    {
+                        esp_camera_fb_return(latest_fb);
+                    }
+                    return RESPONSE_TRY_AGAIN;
+                }
 
-            // Check buffer is large enough for header + JPEG data
-            if (headerLen + jpg_len > maxLen)
-            {
-                if (needs_free && jpg_buf) free(jpg_buf);
+                // Convert to JPEG if needed, always copying data out so we
+                // can return the camera frame buffer immediately.
+                bool is_valid_jpeg = (latest_fb->len >= 2 &&
+                                      latest_fb->buf[0] == 0xFF &&
+                                      latest_fb->buf[1] == 0xD8);
+
+                if (is_valid_jpeg)
+                {
+                    // Already JPEG - copy data so we can return the fb
+                    state->jpg_len = latest_fb->len;
+                    state->jpg_buf = (uint8_t *)malloc(state->jpg_len);
+                    if (!state->jpg_buf)
+                    {
+                        esp_camera_fb_return(latest_fb);
+                        return RESPONSE_TRY_AGAIN;
+                    }
+                    memcpy(state->jpg_buf, latest_fb->buf, state->jpg_len);
+                }
+                else
+                {
+                    // Convert RGB565 to JPEG (frame2jpg allocates via malloc)
+                    bool conversion_ok = frame2jpg(latest_fb, 80,
+                                                   &state->jpg_buf, &state->jpg_len);
+                    if (!conversion_ok || !state->jpg_buf || state->jpg_len == 0)
+                    {
+                        esp_camera_fb_return(latest_fb);
+                        if (state->jpg_buf)
+                        {
+                            free(state->jpg_buf);
+                            state->jpg_buf = nullptr;
+                        }
+                        return RESPONSE_TRY_AGAIN;
+                    }
+                }
+
+                // Return camera frame buffer as soon as possible
                 esp_camera_fb_return(latest_fb);
-                return RESPONSE_TRY_AGAIN;  // Buffer too small, retry
+
+                // Build the MJPEG part boundary header for this frame
+                state->header_len = snprintf(state->header, sizeof(state->header),
+                    "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+                    (unsigned)state->jpg_len);
+                state->offset = 0;
             }
 
-            memcpy(buffer + headerLen, jpg_buf, jpg_len);
-            size_t total = headerLen + jpg_len;
+            // --- Stream current frame in chunks that fit within maxLen ---
+            size_t total_frame_size = state->header_len + state->jpg_len;
+            size_t remaining = total_frame_size - state->offset;
+            size_t to_write = (remaining < maxLen) ? remaining : maxLen;
+            size_t written = 0;
+            size_t pos = state->offset;
 
-            // Cleanup
-            if (needs_free && jpg_buf) free(jpg_buf);
-            esp_camera_fb_return(latest_fb);
+            // Copy from header and/or JPEG data into the output buffer
+            while (written < to_write)
+            {
+                if (pos < state->header_len)
+                {
+                    // Still within the boundary header
+                    size_t hdr_remaining = state->header_len - pos;
+                    size_t chunk = ((to_write - written) < hdr_remaining)
+                                       ? (to_write - written) : hdr_remaining;
+                    memcpy(buffer + written, state->header + pos, chunk);
+                    written += chunk;
+                    pos += chunk;
+                }
+                else
+                {
+                    // Sending JPEG payload
+                    size_t jpg_offset = pos - state->header_len;
+                    size_t jpg_remaining = state->jpg_len - jpg_offset;
+                    size_t chunk = ((to_write - written) < jpg_remaining)
+                                       ? (to_write - written) : jpg_remaining;
+                    memcpy(buffer + written, state->jpg_buf + jpg_offset, chunk);
+                    written += chunk;
+                    pos += chunk;
+                }
+            }
 
-            return total;  // Return number of bytes written
-        }
-    );
-    
+            state->offset += written;
+
+            // If entire frame has been sent, free JPEG buffer and prepare for next frame
+            if (state->offset >= total_frame_size)
+            {
+                free(state->jpg_buf);
+                state->jpg_buf = nullptr;
+                state->jpg_len = 0;
+                state->header_len = 0;
+                state->offset = 0;
+            }
+
+            return written;
+        });
+
     // Add headers for streaming
     response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response->addHeader("Pragma", "no-cache");
     response->addHeader("Expires", "0");
     response->addHeader(progmem_to_string(RoutesConsts::header_access_control).c_str(), "*");
-    
+
     // Set callback to clear streaming flag when connection closes
     response->setCode(200);
-    request->onDisconnect([this]() {
+    request->onDisconnect([this]()
+                          {
         streaming_active_ = false;
-        logger->info("Client disconnected from stream");
-    });
-    
+        logger->info("Client disconnected from stream"); });
+
     request->send(response);
     logger->info("MJPEG stream started");
 }

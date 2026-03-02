@@ -400,10 +400,15 @@ bool MusicService::handleUDP_playnotes(const char *hex_data, size_t hex_len, std
             // Read frequency from PROGMEM table
             const uint16_t freq       = pgm_read_word(&MusicConsts::midi_frequencies[midi_note]);
             const uint32_t note_ms    = sixteenth_ms * sixteenths;
-            // playTone beat parameter: ~8 units = 1 ms (empirically derived)
+            // playTone beat parameter: 8000 samples/s → 8 samples per ms
             const uint32_t beat_units = note_ms * 8;
+            const uint32_t t0         = millis();
             music.playTone(freq, static_cast<int>(beat_units));
-            delay(note_ms);  // Wait for the note to finish playing
+            // playTone is blocking (generates samples at 8 kHz); only
+            // delay for the remainder so the total per-note time ≈ note_ms.
+            const uint32_t elapsed = millis() - t0;
+            if (elapsed < note_ms)
+                delay(note_ms - elapsed);
         }
     }
 
@@ -520,7 +525,8 @@ bool MusicService::messageHandler(const std::string &message,
     return true;
 }
 
-uint8_t mission_impossible_theme[][2] = { {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, 
+uint8_t mission_impossible_theme[][2] = { 
+    {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {64,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, {67,8}, {255,8}, 
 // Descending spy line 
 {72,16}, {71,16}, {69,16}, {67,16}, {66,16}, {65,16}, {64,32} };
 

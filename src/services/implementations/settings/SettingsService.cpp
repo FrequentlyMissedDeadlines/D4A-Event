@@ -376,7 +376,9 @@ bool SettingsService::registerRoutes()
                                       "Retrieve a single setting value or all settings in a domain",
                                       "Settings", false, getParams, getResponses));
     
-    webserver.on(getPath.c_str(), HTTP_GET, [](AsyncWebServerRequest *request) { handleGetSettings(request); });
+    webserver.on(getPath.c_str(), HTTP_GET, [](AsyncWebServerRequest *request) { 
+        
+        handleGetSettings(request); });
     
     // POST /api/SettingsService/settings - Set settings
     std::string postPath = this->getPath(SettingsConsts::path_settings);

@@ -7,7 +7,7 @@
 #include <set>
 #include <ArduinoJson.h>
 #include "IsServiceInterface.h"
-
+#include "IsMasterRegistryInterface.h"
 /**
  * @file IsOpenAPIInterface.h
  * @brief Interface for services that provide OpenAPI specification data and HTTP route registration
@@ -66,6 +66,7 @@ namespace RoutesConsts
     constexpr const char resp_operation_success[] PROGMEM = "Operation successful";
     constexpr const char resp_operation_failed[] PROGMEM = "Operation failed";
     constexpr const char resp_service_not_started[] PROGMEM = "Service not started";
+    constexpr const char resp_not_master[] PROGMEM = "Forbidden: request IP is not the registered master";
     // Common JSON schemas stored in PROGMEM
     constexpr const char json_object_result[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}}}";
     
@@ -198,7 +199,7 @@ struct OpenAPIRoute
 // Forward declaration - webserver is instantiated in main.cpp
 extern AsyncWebServer webserver;
 
-struct IsOpenAPIInterface : public IsServiceInterface
+struct IsOpenAPIInterface : public IsServiceInterface, public virtual IsMasterRegistryInterface 
 {
 public:
     /**
@@ -226,6 +227,7 @@ public:
         return baseServicePath_ + finalpathstring;
     }
     
+
     /**
      * @brief Get the OpenAPI route definitions provided by this service
      * @return A vector of OpenAPIRoute structures describing the service's endpoints
@@ -241,6 +243,18 @@ public:
      * @return Pointer to this IsOpenAPIInterface instance
      */
     IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
+
+    /**
+     * @brief Default implementation — returns false (no master registered at this level).
+     * @details Override in services that actually track a master (e.g. AmakerBotService).
+     */
+    bool isMaster(const std::string & /*ip*/) const override { return false; }
+
+    /**
+     * @brief Default implementation — returns empty string (no master registered at this level).
+     * @details Override in services that actually track a master (e.g. AmakerBotService).
+     */
+    std::string getMasterIP() const override { return ""; }
 
     virtual ~IsOpenAPIInterface() = default;
 
@@ -296,6 +310,14 @@ protected:
     }
 
     /**
+     * @brief Create a standard error response with code 403 for non-master requests
+     */
+    static OpenAPIResponse createForbiddenResponse()
+    {
+        return OpenAPIResponse(403, RoutesConsts::resp_not_master);
+    }
+
+    /**
      * @brief Log route registration path for debugging (only in VERBOSE_DEBUG mode)
      * @param path The API route path being registered
      */
@@ -319,6 +341,28 @@ protected:
         return std::string(output.c_str());
     }
     
+    /**
+     * @brief Check if the HTTP request originates from the registered master IP.
+     * @details Extracts the remote IP from the request and compares it against the
+     *          master registered in the provided IsMasterRegistryInterface. Sends a
+     *          403 JSON error response and returns false when the check fails.
+     * @param request        Pointer to AsyncWebServerRequest
+     * @param masterRegistry Pointer to IsMasterRegistryInterface holding the master IP
+     * @return true if the request IP matches the registered master, false otherwise (403 sent)
+     */
+    bool checkIsRequestFromMaster(AsyncWebServerRequest *request, const IsMasterRegistryInterface *masterRegistry)
+    {
+        std::string ip = request->client()->remoteIP().toString().c_str();
+        if (!masterRegistry || !masterRegistry->isMaster(ip))
+        {
+            request->send(403, RoutesConsts::mime_json,
+                          getResultJsonString(RoutesConsts::result_err,
+                                             reinterpret_cast<const char *>(FPSTR(RoutesConsts::resp_not_master))).c_str());
+            return false;
+        }
+        return true;
+    }
+
     /**
      * @brief Check if service is started and send 423 error if not
      * @param request Pointer to AsyncWebServerRequest

@@ -8,6 +8,8 @@
 #include "IsServiceInterface.h"
 #include "IsOpenAPIInterface.h"
 #include "esp_camera.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 /**
  * @class WebcamService
@@ -100,4 +102,47 @@ private:
      * @brief Configure camera pins for UNIHIKER K10 board
      */
     void configureCamera(camera_config_t &config);
+
+    // ─── Audio streaming ─────────────────────────────────────────────
+
+    /**
+     * @brief Handle audio stream HTTP request (WAV 16kHz/16-bit/mono)
+     * @param request Pointer to AsyncWebServerRequest
+     */
+    void handleAudioStream(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Start audio capture task and allocate ring buffer
+     * @return true if capture started successfully
+     */
+    bool startAudioCapture();
+
+    /**
+     * @brief Stop audio capture task and free ring buffer
+     */
+    void stopAudioCapture();
+
+    /** @brief Static wrapper for FreeRTOS task creation */
+    static void audioCaptureTaskStatic(void *param);
+
+    /** @brief Audio capture loop — reads I2S and writes to ring buffer */
+    void audioCaptureLoop();
+
+    /** @brief Write data into the audio ring buffer (producer side) */
+    size_t audioRingWrite(const uint8_t *data, size_t len);
+
+    /** @brief Read data from the audio ring buffer (consumer side) */
+    size_t audioRingRead(uint8_t *dest, size_t len);
+
+    /** @brief Bytes available to read from ring buffer */
+    size_t audioRingAvailable() const;
+
+    static constexpr size_t AUDIO_RING_SIZE = 16384; ///< 16 KB ≈ 500 ms at 16 kHz mono 16-bit
+
+    uint8_t *audio_ring_buf_ = nullptr;    ///< Heap-allocated ring buffer
+    volatile size_t audio_ring_w_ = 0;     ///< Write position (audio task)
+    volatile size_t audio_ring_r_ = 0;     ///< Read position (HTTP callback)
+    TaskHandle_t audio_task_ = nullptr;    ///< Audio capture FreeRTOS task handle
+    volatile bool audio_capturing_ = false;         ///< Task loop control flag
+    volatile bool audio_streaming_active_ = false;  ///< One-client-at-a-time guard
 };

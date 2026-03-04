@@ -33,7 +33,7 @@
         <div class="service-desc">Control music playback and tones</div>
       </a>
       <a href="./LedService.html" class="service-card">
-        <div class="service-title">💡 LEDs &amp; Sensors</div>
+        <div class="service-title">💡 LEDs </div>
         <div class="service-desc">Control RGB LEDs and view K10 sensor readings</div>
       </a>
       <a href="./api/openapi.json" class="service-card">
@@ -48,6 +48,27 @@
     </div>
   </div>
 
+  <!-- Master Control Panel -->
+  <div class="panel">
+    <h2>🔑 Master Control</h2>
+    <div id="master-status-box" style="padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:14px;background:#f0f0f0;color:#555;">
+      Checking master status…
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:180px;">
+        <label style="display:block;font-weight:bold;font-size:13px;margin-bottom:4px;" for="master-token-input">Token</label>
+        <input id="master-token-input" type="text" placeholder="Enter your secret token" autocomplete="off"
+               style="padding:8px;border:1px solid #ccc;border-radius:4px;width:100%;box-sizing:border-box;font-size:14px;">
+      </div>
+      <button id="btn-register" class="btn" onclick="doRegister()" style="height:38px;padding:0 18px;">Register as Master</button>
+      <button id="btn-unregister" class="btn" onclick="doUnregister()"
+              style="height:38px;padding:0 18px;background:#e53935;">Unregister</button>
+    </div>
+
+    <div id="master-feedback" style="margin-top:10px;font-size:13px;min-height:18px;"></div>
+  </div>
+
   <!-- <div class="panel">
     <h2>API Routes</h2>
     <div class="route-tree" id="routesList">
@@ -56,119 +77,78 @@
   </div> -->
 
   <script>
-    /*
-    // Fetch and display routes dynamically
-    fetch('/api/openapi.json')
-      .then(response => response.json())
-      .then(data => {
-        const routesList = document.getElementById('routesList');
-        const routes = [];
-        
-        // Extract routes from OpenAPI spec
-        for (const [path, methods] of Object.entries(data.paths || {})) {
-          for (const [method, details] of Object.entries(methods)) {
-            routes.push({
-              method: method.toUpperCase(),
-              path: path,
-              description: details.summary || details.description || ''
-            });
-          }
-        }
-        
-        // Sort by path
-        routes.sort((a, b) => a.path.localeCompare(b.path));
-        
-        // Build tree structure
-        const tree = {};
-        routes.forEach(route => {
-          const parts = route.path.split('/').filter(p => p);
-          let current = tree;
-          let currentNode = null;
-          
-          parts.forEach((part, index) => {
-            if (!current[part]) {
-              current[part] = { __routes: [], __children: {} };
-            }
-            currentNode = current[part];
-            
-            if (index === parts.length - 1) {
-              currentNode.__routes.push(route);
-            }
-            current = currentNode.__children;
-          });
+    // ── Master Control ──────────────────────────────────────────────────────
+    const MASTER_BASE = '/api/amakerbot/v1';
+
+    function setFeedback(msg, ok) {
+      const el = document.getElementById('master-feedback');
+      el.textContent = msg;
+      el.style.color = ok ? '#388e3c' : '#c62828';
+    }
+
+    function renderMasterStatus(data) {
+      const box = document.getElementById('master-status-box');
+      if (data && data.registered) {
+        box.style.background = '#e8f5e9';
+        box.style.color = '#2e7d32';
+        box.innerHTML = '✅ <strong>Master registered</strong> — IP: <code>' + data.ip +
+                        '</code>&nbsp;&nbsp;Token: <code>' + (data.token || '—') + '</code>';
+      } else {
+        box.style.background = '#fff3e0';
+        box.style.color = '#e65100';
+        box.innerHTML = '⚠️ <strong>No master registered</strong>';
+      }
+    }
+
+    function refreshMasterStatus() {
+      fetch(MASTER_BASE + '/master')
+        .then(r => r.json())
+        .then(renderMasterStatus)
+        .catch(() => {
+          const box = document.getElementById('master-status-box');
+          box.style.background = '#ffebee';
+          box.style.color = '#b71c1c';
+          box.textContent = '❌ Could not reach AmakerBot service';
         });
-        
-        // Render tree
-        function renderTree(node, container, level = 0) {
-          for (const [key, value] of Object.entries(node)) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'tree-node';
-            
-            const hasChildren = Object.keys(value.__children).length > 0;
-            const hasRoutes = value.__routes.length > 0;
-            
-            if (hasChildren || hasRoutes) {
-              const header = document.createElement('div');
-              header.className = 'tree-node-header';
-              header.style.paddingLeft = (level * 20) + 'px';
-              
-              if (hasChildren) {
-                const toggle = document.createElement('span');
-                toggle.className = 'tree-toggle';
-                toggle.textContent = '▶';
-                toggle.onclick = () => {
-                  content.classList.toggle('collapsed');
-                  toggle.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
-                };
-                header.appendChild(toggle);
-              } else {
-                const spacer = document.createElement('span');
-                spacer.className = 'tree-spacer';
-                header.appendChild(spacer);
-              }
-              
-              const label = document.createElement('span');
-              label.className = 'tree-label';
-              label.textContent = '/' + key;
-              header.appendChild(label);
-              
-              wrapper.appendChild(header);
-              
-              const content = document.createElement('div');
-              content.className = 'tree-content collapsed';
-              
-              // Add routes for this node
-              // if (hasRoutes) {
-                console.log(`Rendering ${value.__routes.length} routes for /${key}`);
-                value.__routes.forEach(route => {
-                  const routeDiv = document.createElement('div');
-                  routeDiv.className = 'tree-route';
-                  routeDiv.style.paddingLeft = ((level + 1) * 20) + 'px';
-                  routeDiv.innerHTML = `
-                    <span class="method method-${route.method}">${route.method}</span>
-                    <a href="${route.path}" class="path" title="${route.description}">${route.path}</a>
-                  `;
-                  content.appendChild(routeDiv);
-                });
-              // }
-              
-              // Recursively add children
-              if (hasChildren) {
-                renderTree(value.__children, content, level + 1);
-              }
-              
-              wrapper.appendChild(content);
-            }
-            
-            container.appendChild(wrapper);
+    }
+
+    function doRegister() {
+      const token = document.getElementById('master-token-input').value.trim();
+      if (!token) { setFeedback('Please enter a token.', false); return; }
+      fetch(MASTER_BASE + '/register?token=' + encodeURIComponent(token), { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.result === 'ok') {
+            setFeedback('Registered successfully (token logged on device).', true);
+            refreshMasterStatus();
+          } else {
+            setFeedback('Error: ' + (data.message || JSON.stringify(data)), false);
           }
-        }
-        
-        renderTree(tree, routesList);
-      })
-      .catch(err => {
-        console.error('Failed to load routes:', err);
-      });*/
+        })
+        .catch(e => setFeedback('Request failed: ' + e, false));
+    }
+
+    function doUnregister() {
+      const token = document.getElementById('master-token-input').value.trim();
+      const url = token
+        ? MASTER_BASE + '/unregister?token=' + encodeURIComponent(token)
+        : MASTER_BASE + '/unregister';
+      fetch(url, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.result === 'ok') {
+            setFeedback('Master unregistered.', true);
+            refreshMasterStatus();
+          } else {
+            setFeedback('Error: ' + (data.message || JSON.stringify(data)), false);
+          }
+        })
+        .catch(e => setFeedback('Request failed: ' + e, false));
+    }
+
+    // Auto-refresh master status every 5 s
+    refreshMasterStatus();
+    setInterval(refreshMasterStatus, 5000);
   </script>
 </body>
 </html>

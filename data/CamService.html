@@ -209,6 +209,69 @@
     .success-message.visible {
       display: block;
     }
+    /* ── Audio streaming ─────────────────────────────────── */
+    .audio-panel {
+      background: white;
+      padding: 20px;
+      margin: 15px 0;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: none;
+    }
+    .audio-panel.visible { display: block; }
+    .audio-panel h2 { margin-top: 0; }
+    .audio-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .audio-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #999;
+      flex-shrink: 0;
+    }
+    .audio-dot.streaming {
+      background: #f44336;
+      box-shadow: 0 0 8px #f44336;
+      animation: pulse-dot 1.2s infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100% { opacity: 1; }
+      50%      { opacity: 0.4; }
+    }
+    .vu-bar-wrap {
+      background: #e0e0e0;
+      border-radius: 4px;
+      height: 18px;
+      width: 100%;
+      overflow: hidden;
+      margin: 6px 0;
+    }
+    .vu-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #4CAF50, #FFEB3B, #f44336);
+      border-radius: 4px;
+      transition: width 0.05s linear;
+    }
+    .waveform-canvas {
+      width: 100%;
+      height: 80px;
+      background: #111;
+      border-radius: 5px;
+      margin: 10px 0;
+      display: block;
+    }
+    .audio-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      align-items: center;
+    }
+    .audio-controls label { font-size: 13px; color: #555; }
   </style>
 </head>
 <body>
@@ -238,11 +301,34 @@
         <button class="mode-btn" onclick="setMode('stream')" id="btnStream">
           🎥 Live Stream
         </button>
+        <button class="mode-btn" onclick="setMode('audio')" id="btnAudio">
+          🎤 Audio
+        </button>
       </div>
     </div>
 
     <div class="error-message" id="errorMessage"></div>
     <div class="success-message" id="successMessage"></div>
+
+    <!-- ── Audio streaming panel ──────────────────────────────────── -->
+    <div class="audio-panel" id="audioPanel">
+      <h2>🎤 Microphone Audio Stream</h2>
+      <div class="audio-status">
+        <span class="audio-dot" id="audioDot"></span>
+        <span id="audioStatusText">Connecting…</span>
+      </div>
+      <canvas class="waveform-canvas" id="waveformCanvas"></canvas>
+      <label style="font-size:13px;color:#555;">Level</label>
+      <div class="vu-bar-wrap"><div class="vu-bar" id="vuBar"></div></div>
+      <div class="audio-controls">
+        <label>Volume&nbsp;
+          <input type="range" id="audioVolume" min="0" max="2" step="0.05" value="1"
+                 oninput="setAudioVolume(this.value)" style="vertical-align:middle;width:120px;">
+          <span id="audioVolLabel">100%</span>
+        </label>
+        <button class="btn" onclick="downloadAudioSnippet()">⬇️ Record 5 s</button>
+      </div>
+    </div>
 
     <div class="settings-panel" id="settingsPanel" style="display: none;">
       <h2>
@@ -503,47 +589,273 @@
     let currentMode = 'off';
     let streamCheckInterval = null;
 
+    // ── Audio streaming state ──────────────────────────────────────
+    let audioCtx       = null;
+    let audioGain      = null;
+    let audioReader    = null;
+    let audioDecodeBuffer = [];   // byte accumulation
+    let wavHeaderParsed   = false;
+    let animFrameId    = null;
+    let analyserNode   = null;
+    let waveformBuf    = null;
+    let recordChunks   = [];
+    let recordMode     = false;
+    let recordTimer    = null;
+    const recordSampleRate = 16000;
+
+    // ── Mode selector ─────────────────────────────────────────────
     function setMode(mode) {
-      // Clear any existing intervals
       if (streamCheckInterval) {
         clearInterval(streamCheckInterval);
         streamCheckInterval = null;
       }
 
-      // Update button states
       document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-      document.getElementById(`btn${mode.charAt(0).toUpperCase() + mode.slice(1)}`).classList.add('active');
+      document.getElementById('btn' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
 
       currentMode = mode;
       hideError();
 
-      const image = document.getElementById('cameraImage');
+      const image       = document.getElementById('cameraImage');
       const placeholder = document.getElementById('placeholder');
-      const controls = document.getElementById('cameraControls');
+      const controls    = document.getElementById('cameraControls');
+      const audioPanel  = document.getElementById('audioPanel');
 
       if (mode === 'off') {
+        // Stop audio only when explicitly going off
+        stopAudio();
+        audioPanel.classList.remove('visible');
         image.src = '';
         image.classList.remove('visible');
         placeholder.style.display = 'block';
         placeholder.textContent = 'Camera is off. Select a mode to view the camera feed.';
         controls.style.display = 'none';
       } else if (mode === 'snapshot') {
+        audioPanel.classList.remove('visible');
         placeholder.textContent = 'Loading snapshot...';
         captureSnapshot();
         controls.style.display = 'flex';
       } else if (mode === 'stream') {
+        // Keep audio running if it was already active
+        audioPanel.classList.remove('visible');
         placeholder.style.display = 'none';
         image.classList.add('visible');
         image.src = '/api/webcam/v1/stream?' + new Date().getTime();
         controls.style.display = 'none';
-        
-        // Monitor stream connection
         streamCheckInterval = setInterval(() => {
-          if (image.naturalWidth === 0) {
+          if (image.naturalWidth === 0)
             showError('Stream connection lost. Click Stream again to reconnect.');
-          }
         }, 5000);
+      } else if (mode === 'audio') {
+        // Keep video running if it was already streaming
+        audioPanel.classList.add('visible');
+        if (!image.src || image.src === window.location.href) {
+          image.classList.remove('visible');
+          placeholder.style.display = 'block';
+          placeholder.textContent = 'Audio mode — switch to Stream for video.';
+          controls.style.display = 'none';
+        }
+        startAudio();
       }
+    }
+
+    // ── Audio streaming ────────────────────────────────────────────
+    async function startAudio() {
+      setAudioStatus('Connecting…', false);
+      wavHeaderParsed = false;
+      audioDecodeBuffer = [];
+
+      try {
+        if (!audioCtx || audioCtx.state === 'closed') {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        }
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+        audioGain = audioCtx.createGain();
+        audioGain.gain.value = parseFloat(document.getElementById('audioVolume').value);
+
+        analyserNode = audioCtx.createAnalyser();
+        analyserNode.fftSize = 1024;
+        waveformBuf = new Uint8Array(analyserNode.frequencyBinCount);
+
+        audioGain.connect(analyserNode);
+        analyserNode.connect(audioCtx.destination);
+
+        const resp = await fetch('/api/webcam/v1/audio');
+        if (!resp.ok) {
+          const txt = await resp.text();
+          setAudioStatus('Error ' + resp.status + ': ' + txt, false);
+          return;
+        }
+        if (!resp.body) {
+          setAudioStatus('Streaming not supported by this browser', false);
+          return;
+        }
+
+        setAudioStatus('Streaming 🎤', true);
+        audioReader = resp.body.getReader();
+        drawWaveform();
+        pumpAudio();
+
+      } catch (e) {
+        setAudioStatus('Failed: ' + e.message, false);
+        console.error('Audio start error', e);
+      }
+    }
+
+    async function pumpAudio() {
+      let nextTime = audioCtx ? audioCtx.currentTime + 0.1 : 0;
+
+      while (currentMode === 'audio') {
+        let result;
+        try { result = await audioReader.read(); }
+        catch (e) {
+          if (currentMode === 'audio') setAudioStatus('Stream closed: ' + e.message, false);
+          break;
+        }
+        if (result.done) {
+          if (currentMode === 'audio') setAudioStatus('Stream ended', false);
+          break;
+        }
+
+        // Accumulate bytes
+        const chunk = result.value;
+        for (let b of chunk) audioDecodeBuffer.push(b);
+
+        // Strip 44-byte WAV header once
+        if (!wavHeaderParsed) {
+          if (audioDecodeBuffer.length < 44) continue;
+          audioDecodeBuffer.splice(0, 44);
+          wavHeaderParsed = true;
+        }
+
+        // Decode complete 16-bit LE samples
+        const samples = Math.floor(audioDecodeBuffer.length / 2);
+        if (samples === 0) continue;
+
+        const pcmBytes = audioDecodeBuffer.splice(0, samples * 2);
+        const floats   = new Float32Array(samples);
+        for (let i = 0; i < samples; i++) {
+          let s16 = (pcmBytes[i * 2 + 1] << 8) | pcmBytes[i * 2];
+          if (s16 > 32767) s16 -= 65536;
+          floats[i] = s16 / 32768.0;
+        }
+
+        if (recordMode) recordChunks.push(floats.slice());
+
+        if (!audioCtx) break;
+        const buf = audioCtx.createBuffer(1, floats.length, recordSampleRate);
+        buf.copyToChannel(floats, 0);
+
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioGain);
+
+        const now = audioCtx.currentTime;
+        if (nextTime < now) nextTime = now + 0.02;
+        src.start(nextTime);
+        nextTime += buf.duration;
+      }
+    }
+
+    function stopAudio() {
+      if (audioReader) { audioReader.cancel().catch(() => {}); audioReader = null; }
+      if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+      if (audioCtx && audioCtx.state !== 'closed') { audioCtx.close().catch(() => {}); audioCtx = null; }
+      setAudioStatus('Stopped', false);
+    }
+
+    function setAudioStatus(text, isStreaming) {
+      document.getElementById('audioStatusText').textContent = text;
+      document.getElementById('audioDot').classList.toggle('streaming', isStreaming);
+    }
+
+    function setAudioVolume(val) {
+      document.getElementById('audioVolLabel').textContent = Math.round(parseFloat(val) * 100) + '%';
+      if (audioGain) audioGain.gain.value = parseFloat(val);
+    }
+
+    // ── Waveform / VU meter ────────────────────────────────────────
+    function drawWaveform() {
+      if (!analyserNode || !audioCtx) return;
+      animFrameId = requestAnimationFrame(drawWaveform);
+
+      const canvas = document.getElementById('waveformCanvas');
+      const ctx    = canvas.getContext('2d');
+      const W = canvas.width  = canvas.offsetWidth;
+      const H = canvas.height = canvas.offsetHeight;
+
+      analyserNode.getByteTimeDomainData(waveformBuf);
+
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, W, H);
+      ctx.lineWidth   = 1.5;
+      ctx.strokeStyle = '#00e676';
+      ctx.beginPath();
+
+      const slice = W / waveformBuf.length;
+      let x = 0, sum = 0;
+      for (let i = 0; i < waveformBuf.length; i++) {
+        const v = waveformBuf[i] / 128.0;
+        const y = v * H / 2;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        x += slice;
+        sum += Math.abs(waveformBuf[i] - 128);
+      }
+      ctx.stroke();
+
+      const pct = Math.min(100, (sum / waveformBuf.length / 64) * 100);
+      document.getElementById('vuBar').style.width = pct.toFixed(1) + '%';
+    }
+
+    // ── 5-second recording / download ─────────────────────────────
+    function downloadAudioSnippet() {
+      if (!audioCtx || currentMode !== 'audio') { showError('Start audio streaming first.'); return; }
+      if (recordMode) return;
+      showSuccess('Recording 5 s…');
+      recordChunks = [];
+      recordMode   = true;
+      recordTimer  = setTimeout(() => { recordMode = false; buildAndDownloadWav(); }, 5000);
+    }
+
+    function buildAndDownloadWav() {
+      let total = 0;
+      for (const c of recordChunks) total += c.length;
+      const merged = new Float32Array(total);
+      let off = 0;
+      for (const c of recordChunks) { merged.set(c, off); off += c.length; }
+
+      const pcm16 = new Int16Array(merged.length);
+      for (let i = 0; i < merged.length; i++) {
+        const s = Math.max(-1, Math.min(1, merged[i]));
+        pcm16[i] = s < 0 ? s * 32768 : s * 32767;
+      }
+
+      const wavBuf = encodeWav(pcm16, recordSampleRate, 1);
+      const blob   = new Blob([wavBuf], { type: 'audio/wav' });
+      const url    = URL.createObjectURL(blob);
+      const a      = document.createElement('a');
+      a.href = url; a.download = 'k10-audio-' + Date.now() + '.wav'; a.click();
+      URL.revokeObjectURL(url);
+      showSuccess('WAV downloaded!');
+    }
+
+    function encodeWav(pcm16, sampleRate, numCh) {
+      const dataLen    = pcm16.length * 2;
+      const buf        = new ArrayBuffer(44 + dataLen);
+      const view       = new DataView(buf);
+      const bps        = 16;
+      const byteRate   = sampleRate * numCh * bps / 8;
+      const blockAlign = numCh * bps / 8;
+      const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+      ws(0,'RIFF'); view.setUint32(4,36+dataLen,true); ws(8,'WAVE');
+      ws(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true);
+      view.setUint16(22,numCh,true); view.setUint32(24,sampleRate,true);
+      view.setUint32(28,byteRate,true); view.setUint16(32,blockAlign,true);
+      view.setUint16(34,bps,true); ws(36,'data'); view.setUint32(40,dataLen,true);
+      const dv = new DataView(buf, 44);
+      for (let i = 0; i < pcm16.length; i++) dv.setInt16(i*2, pcm16[i], true);
+      return buf;
     }
 
     async function captureSnapshot() {
@@ -848,9 +1160,8 @@
 
     // Cleanup on page unload
     window.addEventListener('beforeunload', () => {
-      if (streamCheckInterval) {
-        clearInterval(streamCheckInterval);
-      }
+      if (streamCheckInterval) clearInterval(streamCheckInterval);
+      stopAudio();
     });
   </script>
 </body>

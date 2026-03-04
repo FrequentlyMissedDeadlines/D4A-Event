@@ -22,6 +22,7 @@ void RollingLogger::log(std::string message, const LogLevel level)
     if (level > current_log_level)
         return;
     log_rows.push_back({level, millis(), message});
+    ++log_version_;
 
     // Prevent unbounded memory growth - trim to max_rows
     if ((int)log_rows.size() > max_rows)
@@ -67,4 +68,9 @@ int RollingLogger::get_max_rows()
 const std::vector<RollingLogger::LogEntry>& RollingLogger::get_log_rows() const
 {
     return log_rows;
+}
+
+unsigned long RollingLogger::get_version() const
+{
+    return log_version_;
 }

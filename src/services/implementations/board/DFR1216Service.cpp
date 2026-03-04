@@ -17,8 +17,10 @@
 #include <ArduinoJson.h>
 #include "IsOpenAPIInterface.h"
 #include "services/UDPService.h"
+#include "services/AmakerBotService.h"
 
 extern UDPService udp_service;
+extern AmakerBotService amakerbot_service;
 
 // DFR1216-specific OpenAPI constants namespace (stored in PROGMEM to save RAM)
 namespace DFR1216Consts
@@ -216,6 +218,7 @@ bool DFR1216Service::registerRoutes()
     servo_responses.push_back(createMissingParamsResponse());
     servo_responses.push_back(createNotInitializedResponse());
     servo_responses.push_back(createServiceNotStartedResponse());
+    servo_responses.push_back(createForbiddenResponse());
 
     OpenAPIRoute servo_route(getPath("setServoAngle").c_str(),
                              RoutesConsts::method_post,
@@ -243,6 +246,7 @@ bool DFR1216Service::registerRoutes()
     motor_responses.push_back(createMissingParamsResponse());
     motor_responses.push_back(createNotInitializedResponse());
     motor_responses.push_back(createServiceNotStartedResponse());
+    motor_responses.push_back(createForbiddenResponse());
 
     OpenAPIRoute motor_route(getPath("setMotorSpeed").c_str(),
                              RoutesConsts::method_post,
@@ -290,6 +294,7 @@ bool DFR1216Service::registerRoutes()
     std::vector<OpenAPIResponse> led_set_responses;
     led_set_responses.push_back(OpenAPIResponse(200, "LED color set successfully"));
     led_set_responses.push_back(createServiceNotStartedResponse());
+    led_set_responses.push_back(createForbiddenResponse());
 
     registerOpenAPIRoute(
         OpenAPIRoute(getPath("setLEDColor").c_str(),
@@ -308,6 +313,7 @@ bool DFR1216Service::registerRoutes()
     std::vector<OpenAPIResponse> led_off_responses;
     led_off_responses.push_back(OpenAPIResponse(200, "LED turned off successfully"));
     led_off_responses.push_back(createServiceNotStartedResponse());
+    led_off_responses.push_back(createForbiddenResponse());
 
     registerOpenAPIRoute(
         OpenAPIRoute(getPath("turnOffLED").c_str(),
@@ -346,6 +352,10 @@ void DFR1216Service::handle_set_servo_angle(AsyncWebServerRequest *request)
     if (!checkServiceStarted(request))
         return;
 
+    // Check if request is from the registered master
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
+
     // Validate parameters
     if (!request->hasArg("channel") || !request->hasArg("angle")) {
         ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, 
@@ -373,7 +383,8 @@ void DFR1216Service::handle_set_servo_angle(AsyncWebServerRequest *request)
 
 void DFR1216Service::handle_set_motor_speed(AsyncWebServerRequest *request)
 {
-    if (!checkServiceStarted(request))
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
         return;
 
     // Validate parameters
@@ -493,7 +504,7 @@ bool DFR1216Service::turnOffAllLEDs()
 
 void DFR1216Service::handle_set_led_color(AsyncWebServerRequest *request)
 {
-    if (!checkServiceStarted(request)) return;
+    if (!checkServiceStarted(request) || !checkIsRequestFromMaster(request, &amakerbot_service)) return;
     
     if (!request->hasParam("led") || !request->hasParam("red") || 
         !request->hasParam("green") || !request->hasParam("blue"))
@@ -528,7 +539,7 @@ void DFR1216Service::handle_set_led_color(AsyncWebServerRequest *request)
 
 void DFR1216Service::handle_turn_off_led(AsyncWebServerRequest *request)
 {
-    if (!checkServiceStarted(request)) return;
+    if (!checkServiceStarted(request) || !checkIsRequestFromMaster(request, &amakerbot_service)) return;
     
     if (!request->hasParam("led"))
     {
@@ -603,6 +614,12 @@ bool DFR1216Service::messageHandler(const std::string &message,
     if (!IsServiceInterface::isServiceStarted())
     {
         udp_build_response(action, UDPProto::udp_resp_not_started, nullptr, resp);
+        udp_service.sendReply(resp, remoteIP, remotePort);
+        return true;
+    }
+
+    if (!checkUDPIsMaster(action, remoteIP, &amakerbot_service, resp))
+    {
         udp_service.sendReply(resp, remoteIP, remotePort);
         return true;
     }

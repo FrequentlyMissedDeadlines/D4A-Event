@@ -19,7 +19,7 @@
 #define DEFAULT_AP_PASSWORD "amaker-club"
 #define DEFAULT_WIFI_SSID "Freebox-A35871"
 #define DEFAULT_WIFI_PASSWORD "azerQSDF1234"
-#define DEFAULT_HOSTNAME "amaker-bot"
+#define DEFAULT_HOSTNAME "amakerbot-"
 #define WIFI_CONN_MAX_ATTEMPTS 8
 #define WIFI_CONN_SLEEP_MS 500
 // ref documentsettings

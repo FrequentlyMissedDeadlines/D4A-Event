@@ -28,6 +28,7 @@
 #include "DFR1216/DFR1216.h"
 #include "services/SettingsService.h"
 #include "services/UDPService.h"
+#include "services/AmakerBotService.h"
 
 constexpr uint8_t MAX_SERVO_CHANNELS = 8;
 constexpr uint8_t MAX_MOTOR_CHANNELS = 4;
@@ -37,6 +38,7 @@ DFR1216_I2C servoController = DFR1216_I2C();
 
 extern SettingsService settings_service;
 extern UDPService udp_service;
+extern AmakerBotService amakerbot_service;
 
 // No module-level UDP buffers needed — binary protocol uses raw message bytes directly.
 
@@ -270,9 +272,9 @@ bool ServoService::setServoAngle(uint8_t channel, uint16_t angle)
     {
         return false;
     }
-        #ifdef SERVO_VERBOSE_DEBUG
-            logger->debug("setServoAngle #" + std::to_string(channel) + ": " + std::to_string(angle));
-        #endif
+#ifdef SERVO_VERBOSE_DEBUG
+    logger->debug("setServoAngle #" + std::to_string(channel) + ": " + std::to_string(angle));
+#endif
     try
     {
         if (channel >= MAX_SERVO_CHANNELS)
@@ -357,9 +359,9 @@ bool ServoService::setAllServoSpeed(int8_t speed)
     bool allSuccess = true;
     for (uint8_t channel = 0; channel < MAX_SERVO_CHANNELS; channel++)
     {
-            #ifdef SERVO_VERBOSE_DEBUG
-                logger->debug("  channel " + std::to_string(channel) + ": " + std::string(attached_servos[channel] == ServoConnection::ROTATIONAL ? "ROTATIONAL" : "NOT ROTATIONAL"));
-            #endif  
+#ifdef SERVO_VERBOSE_DEBUG
+        logger->debug("  channel " + std::to_string(channel) + ": " + std::string(attached_servos[channel] == ServoConnection::ROTATIONAL ? "ROTATIONAL" : "NOT ROTATIONAL"));
+#endif
         if (attached_servos[channel] == ServoConnection::ROTATIONAL)
         {
             allSuccess = allSuccess && this->setServoSpeed(channel, speed);
@@ -399,8 +401,8 @@ bool ServoService::setServosSpeedMultiple(const std::vector<ServoSpeedOp> &ops)
     bool all_success = true;
     for (const auto &op : ops)
     {
-#ifdef SERVO_VERBOSE_DEBUG        
-logger->debug("  op: channel=" + std::to_string(op.channel) + ", speed=" + std::to_string(op.speed));
+#ifdef SERVO_VERBOSE_DEBUG
+        logger->debug("  op: channel=" + std::to_string(op.channel) + ", speed=" + std::to_string(op.speed));
 #endif
         if (!setServoSpeed(op.channel, op.speed))
             all_success = false;
@@ -444,7 +446,7 @@ bool ServoService::setMotorSpeed(uint8_t motor, int8_t speed)
         return false;
 #ifdef SERVO_VERBOSE_DEBUG
     logger->debug("setMotorSpeed #" + std::to_string(motor) + ": " + std::to_string(speed));
-#endif        
+#endif
     try
     {
         if (motor < 1 || motor > MAX_MOTOR_CHANNELS)
@@ -497,9 +499,9 @@ bool ServoService::setAllMotorsSpeed(int8_t speed)
     if (!isServiceStarted())
         return false;
 
-    #ifdef SERVO_VERBOSE_DEBUG
-        logger->debug("setAllMotorsSpeed " + std::to_string(speed));
-    #endif
+#ifdef SERVO_VERBOSE_DEBUG
+    logger->debug("setAllMotorsSpeed " + std::to_string(speed));
+#endif
     if (speed < -100 || speed > 100)
     {
         logger->error(progmem_to_string(ServoConsts::err_speed_range));
@@ -574,8 +576,8 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse> &sta
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-            
+                       if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
             // Parse and validate JSON body
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
@@ -624,8 +626,8 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse> &sta
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-            
+                      if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
             // Parse and validate JSON body
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
@@ -672,8 +674,8 @@ bool ServoService::addRouteStopAll(const std::vector<OpenAPIResponse> &standard_
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-        if (!checkServiceStarted(request)) return;
-        
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
         if (this->setAllServoSpeed(0))
         {
             ResponseHelper::sendSuccess(request, ServoConsts::action_stop_all);
@@ -712,8 +714,8 @@ bool ServoService::addRouteGetStatus(const std::vector<OpenAPIResponse> &standar
 
     webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
                  {
-        if (!checkServiceStarted(request)) return;
-        
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
         // Validate channel parameter with range check
         std::string channel_str = ParamValidator::getValidatedParam(
             request,
@@ -756,8 +758,9 @@ bool ServoService::addRouteGetAllStatus()
 
     webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
                  {
-        if (!checkServiceStarted(request)) return;
-        
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
+
         std::string status = getAllAttachedServos();
         request->send(200, RoutesConsts::mime_json, status.c_str()); });
 
@@ -786,8 +789,7 @@ bool ServoService::addRouteGetBattery()
 
     webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
                  {
-        if (!checkServiceStarted(request)) return;
-
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
         JsonDocument doc;
         doc[ServoConsts::json_battery] = servoController.getBattery();
         String output;
@@ -816,8 +818,8 @@ bool ServoService::addRouteSetAllAngle(const std::vector<OpenAPIResponse> &stand
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-            
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
             // Parse and validate JSON body
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
@@ -864,8 +866,8 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse> &stand
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-            
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
             // Parse and validate JSON body
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
@@ -912,8 +914,8 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-            
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
             // Parse and validate JSON body
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
@@ -970,8 +972,8 @@ bool ServoService::addRouteSetServosAngleMultiple(const std::vector<OpenAPIRespo
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-            
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
             // Parse and validate JSON body
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
@@ -1028,8 +1030,8 @@ bool ServoService::addRouteAttachServo(const std::vector<OpenAPIResponse> &stand
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-            
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
             // Parse and validate JSON body
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
@@ -1079,7 +1081,8 @@ bool ServoService::addRouteSetMotorSpeed(const std::vector<OpenAPIResponse> &sta
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
+
 
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument &d) {
@@ -1121,7 +1124,7 @@ bool ServoService::addRouteStopAllMotors(const std::vector<OpenAPIResponse> &sta
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-        if (!checkServiceStarted(request)) return;
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
 
         bool ok = true;
         for (uint8_t m = 1; m <= MAX_MOTOR_CHANNELS; m++)
@@ -1155,8 +1158,7 @@ bool ServoService::addRouteSetAllMotorsSpeed(const std::vector<OpenAPIResponse> 
 
     webserver.on(path.c_str(), HTTP_POST, [this](AsyncWebServerRequest *request)
                  {
-            if (!checkServiceStarted(request)) return;
-
+            if (!checkServiceStarted(request) ||  (!checkIsRequestFromMaster(request, &amakerbot_service))) return;
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument &d) {
                 return d[ServoConsts::servo_speed].is<int>();
@@ -1194,6 +1196,7 @@ bool ServoService::registerRoutes()
     standard_responses.push_back(createOperationFailedResponse());
     standard_responses.push_back(createNotInitializedResponse());
     standard_responses.push_back(createServiceNotStartedResponse());
+    standard_responses.push_back(createForbiddenResponse());
 
     // Register all routes using dedicated helper functions
     addRouteSetServoAngle(standard_responses);
@@ -1368,21 +1371,28 @@ bool ServoService::messageHandler(const std::string &message,
 
     if (action < ServoConsts::udp_action_min || action > ServoConsts::udp_action_max)
         return false;
-    #ifdef SERVO_VERBOSE_DEBUG
+#ifdef SERVO_VERBOSE_DEBUG
     std::string hex_dump;
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i)
+    {
         char buf[4];
         snprintf(buf, sizeof(buf), "%02X ", d[i]);
         hex_dump += buf;
     }
     logger->debug("UDP rx " + std::to_string(len) + "bytes : " + hex_dump);
-    #endif  
+#endif
     static std::string resp;
     resp.clear();
 
     if (!isServiceStarted())
     {
         udp_build(action, UDPProto::udp_resp_not_started, nullptr, resp);
+        udp_service.sendReply(resp, remoteIP, remotePort);
+        return true;
+    }
+
+    if (!checkUDPIsMaster(action, remoteIP, &amakerbot_service, resp))
+    {
         udp_service.sendReply(resp, remoteIP, remotePort);
         return true;
     }
@@ -1436,12 +1446,12 @@ bool ServoService::messageHandler(const std::string &message,
         }
         const uint8_t mask = d[1];
         bool ok = true;
-        uint8_t speed_idx = 2;  // Start at byte 2 for speed bytes
+        uint8_t speed_idx = 2; // Start at byte 2 for speed bytes
         for (uint8_t ch = 0; ch < MAX_SERVO_CHANNELS && speed_idx < len; ++ch, ++speed_idx)
         {
             if (!(mask & (1u << ch)))
-                continue;  // Skip this channel
-            const int8_t speed = static_cast<int8_t>(static_cast<int16_t>(d[speed_idx]) - 128);  // Decode: speed = byte - 128
+                continue;                                                                       // Skip this channel
+            const int8_t speed = static_cast<int8_t>(static_cast<int16_t>(d[speed_idx]) - 128); // Decode: speed = byte - 128
             if (speed < -100 || speed > 100)
             {
                 udp_build(action, UDPProto::udp_resp_invalid_values, nullptr, resp);
@@ -1450,9 +1460,9 @@ bool ServoService::messageHandler(const std::string &message,
             // Only apply if speed differs from current tracked speed
             if (speed == servo_speeds[ch])
             {
-                #ifdef SERVO_VERBOSE_DEBUG
+#ifdef SERVO_VERBOSE_DEBUG
                 logger->debug("Servo " + std::to_string(ch) + " speed unchanged (" + std::to_string(speed) + "), skipping");
-                #endif
+#endif
                 continue;
             }
             if (attached_servos[ch] != ROTATIONAL)
@@ -1460,7 +1470,7 @@ bool ServoService::messageHandler(const std::string &message,
                 ok = false;
                 continue;
             }
-            servo_speeds[ch] = speed;  // Track new speed
+            servo_speeds[ch] = speed; // Track new speed
             const eServo360Direction_t dir = speed > 0   ? eServo360Direction_t::eForward
                                              : speed < 0 ? eServo360Direction_t::eBackward
                                                          : eServo360Direction_t::eStop;
@@ -1519,10 +1529,10 @@ bool ServoService::messageHandler(const std::string &message,
             break;
         }
         bool ok = true;
-        uint8_t speed_idx = 1;  // Start at byte 1 for speed bytes
+        uint8_t speed_idx = 1; // Start at byte 1 for speed bytes
         for (uint8_t m = 0; m < MAX_MOTOR_CHANNELS && speed_idx < len; ++m, ++speed_idx)
         {
-            const int8_t speed = static_cast<int8_t>(static_cast<int16_t>(d[speed_idx]) - 128);  // Decode: speed = byte - 128
+            const int8_t speed = static_cast<int8_t>(static_cast<int16_t>(d[speed_idx]) - 128); // Decode: speed = byte - 128
             if (speed < -100 || speed > 100)
             {
                 udp_build(action, UDPProto::udp_resp_invalid_values, nullptr, resp);
@@ -1531,16 +1541,16 @@ bool ServoService::messageHandler(const std::string &message,
             // Only apply if speed differs from current tracked speed
             if (speed == motor_speeds[m])
             {
-                #ifdef SERVO_VERBOSE_DEBUG
+#ifdef SERVO_VERBOSE_DEBUG
                 logger->debug("Motor " + std::to_string(m) + " speed unchanged (" + std::to_string(speed) + "), skipping");
-                #endif
+#endif
                 continue;
             }
-            motor_speeds[m] = speed;  // Track new speed
+            motor_speeds[m] = speed; // Track new speed
             const uint16_t duty = static_cast<uint16_t>((speed < 0 ? -speed : speed) * 65535 / 100);
-            #ifdef SERVO_VERBOSE_DEBUG
+#ifdef SERVO_VERBOSE_DEBUG
             logger->debug("Motor " + std::to_string(m) + " speed=" + std::to_string(speed) + " duty=" + std::to_string(duty));
-            #endif
+#endif
             const eMotorNumber_t motor_a = static_cast<eMotorNumber_t>(m * 2);
             const eMotorNumber_t motor_b = static_cast<eMotorNumber_t>(m * 2 + 1);
             if (speed > 0)

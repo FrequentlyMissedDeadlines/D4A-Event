@@ -33,6 +33,7 @@
 #include "services/RollingLoggerService.h"
 #include "services/MusicService.h"
 #include "services/WiFiService.h"
+#include "services/AmakerBotService.h"
 #include "utb2026.h"
 
 #define LOAD_FONT8N   // TFT font - special case for library config
@@ -81,9 +82,7 @@ namespace
   // Separate buffer for display (non-blocking)
   constexpr int max_message_len = 256;
   std::set<std::string> all_routes = {};
-  // Global variables for master IP and token (required by web_server.cpp)
-  std::string master_ip = "";
-  std::string master_token = "";
+
 }
 
 TFT_eSPI tft;
@@ -107,6 +106,7 @@ UTB2026 ui = UTB2026();
 
 MusicService music_service = MusicService();
 DFR1216Service dfr1216_service = DFR1216Service();
+AmakerBotService amakerbot_service = AmakerBotService();
 
 // define CONFIG_GC2145_SUPPORT 1
 
@@ -317,6 +317,7 @@ void setup()
   start_service(webcam_service);
   start_service(music_service);
   start_service(dfr1216_service);
+  start_service(amakerbot_service);
 
   // Set up rolling logger service with logger instances (including esp_logger)
   rolling_logger_service.set_logger_instances(&debug_logger, &app_info_logger, &esp_logger);
@@ -330,7 +331,8 @@ void setup()
         &k10sensors_service,
         &board_info,
         &music_service,
-        &dfr1216_service
+        &dfr1216_service,
+        &amakerbot_service
     };
     for (IsServiceInterface *svc : udp_aware_services)
     {

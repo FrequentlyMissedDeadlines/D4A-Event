@@ -161,9 +161,12 @@ private:
         uint16_t bg_color;
     };
     std::vector<logger_view> logger_views;
-    DisplayMode current_display_mode_ = MODE_APP_UI;
-    DisplayMode previous_display_mode_ = MODE_APP_UI;
+    DisplayMode current_display_mode_ = MODE_APP_LOG;
+    DisplayMode previous_display_mode_ = MODE_APP_LOG;
     RollingLogger* debug_logger_ = nullptr;
     RollingLogger* app_logger_ = nullptr;
     RollingLogger* esp_logger_ = nullptr;
+    unsigned long last_drawn_app_log_version_ = 0;
+    unsigned long last_drawn_debug_log_version_ = 0;
+    unsigned long last_drawn_esp_log_version_ = 0;
 };

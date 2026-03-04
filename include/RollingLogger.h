@@ -148,9 +148,18 @@ public:
      */
     const std::vector<LogEntry>& get_log_rows() const;
 
+    /**
+     * @brief Get the log version counter
+     * @details Incremented each time a new log entry is added. Useful for
+     *          detecting changes without comparing full log contents.
+     * @return Current version counter value
+     */
+    unsigned long get_version() const;
+
 private:
     LogLevel current_log_level = DEBUG;
     int max_rows;
     std::vector<LogEntry> log_rows;
+    unsigned long log_version_ = 0;
 };
 

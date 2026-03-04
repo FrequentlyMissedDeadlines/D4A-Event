@@ -229,7 +229,6 @@
       light: [],
       temperature: [],
       humidity: [],
-      microphone: [],
       accel_x: [],
       accel_y: [],
       accel_z: [],
@@ -323,7 +322,6 @@
           addToHistory(metric_history.light, data.light);
           addToHistory(metric_history.temperature, data.celcius);
           addToHistory(metric_history.humidity, data.hum_rel);
-          addToHistory(metric_history.microphone, data.mic_data);
           if (data.accelerometer && Array.isArray(data.accelerometer)) {
             addToHistory(metric_history.accel_x, data.accelerometer[0]);
             addToHistory(metric_history.accel_y, data.accelerometer[1]);
@@ -381,22 +379,6 @@
           `;
         }
         
-        // Microphone
-        html += `
-          <div class="metric-row">
-            <span class="metric-label">🎤 Microphone:</span>
-            <span class="metric-value">${data.mic_data !== undefined ? data.mic_data : 'N/A'}</span>
-          </div>
-        `;
-        if (autoRefreshEnabled && metric_history.microphone.length > 1) {
-          html += `
-            <div class="graph-container">
-              <div class="graph-title">Microphone History</div>
-              <canvas id="graph-mic" class="metric-graph" ></canvas>
-            </div>
-          `;
-        }
-        
         // Accelerometer
         if (data.accelerometer && Array.isArray(data.accelerometer)) {
           html += `
@@ -445,7 +427,6 @@
             if (metric_history.light.length > 1) drawGraph('graph-light', metric_history.light, '#FFC107');
             if (metric_history.temperature.length > 1) drawGraph('graph-temp', metric_history.temperature, '#F44336');
             if (metric_history.humidity.length > 1) drawGraph('graph-humidity', metric_history.humidity, '#2196F3');
-            if (metric_history.microphone.length > 1) drawGraph('graph-mic', metric_history.microphone, '#9C27B0');
             if (metric_history.accel_x.length > 1) drawGraph('graph-accel-x', metric_history.accel_x, '#4CAF50');
             if (metric_history.accel_y.length > 1) drawGraph('graph-accel-y', metric_history.accel_y, '#4CAF50');
             if (metric_history.accel_z.length > 1) drawGraph('graph-accel-z', metric_history.accel_z, '#4CAF50');

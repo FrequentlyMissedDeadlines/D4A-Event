@@ -425,6 +425,11 @@ void UTB2026::draw_all()
         // Show app log full screen
         if (app_logger_ != nullptr)
         {
+            unsigned long current_version = app_logger_->get_version();
+            if (!mode_changed && current_version == last_drawn_app_log_version_)
+                break;
+            last_drawn_app_log_version_ = current_version;
+
             tft.setViewport(0, 0, 240, 320);
             const auto& log_rows = app_logger_->get_log_rows();
             int max_rows = 32; // 320 pixels / 10 pixels per line
@@ -452,6 +457,11 @@ void UTB2026::draw_all()
         // Show debug log full screen
         if (debug_logger_ != nullptr)
         {
+            unsigned long current_version = debug_logger_->get_version();
+            if (!mode_changed && current_version == last_drawn_debug_log_version_)
+                break;
+            last_drawn_debug_log_version_ = current_version;
+
             tft.setViewport(0, 0, 240, 320);
             const auto& log_rows = debug_logger_->get_log_rows();
             int max_rows = 32; // 320 pixels / 10 pixels per line
@@ -499,6 +509,11 @@ void UTB2026::draw_all()
         // Show ESP log full screen
         if (esp_logger_ != nullptr)
         {
+            unsigned long current_version = esp_logger_->get_version();
+            if (!mode_changed && current_version == last_drawn_esp_log_version_)
+                break;
+            last_drawn_esp_log_version_ = current_version;
+
             tft.setViewport(0, 0, 240, 320);
             const auto& log_rows = esp_logger_->get_log_rows();
             int max_rows = 32; // 320 pixels / 10 pixels per line

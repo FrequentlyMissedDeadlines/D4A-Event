@@ -7,15 +7,17 @@
  *          - POST /api/amakerbot/v1/unregister              Clear master (master IP only)
  *          - GET  /api/amakerbot/v1/token                   Retrieve server-generated token
  *
- *          UDP protocol:
- *          - AMAKERBOT:register:<token>  Register UDP sender as master (if token valid)
- *          - AMAKERBOT:unregister        Clear master (master IP only)
+ *          UDP protocol (service_id 0x4):
+ *          - [0x41]<token>  Register UDP sender as master (if token valid); 
+ *          - [0x42]         Clear master (master IP only);                  
+ *          - [0x43]         Heartbeat keep-alive — must arrive every ≤50 ms or all motors are stopped
  *
  *          On service init, a random 5-character alphanumeric token is generated
  *          and logged to app_info_logger so it appears in MODE_APP_LOG on the screen.
  */
 
 #include "services/AmakerBotService.h"
+#include "services/ServoService.h"
 #include "FlashStringHelper.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -24,8 +26,9 @@
 #include <freertos/semphr.h>
 #include <random>
 
-// Access app_info_logger defined in main.cpp so the token is shown in MODE_APP_LOG
+// Access app_info_logger and servo_service defined in main.cpp
 extern RollingLogger app_info_logger;
+extern ServoService  servo_service;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,9 +64,16 @@ namespace AmakerBotConsts
     constexpr const char resp_invalid_token[] PROGMEM = "Invalid token";
     constexpr const char resp_unauthorized[]  PROGMEM = "Not authorized: you are not the master";
 
+    // Heartbeat watchdog
+    constexpr uint32_t heartbeat_timeout_ms = 50; ///< ms without heartbeat before all motors are stopped
+    constexpr const char msg_heartbeat_timeout[] PROGMEM = "[AMAKERBOT] Heartbeat timeout - stopping motors";
+    constexpr const char msg_heartbeat_restored[] PROGMEM = "[AMAKERBOT] Heartbeat restored";
+
     // UDP command prefixes
-    constexpr const char udp_prefix_register[]   PROGMEM = "AMAKERBOT:register:";
-    constexpr const char udp_cmd_unregister[]     PROGMEM = "AMAKERBOT:unregister";
+    constexpr uint8_t udp_service_id = 0x04;  ///< Unique ID for DFR1216 Service (high nibble of action byte)
+    constexpr uint8_t udp_action_master_register = (udp_service_id << 4) | 0x01;  ///< followed by token string, registers sender IP as master if token valid; server responds with udp_action_master_register + 0x00 on success or + 0x01 on failure (invalid token) — e.g. [0x41][0x00] for success, [0x41][0x01] for invalid token
+    constexpr uint8_t udp_action_master_unregister = (udp_service_id << 4) | 0x02;  ///< 
+    constexpr uint8_t udp_action_heartbeat = (udp_service_id << 4) | 0x03;  ///< (no params), used to detect connection loss to master :  must send at least one heartbeat every ~30ms or all motors are stopped
 
     // OpenAPI route metadata
     constexpr const char desc_register[]      PROGMEM = "Register the calling client (identified by its IP address) as the master controller. Must provide the server-generated token shown in MODE_APP_LOG.";
@@ -105,6 +115,11 @@ void AmakerBotService::registerMaster(const std::string &ip)
         xSemaphoreGive(master_mutex_);
     }
 
+    // Reset heartbeat watchdog for the new master session
+    last_heartbeat_ms_    = 0;
+    heartbeat_active_     = false;
+    heartbeat_timed_out_  = false;
+
     // Log to app_info_logger — visible in MODE_APP_LOG on the screen
     app_info_logger.info(
         progmem_to_string(AmakerBotConsts::msg_registered) + ip);
@@ -127,6 +142,11 @@ void AmakerBotService::unregisterMaster()
         master_ip_ = "";
         xSemaphoreGive(master_mutex_);
     }
+
+    // Clear heartbeat watchdog
+    last_heartbeat_ms_    = 0;
+    heartbeat_active_     = false;
+    heartbeat_timed_out_  = false;
 
     app_info_logger.info(progmem_to_string(AmakerBotConsts::msg_unregistered));
 
@@ -232,13 +252,13 @@ bool AmakerBotService::messageHandler(const std::string &message,
                                        const IPAddress &remoteIP,
                                        uint16_t remotePort)
 {
-    const std::string prefix_register = progmem_to_string(AmakerBotConsts::udp_prefix_register);
-    const std::string cmd_unregister  = progmem_to_string(AmakerBotConsts::udp_cmd_unregister);
+    
+    
 
-    if (message.rfind(prefix_register, 0) == 0)
+    if (message[0] == AmakerBotConsts::udp_action_master_register)
     {
-        // AMAKERBOT:register:<token>
-        std::string token = message.substr(prefix_register.length());
+
+        std::string token = message.substr(1);
         if (token.empty())
             return true; // claimed but ignored — no token provided
 
@@ -246,21 +266,73 @@ bool AmakerBotService::messageHandler(const std::string &message,
         if (token != server_token_)
             return true; // claimed but ignored — invalid token
 
-        std::string ip = remoteIP.toString().c_str();
-        registerMaster(ip);
+        registerMaster(remoteIP.toString().c_str());
         return true;
     }
 
-    if (message == cmd_unregister)
+    if (message[0] == AmakerBotConsts::udp_action_master_unregister)
     {
-        std::string ip = remoteIP.toString().c_str();
-        if (!isMaster(ip))
+        if (!isMaster(remoteIP.toString().c_str()))
             return true; // claimed but ignored — not the master
         unregisterMaster();
         return true;
     }
+    if (message[0] == AmakerBotConsts::udp_action_heartbeat)
+    {
+        // Only accept heartbeats from the registered master
+        if (!isMaster(remoteIP.toString().c_str()))
+            return false; // not our message
 
+        last_heartbeat_ms_   = millis();
+        heartbeat_active_    = true;
+        heartbeat_timed_out_ = false; // restore flag so timeout can fire again
+
+        return true;
+    }
     return false; // not our message
+}
+
+// ---------------------------------------------------------------------------
+// Heartbeat watchdog
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Stop all motors and servos when the master heartbeat times out.
+ * @details Must be called periodically (e.g. every 10 ms from the UDP task).
+ *          The emergency stop fires only on the transition into the timed-out
+ *          state to avoid calling setAllMotorsSpeed(0) on every tick.
+ *          The flag resets automatically when the next valid heartbeat arrives.
+ */
+void AmakerBotService::checkHeartbeatTimeout()
+{
+    // Nothing to watch if no master is registered or no heartbeat has been sent yet
+    if (master_ip_.empty() || !heartbeat_active_)
+        return;
+
+    // we're not at risk of millis() overflow during a game session as millis() rolls over every ~50 days :)
+    if ((millis() - last_heartbeat_ms_) > AmakerBotConsts::heartbeat_timeout_ms)
+    {
+        if (!heartbeat_timed_out_)
+        {
+            heartbeat_timed_out_ = true;
+
+            // Emergency stop — halt all DC motors and continuous servos
+            servo_service.setAllMotorsSpeed(0);
+            servo_service.setAllServoSpeed(0);
+
+            app_info_logger.error(progmem_to_string(AmakerBotConsts::msg_heartbeat_timeout));
+#ifdef VERBOSE_DEBUG
+            if (logger)
+                logger->error(progmem_to_string(AmakerBotConsts::msg_heartbeat_timeout));
+#endif
+        }
+    }
+    else if (heartbeat_timed_out_)
+    {
+        // Heartbeat just came back — clear the timed-out flag
+        heartbeat_timed_out_ = false;
+        app_info_logger.info(progmem_to_string(AmakerBotConsts::msg_heartbeat_restored));
+    }
 }
 
 // ---------------------------------------------------------------------------

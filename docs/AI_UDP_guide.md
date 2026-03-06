@@ -59,6 +59,7 @@ RESPONSE : [action:1B][resp_code:1B][...optional payload bytes]
 | `0x03` | `udp_resp_operation_failed` | Hardware-level failure |
 | `0x04` | `udp_resp_not_started` | Service not yet started |
 | `0x05` | `udp_resp_unknown_cmd` | Action code not recognised |
+| `0x06` | `udp_resp_not_master` | Sender IP is not the registered master (requires prior registration via AmakerBotService) |
 
 ---
 
@@ -106,6 +107,7 @@ Common `<reason>` strings:
 | 3 | BoardInfoService | Binary | `action` byte `0x11`–`0x14` |
 | 4 | MusicService | Text | message starts with `"Music:"` |
 | 5 | DFR1216Service | Binary | `action` byte `0x31`–`0x34` |
+| 6 | AmakerBotService | Binary + Text | binary `action` byte `0x41`–`0x43`; text `"AMAKERBOT:"` is coincidentally routed via byte `0x41` (`'A'`) |
 
 ---
 
@@ -186,10 +188,11 @@ Response `resp_code`: `ok` · `operation_failed` (channel type mismatch or angle
 
 ### `0x22` SET_SERVO_SPEED
 
-Set the speed of one or more continuous-rotation servos.
+Set the speed of one or more continuous-rotation servos. An optional 2-byte trailing field schedules an automatic stop after a given number of milliseconds.
 
 ```
-REQUEST  : [0x22][mask:1B][sp_ch0:1B][sp_ch1:1B]...[sp_ch7:1B]   2–10 bytes
+REQUEST  : [0x22][mask:1B][sp_ch0:1B]...[sp_ch7:1B]              2–10 bytes (no timeout)
+           [0x22][mask:1B][sp_ch0:1B]...[sp_ch7:1B][dur:uint16_LE]  12 bytes  (with timeout)
 RESPONSE : [0x22][resp_code:1B]
 ```
 
@@ -200,6 +203,8 @@ RESPONSE : [0x22][resp_code:1B]
 | 2 | sp_ch0 | uint8 | encoded speed for channel 0 |
 | 3 | sp_ch1 | uint8 | encoded speed for channel 1 |
 | … | … | … | one byte per channel position (sequential, channels 0–7) |
+| 10 | duration_ms_lo | uint8 | *(optional)* low byte of auto-stop delay (ms) |
+| 11 | duration_ms_hi | uint8 | *(optional)* high byte of auto-stop delay (ms) |
 
 **Critical payload rule**: Speed bytes are consumed **one per channel position**, sequentially from channel 0, regardless of the mask. To address channel N, you must provide N+1 speed bytes — intermediate bytes for unmasked channels are consumed but ignored. The safest and recommended pattern is to **always send all 8 speed bytes**, using `0x80` (speed=0) for don't-care channels:
 
@@ -208,6 +213,18 @@ RESPONSE : [0x22][resp_code:1B]
 ```
 
 **Speed encoding**: `encoded = speed + 128`
+
+**Optional auto-stop (`duration_ms`)**: When bytes 10–11 are present and non-zero (uint16 little-endian, 1–65535 ms), the firmware schedules a FreeRTOS one-shot timer for each masked `ROTATIONAL` channel that is *running*. When the timer fires the servo is stopped. The timer is reset if a new speed command arrives before it fires. Sending `duration_ms = 0` (or omitting the field) cancels any pending stop.
+
+```python
+import struct
+# Drive channels 0 & 1 forward at 60% for 2 seconds, then auto-stop
+mask = 0b00000011
+speeds = [60 + 128, 60 + 128] + [128] * 6   # 128 = speed 0 for unused channels
+duration_ms = 2000
+pkt = bytes([0x22, mask]) + bytes(speeds) + struct.pack('<H', duration_ms)
+sock.sendto(pkt, (ROBOT_IP, UDP_PORT))
+```
 
 Response `resp_code`: `ok` · `invalid_params` (< 3 bytes) · `invalid_values` (decoded speed outside −100…+100) · `operation_failed` (channel not `ROTATIONAL`)
 
@@ -673,6 +690,81 @@ Field names: `id` (index), `red`, `green`, `blue`. *(Key is `"id"`, not `"led"` 
 
 ---
 
+---
+
+## 5. AmakerBotService — Binary + Text Protocol
+
+**service_id**: `0x4`  
+**Purpose**: Register/unregister an external client IP as the "master" controller and maintain the heartbeat watchdog.  
+**Authentication**: Token-based. The 5-character hex token is generated at boot and displayed on the TFT screen in `MODE_APP_LOG`.  
+**Master enforcement**: ServoService and DFR1216Service check the registered master IP; commands from non-master IPs return `udp_resp_not_master` (`0x06`).
+
+
+---
+
+### `0x41` MASTER_REGISTER
+
+Register the **sender's IP** as the master controller.
+
+```
+REQUEST  : [0x41][token_bytes…]   1 + N bytes  (N = token length, typically 5)
+RESPONSE : none
+```
+
+| Bytes | Field | Type | Notes |
+|---|---|---|---|
+| 0 | action | uint8 | `0x41` |
+| 1… | token | ASCII bytes | 5-character hex token shown on device screen at boot |
+
+**Behaviour**:
+- If `token` matches the server-generated token, the sender IP is registered as master and the heartbeat watchdog is reset.
+- If `token` is empty or does not match, the message is silently ignored.
+- Replaces any previously registered master.
+
+**No reply** is sent. Registration success is visible on the device screen (`[MASTER] registered from <ip>`).
+
+
+### `0x42` MASTER_UNREGISTER
+
+Clear the current master registration. Only the currently registered master IP can call this.
+
+```
+REQUEST  : [0x42]   1 byte
+RESPONSE : none
+```
+
+**Behaviour**:
+- If the sender IP matches the current master, the registration is cleared and the heartbeat watchdog is reset.
+- If the sender is not the current master, the message is silently ignored.
+
+**Text-equivalent** (also accepted):
+```
+AMAKERBOT:unregister
+```
+
+---
+
+### `0x43` HEARTBEAT
+
+Keep-alive packet that the registered master **must** send at least once every **50 ms**. If no heartbeat is received for more than 50 ms, the firmware performs an emergency motor stop and logs `[AMAKERBOT] Heartbeat timeout - stopping motors`.
+
+```
+REQUEST  : [0x43]   1 byte
+RESPONSE : none
+```
+
+**Behaviour**:
+- Accepted only from the currently registered master IP. Packets from other IPs are ignored.
+- On receipt, updates the internal timestamp; clears the timed-out state if a previous timeout had fired.
+- On timeout (> 50 ms without a heartbeat): calls `setAllMotorsSpeed(0)` and `setAllServoSpeed(0)` **once** (edge-triggered — no repeated calls until the next timeout event).
+- The watchdog is active only while a master is registered **and** at least one heartbeat has been received in the current session.
+
+> ⚠️ **Critical for robot operation**: start sending heartbeats immediately after successful registration. The 50 ms deadline is wall-clock time (checked every ~10 ms from the Core 0 UDP task).
+
+**No reply** is sent.
+
+---
+
 ## Quick-Reference Table
 
 ### Binary commands
@@ -684,7 +776,7 @@ Field names: `id` (index), `red`, `green`, `blue`. *(Key is `"id"`, not `"led"` 
 | `0x13` | BoardInfo | TURN_OFF_ALL_LEDS | 1 | _(none)_ | — |
 | `0x14` | BoardInfo | GET_LED_STATUS | 1 | _(none)_ | JSON `{leds:[{led,red,green,blue}×3]}` |
 | `0x21` | Servo | SET_SERVO_ANGLE | 3 | `[ch0:int16_LE]...[chN:int16_LE]` — bit0=0 skip, bit0=1 angle=`raw>>1` (centre-zero °) | — |
-| `0x22` | Servo | SET_SERVO_SPEED | 3 | `[mask][sp_ch0]...[sp_ch7]` — 1 byte per channel position, `encoded=speed+128` | — |
+| `0x22` | Servo | SET_SERVO_SPEED | 3 | `[mask][sp_ch0]...[sp_ch7]` — 1 byte per channel position, `encoded=speed+128`; optional `[dur_lo][dur_hi]` uint16 LE auto-stop delay (ms) | — |
 | `0x23` | Servo | STOP_SERVOS | 2 | `[mask]` | — |
 | `0x24` | Servo | ATTACH_SERVO | 3 | `[mask][type:0-3]` | — |
 | `0x25` | Servo | SET_MOTOR_SPEED | 2 | `[sp_m0]...[sp_mN]` — sequential, no mask, `encoded=speed+128` | — |
@@ -696,16 +788,22 @@ Field names: `id` (index), `red`, `green`, `blue`. *(Key is `"id"`, not `"led"` 
 | `0x32` | DFR1216 | TURN_OFF_LED | 2 | `[led:0-2]` | — |
 | `0x33` | DFR1216 | TURN_OFF_ALL_LEDS | 1 | _(none)_ | — |
 | `0x34` | DFR1216 | GET_LED_STATUS | 1 | _(none)_ | JSON `{leds:[{id,red,green,blue}×3]}` |
+| `0x41` | AmakerBot | MASTER_REGISTER | 2 | `[token bytes…]` (ASCII, typically 5 chars) | _(none)_ — silent |
+| `0x42` | AmakerBot | MASTER_UNREGISTER | 1 | _(none)_ | _(none)_ — silent |
+| `0x43` | AmakerBot | HEARTBEAT | 1 | _(none)_ | _(none)_ — silent |
 
-### Text commands (MusicService, prefix `Music`)
+### Text commands (MusicService prefix `Music`; AmakerBotService prefix `AMAKERBOT`)
 
 | Command | Payload | Required fields | Response |
 |---|---|---|---|
-| `play` | JSON | `melody` (0–19) [, `option` (1/2/4/8)] | standard text |
-| `tone` | JSON | `freq` (>0 Hz) [, `beat` (>0)] | standard text |
-| `stop` | _(none)_ | — | standard text |
-| `melodies` | _(none)_ | — | JSON string array (raw, no wrapper) |
-| `playnotes` | hex string | tempo byte + note/duration pairs | standard text |
+| `Music:play` | JSON | `melody` (0–19) [, `option` (1/2/4/8)] | standard text |
+| `Music:tone` | JSON | `freq` (>0 Hz) [, `beat` (>0)] | standard text |
+| `Music:stop` | _(none)_ | — | standard text |
+| `Music:melodies` | _(none)_ | — | JSON string array (raw, no wrapper) |
+| `Music:playnotes` | hex string | tempo byte + note/duration pairs | standard text |
+
+
+> Prefer the binary equivalents `0x41` / `0x42` / `0x43` for new code.
 
 ---
 
@@ -722,12 +820,20 @@ Field names: `id` (index), `red`, `green`, `blue`. *(Key is `"id"`, not `"led"` 
 7. **No text encoding**: binary frames must **not** be null-terminated.
 8. **K10SensorsService GET_SENSORS is broken via UDP**: do not send `0x21` expecting sensor data — that action byte is owned by ServoService's SET_SERVO_ANGLE.
 
+### Master registration rules
+
+9. **Register before using protected routes**: ServoService and DFR1216Service enforce master-IP checks. Send `[0x41][token]` (token visible on device screen in `MODE_APP_LOG`) from your client before issuing servo/motor/LED commands.
+10. **Master is IP-bound**: registration locks to the sender's IP address. If your client's IP changes, re-register.
+11. **Binary `0x06` response**: if you receive `[action][0x06]` from a binary command, your IP is not the registered master — register first.
+12. **AmakerBotService has no reply**: `0x41` / `0x42` / `0x43` never send a UDP reply. Confirm registration via HTTP `GET /api/amakerbot/v1/master`.
+13. **Heartbeat is mandatory**: after registration, send `[0x43]` at least every **50 ms** or all motors and servos will be stopped automatically. The watchdog only activates after the first heartbeat is received in a session — but start sending immediately to avoid races.
+
 ### Common rules (both protocols)
 
-9. **Port**: always send to port `24642` unless the device reports a different port via the HTTP API.
-10. **Listen for reply**: bind your socket before sending — the device replies to the **sender IP and port**.
-11. **Timeout**: always implement a receive timeout (recommended: 2 s). If the service was not yet started, the binary protocol returns `resp_not_started`; MusicService silently drops the message when not started.
-12. **Max payload**: keep requests and responses within **256 bytes**.
+13. **Port**: always send to port `24642` unless the device reports a different port via the HTTP API.
+14. **Listen for reply**: bind your socket before sending — the device replies to the **sender IP and port**.
+15. **Timeout**: always implement a receive timeout (recommended: 2 s). If the service was not yet started, the binary protocol returns `resp_not_started`; MusicService silently drops the message when not started.
+16. **Max payload**: keep requests and responses within **256 bytes**.
 
 ### Python examples
 
@@ -858,4 +964,51 @@ send_text(f'Music:playnotes:{hex_str}')
 # Manual example: C4 quarter note + silence eighth at 120 BPM
 # tempo=0x78, note=0x3C dur=0x04, silence=0x80 dur=0x02  →  "783C048002"
 send_text('Music:playnotes:783C048002')
+
+# ── AmakerBotService — master registration & heartbeat ──────────────────────
+
+# Token is shown on the K10 screen in MODE_APP_LOG at boot.
+# You can also retrieve it via HTTP GET /api/amakerbot/v1/token
+
+MY_TOKEN = "A3K9B"  # Replace with actual token from device screen
+
+# Register this machine as master: binary 0x41 + token bytes (no reply expected)
+send_raw(bytes([0x41]) + MY_TOKEN.encode())
+
+# Confirm via HTTP that registration succeeded:
+#   GET http://<device-ip>/api/amakerbot/v1/master
+
+# Heartbeat — must be sent at least every 50 ms while connected.
+# Failure to do so triggers an emergency motor stop on the device.
+# Typical pattern: run a background thread that sends [0x43] every 20–30 ms.
+
+import threading, time
+
+_hb_running = False
+_hb_thread  = None
+
+def _heartbeat_loop():
+    hb = bytes([0x43])
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        while _hb_running:
+            s.sendto(hb, (UDP_IP, UDP_PORT))
+            time.sleep(0.025)   # 25 ms → well within the 50 ms deadline
+
+def start_heartbeat():
+    global _hb_running, _hb_thread
+    _hb_running = True
+    _hb_thread  = threading.Thread(target=_heartbeat_loop, daemon=True)
+    _hb_thread.start()
+
+def stop_heartbeat():
+    global _hb_running
+    _hb_running = False
+
+# Usage:
+start_heartbeat()       # start after successful registration
+# ... drive the robot ...
+stop_heartbeat()        # stop heartbeat when done
+
+# Unregister (only works if we are the current master — no reply expected)
+send_raw(bytes([0x42]))
 ```

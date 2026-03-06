@@ -121,6 +121,8 @@ void xtask_UDP_SVR(void *pvParameters)
 {
   for (;;)
   {
+    // Check for heartbeat timeout every tick (~10 ms)
+    amakerbot_service.checkHeartbeatTimeout();
     vTaskDelay(udp_task_delay_ticks);
   }
 }

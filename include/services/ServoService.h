@@ -37,6 +37,7 @@ public:
     struct ServoSpeedOp {
         uint8_t channel;
         int8_t speed;
+        uint32_t duration_ms = 0;  ///< Optional auto-stop delay in ms (0 = no timeout)
     };
     struct ServoAngleOp {
         uint8_t channel;
@@ -60,18 +61,21 @@ public:
     bool setServoAngle(uint8_t channel, uint16_t angle);
     /**
      * @brief Set servo speed for continuous rotation
-     * @param channel Servo channel (0-7 or 5)
-     * @param speed Speed value (-100 to +100)
+     * @param channel      Servo channel (0-7)
+     * @param speed        Speed value (-100 to +100)
+     * @param duration_ms  Optional auto-stop delay in ms. If > 0 and speed != 0, the servo
+     *                     is automatically stopped after this many milliseconds. 0 = no timeout.
      * @return true if successful, false otherwise
      */
-    bool setServoSpeed(uint8_t channel, int8_t speed);
+    bool setServoSpeed(uint8_t channel, int8_t speed, uint32_t duration_ms = 0);
 
     /**
      * @brief Set all attached continuous servos to the same speed
-     * @param speed Speed value (-100 to +100) 
+     * @param speed        Speed value (-100 to +100)
+     * @param duration_ms  Optional auto-stop delay in ms (0 = no timeout, forwarded to setServoSpeed)
      * @return true if successful, false otherwise
      */
-    bool setAllServoSpeed(int8_t speed);
+    bool setAllServoSpeed(int8_t speed, uint32_t duration_ms = 0);
 
     /**
      * @brief Set speed for multiple servos at once
@@ -169,4 +173,11 @@ private:
 
     // UDP binary helpers
     std::string getAttachedServosMasked(uint8_t mask);
+
+    /**
+     * @brief Start or cancel the per-channel auto-stop FreeRTOS timer.
+     * @param channel     Servo channel (0-7)
+     * @param duration_ms Auto-stop delay in ms; 0 cancels any pending stop.
+     */
+    void scheduleChannelStop(uint8_t channel, uint32_t duration_ms);
 };

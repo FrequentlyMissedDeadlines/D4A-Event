@@ -41,7 +41,12 @@ Handler registration happens in `main.cpp` `setup()`. Services must implement `I
 |---|---|---|---|
 | 1 | **ServoService** | `Servo Service` | setServoAngle, setServoSpeed, stopAll, setAllServoAngle, setAllServoSpeed, setServosAngleMultiple, setServosSpeedMultiple, attachServo, getStatus, getAllStatus, setMotorSpeed, stopAllMotors |
 | 2 | **K10SensorsService** | `K10 Sensors Service` | getSensors |
-| 3 | **MusicService** | `Music` | play, tone, stop, melodies |
+| 3 | **BoardInfoService** | Binary `0x11`–`0x14` | SET_LED_COLOR, TURN_OFF_LED, TURN_OFF_ALL_LEDS, GET_LED_STATUS |
+| 4 | **MusicService** | `Music` | play, tone, stop, melodies, playnotes |
+| 5 | **DFR1216Service** | Binary `0x31`–`0x34` | SET_LED_COLOR, TURN_OFF_LED, TURN_OFF_ALL_LEDS, GET_LED_STATUS |
+| 6 | **AmakerBotService** | Binary `0x41`–`0x43` / Text `AMAKERBOT` | MASTER_REGISTER, MASTER_UNREGISTER, HEARTBEAT |
+
+> **Note on binary protocol**: BoardInfoService and DFR1216Service use a compact binary framing instead of the text `<Service>:<command>:<JSON>` format. See [docs/AI_UDP_guide.md](../../docs/AI_UDP_guide.md) for full binary encoding details.
 
 ---
 
@@ -73,18 +78,20 @@ Servo Service:setServoAngle:{"channel":<uint8>,"angle":<uint16>}
 
 ### `setServoSpeed`
 
-Set the speed of one continuous-rotation servo.
+Set the speed of one continuous-rotation servo. An optional `duration_ms` field schedules an automatic stop after the given number of milliseconds.
 
 **Full message**
 
 ```
 Servo Service:setServoSpeed:{"channel":<uint8>,"speed":<int8>}
+Servo Service:setServoSpeed:{"channel":<uint8>,"speed":<int8>,"duration_ms":<uint32>}
 ```
 
-| JSON field | Type | Range | Description |
-|---|---|---|---|
-| `channel` | `uint8` | 0–7 | Target servo channel |
-| `speed` | `int8` | -100–100 | Speed percentage; negative = reverse |
+| JSON field | Type | Range | Required | Description |
+|---|---|---|---|---|
+| `channel` | `uint8` | 0–7 | ✅ | Target servo channel |
+| `speed` | `int8` | -100–100 | ✅ | Speed percentage; negative = reverse |
+| `duration_ms` | `uint32` | ≥ 1 | ❌ | Auto-stop delay in ms. Servo stops automatically after this many ms. Omit for no timeout. |
 
 ---
 
@@ -118,17 +125,19 @@ Servo Service:setAllServoAngle:{"angle":<uint16>}
 
 ### `setAllServoSpeed`
 
-Set all attached continuous-rotation servos to the same speed simultaneously.
+Set all attached continuous-rotation servos to the same speed simultaneously. An optional `duration_ms` field auto-stops all of them after the given number of milliseconds.
 
 **Full message**
 
 ```
 Servo Service:setAllServoSpeed:{"speed":<int8>}
+Servo Service:setAllServoSpeed:{"speed":<int8>,"duration_ms":<uint32>}
 ```
 
-| JSON field | Type | Range | Description |
-|---|---|---|---|
-| `speed` | `int8` | -100–100 | Speed percentage; negative = reverse |
+| JSON field | Type | Range | Required | Description |
+|---|---|---|---|---|
+| `speed` | `int8` | -100–100 | ✅ | Speed percentage; negative = reverse |
+| `duration_ms` | `uint32` | ≥ 1 | ❌ | Auto-stop delay in ms applied to all servos. Omit for no timeout. |
 
 ---
 
@@ -158,19 +167,27 @@ Servo Service:setServosAngleMultiple:{"servos":[{"channel":0,"angle":90},{"chann
 
 ### `setServosSpeedMultiple`
 
-Set the speed for multiple servos in a single message.
+Set the speed for multiple servos in a single message. Each servo entry may include an independent `duration_ms` for per-servo auto-stop.
 
 **Full message**
 
 ```
 Servo Service:setServosSpeedMultiple:{"servos":[{"channel":<uint8>,"speed":<int8>}, ...]}
+Servo Service:setServosSpeedMultiple:{"servos":[{"channel":<uint8>,"speed":<int8>,"duration_ms":<uint32>}, ...]}
 ```
 
-| JSON field | Type | Description |
-|---|---|---|
-| `servos` | `JsonArray` | Array of channel/speed pairs |
-| `servos[].channel` | `uint8` | Servo channel (0–7) |
-| `servos[].speed` | `int8` | Speed percentage (-100–100) |
+| JSON field | Type | Required | Description |
+|---|---|---|---|
+| `servos` | `JsonArray` | ✅ | Array of channel/speed operations |
+| `servos[].channel` | `uint8` | ✅ | Servo channel (0–7) |
+| `servos[].speed` | `int8` | ✅ | Speed percentage (-100–100) |
+| `servos[].duration_ms` | `uint32` | ❌ | Per-servo auto-stop delay in ms. Omit for no timeout. |
+
+**Example**
+
+```
+Servo Service:setServosSpeedMultiple:{"servos":[{"channel":0,"speed":50,"duration_ms":500},{"channel":1,"speed":-30}]}
+```
 
 ---
 
@@ -359,7 +376,93 @@ Music:melodies
 
 ---
 
-## Reply Format
+### `playnotes`
+
+Play a custom note sequence defined as a hex-encoded binary string. See [docs/AI_UDP_guide.md](../../docs/AI_UDP_guide.md#playnotes) for full encoding details.
+
+**Full message**
+
+```
+Music:playnotes:<hex_string>
+```
+
+**Example** (C4 quarter note + silence eighth at 120 BPM):
+
+```
+Music:playnotes:783C048002
+```
+
+---
+
+## AmakerBotService — Master Registration & Heartbeat
+
+**service_id**: `0x4`  
+**Prefix**: `AMAKERBOT` (text) / binary action bytes `0x41`–`0x43`  
+**Source file**: [src/services/implementations/amakerbot/AmakerBotService.cpp](../../src/services/implementations/amakerbot/AmakerBotService.cpp)
+
+This service manages the "master controller" concept. Only the registered master IP is allowed to issue servo, motor, and LED commands to the robot.
+
+### Registration flow
+
+1. On boot, the device generates a 5-character hex token and logs it to the display in `MODE_APP_LOG`.
+2. Your client registers by sending `[0x41]<token>` from its IP.
+3. Start sending heartbeat packets (`[0x43]`) at least every **50 ms** to keep the motors armed. If heartbeats stop, all motors and continuous servos are stopped automatically.
+4. While registered and heartbeating, protected services (ServoService, DFR1216Service) accept commands only from your IP.
+5. Send `[0x42]` to release the registration.
+
+---
+
+### `0x41` MASTER_REGISTER
+
+Register the sender’s IP as master (if token matches).
+
+```
+[0x41][token bytes…]
+```
+
+| Bytes | Description |
+|---|---|
+| `0x41` | Action byte |
+| `token` | 5-character hex token from device screen (raw ASCII bytes, no null terminator) |
+
+> No UDP reply. Silent on invalid token.
+
+---
+
+### `0x42` MASTER_UNREGISTER
+
+Release master registration (sender must be current master).
+
+```
+[0x42]
+```
+
+> No UDP reply. Silent if sender is not master. Resets the heartbeat watchdog.
+
+**Text-equivalent** (also accepted):
+```
+AMAKERBOT:unregister
+```
+
+---
+
+### `0x43` HEARTBEAT
+
+Keep-alive packet. **Must** be sent at least once every **50 ms** by the registered master or all motors and continuous servos are stopped.
+
+```
+[0x43]
+```
+
+> no UDP reply.
+
+**Timeout behaviour**:
+- The watchdog activates only after the **first** heartbeat is received in a session (i.e. safe to register before starting the heartbeat loop, but start it immediately).
+- On timeout: `setAllMotorsSpeed(0)` + `setAllServoSpeed(0)` are called once (edge-triggered).
+- The watchdog resets automatically when the next valid heartbeat arrives.
+- Timeout event is logged on the device screen: `[AMAKERBOT] Heartbeat timeout - stopping motors`.
+
+---
 
 All structured-service commands reply synchronously via UDP to the sender's IP/port.
 
@@ -440,6 +543,41 @@ send("Music", "play",     {"melody": 8, "option": 4})   # Birthday, once in back
 send("Music", "tone",     {"freq": 440, "beat": 8000})
 send("Music", "stop")
 send("Music", "melodies")
+```
+
+### AmakerBotService — binary registration and heartbeat
+
+```python
+import socket, threading, time
+
+ROBOT_IP = "<robot-ip>"
+UDP_PORT  = 24642
+MY_TOKEN  = "A3K9B"   # replace with the token shown on the device screen
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+# 1. Register as master: binary 0x41 + token bytes (no reply)
+sock.sendto(bytes([0x41]) + MY_TOKEN.encode(), (ROBOT_IP, UDP_PORT))
+
+# 2. Start heartbeat thread — must fire at least every 50 ms
+_running = True
+
+def _hb_loop():
+    hb = bytes([0x43])
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        while _running:
+            s.sendto(hb, (ROBOT_IP, UDP_PORT))
+            time.sleep(0.025)   # 25 ms → safe margin
+
+hb_thread = threading.Thread(target=_hb_loop, daemon=True)
+hb_thread.start()
+
+# 3. Drive the robot…
+
+# 4. Stop heartbeat and unregister (binary 0x42, no reply)
+_running = False
+hb_thread.join()
+sock.sendto(bytes([0x42]), (ROBOT_IP, UDP_PORT))
 ```
 
 ---

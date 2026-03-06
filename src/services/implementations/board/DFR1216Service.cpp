@@ -571,11 +571,11 @@ void DFR1216Service::handle_get_led_status(AsyncWebServerRequest *request)
     if (!checkServiceStarted(request)) return;
     
     JsonDocument doc;
-    JsonArray leds = doc.createNestedArray("leds");
+    JsonArray leds = doc["leds"].to<JsonArray>();
     
     for (uint8_t i = 0; i < 3; i++)
     {
-        JsonObject led = leds.createNestedObject();
+        JsonObject led = leds.add<JsonObject>();
         led["id"] = i;
         led["red"] = led_states_[i].red;
         led["green"] = led_states_[i].green;
@@ -702,11 +702,11 @@ bool DFR1216Service::messageHandler(const std::string &message,
     case DFR1216Consts::udp_action_get_led_status:
     {
         JsonDocument doc;
-        JsonArray leds = doc.createNestedArray("leds");
+        JsonArray leds = doc["leds"].to<JsonArray>();
         
         for (uint8_t i = 0; i < 3; i++)
         {
-            JsonObject led = leds.createNestedObject();
+            JsonObject led = leds.add<JsonObject>();
             led["id"] = i;
             led["red"] = led_states_[i].red;
             led["green"] = led_states_[i].green;

@@ -21,9 +21,10 @@
  *   POST /api/amakerbot/v1/unregister              — clear master (master IP only)
  *   GET  /api/amakerbot/v1/token                   — retrieve the server-generated token (for reference)
  *
- * UDP protocol:
- *   AMAKERBOT:register:<token>  — register UDP sender IP as master (if token matches)
- *   AMAKERBOT:unregister        — clear master (master IP only)
+ * UDP protocol (service_id 0x4):
+ *   [0x41]<token>  — register UDP sender IP as master (if token matches); 
+ *   [0x42]         — clear master (master IP only);                       
+ *   [0x43]         — heartbeat keep-alive; must be sent every ≤50 ms or all motors are stopped
  */
 class AmakerBotService : public IsOpenAPIInterface,
                          public IsUDPMessageHandlerInterface
@@ -80,6 +81,15 @@ public:
      */
     void clearMaster();
 
+    /**
+     * @brief Check whether the master heartbeat has timed out (>50 ms without a
+     *        heartbeat from the registered master) and, if so, stop all motors.
+     * @details Must be called periodically (e.g. every 10 ms from the UDP task).
+     *          The stop is triggered only once per timeout event; it resets
+     *          automatically when the next heartbeat arrives.
+     */
+    void checkHeartbeatTimeout();
+
 private:
     /**
      * @brief Generate a random 5-character alphanumeric token.
@@ -101,4 +111,9 @@ private:
     std::string server_token_;    // Generated once on init, never changes
     std::string master_ip_;       // Current master's IP, empty if none
     SemaphoreHandle_t master_mutex_ = nullptr;
+
+    // Heartbeat watchdog state
+    volatile unsigned long last_heartbeat_ms_ = 0;  ///< millis() of last valid heartbeat
+    volatile bool heartbeat_active_    = false;     ///< true once ≥1 heartbeat received from current master
+    volatile bool heartbeat_timed_out_ = false;     ///< true while in timed-out state (avoids log spam)
 };

@@ -27,12 +27,15 @@ It also expose a UDP service that should received commands from a user remote co
 - **Multi-core FreeRTOS architecture** - Core 0 handles UDP communications, Core 1 handles HTTP/display
 - **OpenAPI 3.0 compliant REST API** - Auto-generated API documentation at `/api/openapi.json`
 - **Service-oriented architecture** - Modular design with plug-and-play services
+- **Async web server** - ESPAsyncWebServer (non-blocking, concurrent requests)
 - **Web interface** - Built-in HTML/JS interface for testing and control
+- **Master controller registration** - Token-based authorization via `AmakerBotService`; protected routes enforce master-IP check
 - **Real-time sensor access** - Light, temperature, humidity, microphone, accelerometer
-- **Servo control** - Control up to 6 servos via web API
-- **Camera support** - Webcam streaming and snapshot capabilities
-- **Rolling logger** - On-screen debug logging with TFT display
-- **UDP & HTTP protocols** - Dual communication channels
+- **Servo control** - Up to 8 servos (DFR0548) + 6 servos, 4 motors (DFR1216 expansion)
+- **Camera support** - JPEG snapshot, MJPEG streaming, and WAV audio streaming (16 kHz mono)
+- **LED control** - Onboard K10 RGB LEDs (3×) and DFR1216 expansion LEDs (WS2812)
+- **Rolling logger** - On-screen debug logging with TFT display; 4 display modes via Button A
+- **UDP & HTTP protocols** - Dual communication channels on port **24642**
 
 ---
 
@@ -55,16 +58,17 @@ For detailed documentation on specific services, see:
 ### Infrastructure Services
 | Service | API Path | Documentation | Description |
 |---------|----------|---------------|-------------|
-| WiFiService | N/A | [📖](WiFiService.md) | WiFi connectivity and AP management |
+| WiFiService | N/A | [📖](user%20guides/WiFiService.md) | WiFi connectivity and AP management |
 | HTTPService | `/api` | [Below](#2-httpservice-api) | REST API server and web interface |
-| UDPService | Port 5005 | [📖](UDPServiceHandlers.md) | UDP packet handling and message routing |
+| UDPService | Port **24642** | [📖](contributor%20guides/UDPServiceHandlers.md) | UDP packet handling and message routing |
+| AmakerBotService | `/api/amakerbot/v1` | [Below](#12-amakerbotservice-apiamakerbot) | Master-controller token registration |
 
 ### Hardware Control Services
 | Service | API Path | Documentation | Description |
 |---------|----------|---------------|-------------|
 | ServoService | `/api/servos/v1` | [Below](#6-servoservice-apiservosv1) | ESP32 PWM-based servo control (8 channels) |
-| DFR1216Service | `/api/DFR1216/v1` | [📖](DFR1216Service.md) | Expansion board servos (6) and motors (4) |
-| WebcamService | `/api/cam/v1` | [Below](#7-webcamservice-apicamv1) | Camera capture and streaming |
+| DFR1216Service | `/api/DFR1216/v1` | [📖](contributor%20guides/DFR1216Service.md) | Expansion board servos (6), motors (4), WS2812 LEDs |
+| WebcamService | `/api/webcam/v1` | [Below](#7-webcamservice-apiwebcamv1) | Camera snapshot, MJPEG stream, WAV audio stream |
 | MusicService | `/api/music/v1` | [Below](#11-musicservice-apimusicv1) | Audio playback and tone generation |
 
 ### Information Services
@@ -101,10 +105,10 @@ For detailed documentation on specific services, see:
 - Home page with route listing at `/`
 - Async web server for non-blocking operations
 
-#### 3. **UDPService** (Port 5005)
-[📖 Full Documentation](UDPServiceHandlers.md)
+#### 3. **UDPService** (Port **24642**)
+[📖 Full Documentation](contributor%20guides/UDPServiceHandlers.md)
 
-- UDP packet handling on configurable port
+- UDP packet handling on port 24642 (configurable)
 - Runs on dedicated RTOS task (Core 0)
 - Asynchronous communication channel
 - Message handler registration system
@@ -113,11 +117,11 @@ For detailed documentation on specific services, see:
 ### Internal Services
 
 #### 4. **BoardInfoService** (`/api/board/v1`)
-- System uptime tracking
-- Heap memory statistics
-- Chip information (cores, model, revision, frequency)
-- SDK version and firmware details
+- System uptime tracking, heap memory statistics
+- Chip information (cores, model, revision, frequency, SDK version)
 - Free sketch space monitoring
+- **Onboard RGB LED control** (3 LEDs, indices 0–2): `GET /leds`, `POST /leds/set`, `POST /leds/off`
+- UDP binary protocol for LED control (actions `0x11`–`0x14`)
 
 #### 5. **K10SensorsService** (`/api/sensors/v1`)
 - **Light sensor** - Ambient light readings
@@ -134,12 +138,13 @@ For detailed documentation on specific services, see:
 - Multiple servo control operations (individual, all, or batch)
 - Uses ESP32 built-in PWM channels
 
-#### 7. **WebcamService** (`/api/cam/v1`)
-- Camera snapshot capture via GC2145
-- Streaming capabilities
-- Image quality configuration
-- JPEG compression
-- Multiple resolution support
+#### 7. **WebcamService** (`/api/webcam/v1`)
+- Camera snapshot capture via GC2145 sensor
+- MJPEG streaming (`/api/webcam/v1/stream`)
+- **WAV audio streaming** (`/api/webcam/v1/audio`) — 16 kHz, 16-bit, mono, I²S microphone
+- Camera settings via POST (`quality`, `brightness`, `contrast`, `saturation`, `framesize`)
+- Settings persistence to NVS flash (namespace `webcam`)
+- Supports resolutions from 96×96 to UXGA (1600×1200)
 
 #### 8. **SettingsService** (`/api/settings/v1`)
 - Persistent configuration storage
@@ -149,14 +154,15 @@ For detailed documentation on specific services, see:
 - Per-service configuration management
 
 #### 9. **DFR1216Service** (`/api/DFR1216/v1`)
-[📖 Full Documentation](DFR1216Service.md)
+[📖 Full Documentation](contributor%20guides/DFR1216Service.md)
 
 - DFRobot Unihiker expansion board support (DFR1216)
 - I2C communication with expansion modules
 - 6 servo channels via PCA9685 PWM chip
 - 4 DC motor channels with H-bridge driver
-- Separate power management for high-current loads
-- Multi-sensor integration
+- **WS2812 LED control** (3 LEDs with per-LED brightness): `POST /setLEDColor`, `POST /turnOffLED`, `GET /getLEDStatus`
+- UDP binary protocol for LED control (actions `0x31`–`0x34`)
+- Master-check enforcement on servo and motor commands
 
 #### 10. **RollingLoggerService** (`/api/logs/v1`)
 [📖 Full Documentation](RollingLogger.md)
@@ -172,13 +178,18 @@ For detailed documentation on specific services, see:
 
 #### 11. **MusicService** (`/api/music/v1`)
 - Audio playback control via UNIHIKER K10 music hardware
-- Music file management
-- Volume control
-- Playback state management
-- Tone generation
+- Melody playback (20 built-in melodies), custom note sequences via `playnotes`
+- Tone generation at specified frequency and duration
 - Buzzer control
+- UDP text protocol: `Music:play`, `Music:tone`, `Music:stop`, `Music:melodies`, `Music:playnotes`
 
-
+#### 12. **AmakerBotService** (`/api/amakerbot/v1`)
+- **Master controller registration** — one external client IP is promoted to "master"
+- On startup, a random 5-character hex token is generated and logged to the screen (`MODE_APP_LOG`)
+- HTTP endpoints: `POST /register?token=`, `GET /master`, `POST /unregister`, `GET /token`
+- UDP protocol: `0x41:<token>` register master, `0x42` unregister master, `0x43` heartbeat 
+- Protected routes (Servo, DFR1216) check the registered master IP before executing commands
+- Implements `IsMasterRegistryInterface` for decoupled access by other services
 
 ### Support Components
 
@@ -196,12 +207,13 @@ For detailed documentation on specific services, see:
 
 #### **UTB2026 UI**
 - Custom graphical interface for TFT display
-- WiFi status display with visual indicators
-- IP address information display
-- System status indicators
-- Multi-mode display (status, logs, metrics)
-- Button-controlled mode switching
-- Real-time updates via FreeRTOS task
+- WiFi status (SSID, IP address) display
+- **4 display modes** cycled with Button A:
+  - `MODE_APP_UI` — network info + servo status
+  - `MODE_APP_LOG` — full-screen app log (default; shows master token on boot)
+  - `MODE_DEBUG_LOG` — full-screen debug log
+  - `MODE_ESP_LOG` — full-screen ESP-IDF log
+- Real-time updates via FreeRTOS task (Core 1)
 
 #### **OpenAPI Infrastructure**
 [📖 IsServiceInterface](IsServiceInterface.md) | [📖 IsOpenAPIInterface](IsOpenAPIInterface.md)
@@ -232,11 +244,12 @@ For detailed documentation on specific services, see:
 
 ### Web Interface Files (in `data/`)
 - `index.html` - Main landing page
-- `CamService.html` - Camera control interface
+- `CamService.html` - Camera control interface (snapshot, MJPEG stream, settings)
 - `ServoService.html` - Servo control interface
 - `MusicService.html` - Music service interface
 - `LogService.html` - Logging interface
-- `MetricService.html` - Metrics interface
+- `MetricService.html` - Metrics and board info interface
+- `LedService.html` - RGB LED control interface (K10 onboard + DFR1216 expansion)
 - `style.css` - Common styles
 
 ---

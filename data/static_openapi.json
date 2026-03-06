@@ -982,41 +982,140 @@
       "post": {
         "tags": ["Servos"],
         "summary": "Set servo speed",
-        "description": "Set continuous servo speed for rotational servos",
+        "description": "Set continuous servo speed for a single rotational servo. Optional `duration_ms` auto-stops the servo after the given number of milliseconds.",
         "operationId": "setServoSpeed",
-        "parameters": [
-          {
-            "name": "channel",
-            "in": "query",
-            "description": "Servo channel (0-7)",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "speed",
-            "in": "query",
-            "description": "Speed percentage (-100 to +100, negative is reverse)",
-            "required": true,
-            "schema": {
-              "type": "integer"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["channel", "speed"],
+                "properties": {
+                  "channel": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 7,
+                    "description": "Servo channel (0–7)"
+                  },
+                  "speed": {
+                    "type": "integer",
+                    "minimum": -100,
+                    "maximum": 100,
+                    "description": "Speed percentage (negative = reverse, 0 = stop)"
+                  },
+                  "duration_ms": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional auto-stop delay in ms. The servo is stopped automatically after this many ms. Omit or set 0 for no timeout."
+                  }
+                }
+              },
+              "example": {"channel": 0, "speed": 50, "duration_ms": 500}
             }
           }
-        ],
+        },
         "responses": {
-          "200": {
-            "description": "Operation completed successfully"
-          },
-          "422": {
-            "description": "Missing required parameters"
-          },
-          "500": {
-            "description": "Operation failed"
-          },
-          "503": {
-            "description": "Service not initialized or not started"
+          "200": {"description": "Operation completed successfully"},
+          "422": {"description": "Missing required parameters"},
+          "500": {"description": "Operation failed"},
+          "503": {"description": "Service not initialized or not started"}
+        }
+      }
+    },
+    "/servos/v1/setAllServoSpeed": {
+      "post": {
+        "tags": ["Servos"],
+        "summary": "Set all servos speed",
+        "description": "Set the same speed on all attached rotational servos. Optional `duration_ms` auto-stops all of them after the given number of milliseconds.",
+        "operationId": "setAllServoSpeed",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["speed"],
+                "properties": {
+                  "speed": {
+                    "type": "integer",
+                    "minimum": -100,
+                    "maximum": 100,
+                    "description": "Speed percentage (negative = reverse, 0 = stop)"
+                  },
+                  "duration_ms": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional auto-stop delay in ms applied to every servo. Omit or set 0 for no timeout."
+                  }
+                }
+              },
+              "example": {"speed": 75, "duration_ms": 1000}
+            }
           }
+        },
+        "responses": {
+          "200": {"description": "Operation completed successfully"},
+          "422": {"description": "Missing required parameters"},
+          "500": {"description": "Operation failed"},
+          "503": {"description": "Service not initialized or not started"}
+        }
+      }
+    },
+    "/servos/v1/setServosSpeedMultiple": {
+      "post": {
+        "tags": ["Servos"],
+        "summary": "Set multiple servos speed",
+        "description": "Set speed for multiple rotational servos in a single request. Each entry may optionally include `duration_ms` for an independent per-servo auto-stop timer.",
+        "operationId": "setServosSpeedMultiple",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["servos"],
+                "properties": {
+                  "servos": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["channel", "speed"],
+                      "properties": {
+                        "channel": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 7
+                        },
+                        "speed": {
+                          "type": "integer",
+                          "minimum": -100,
+                          "maximum": 100
+                        },
+                        "duration_ms": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Optional per-servo auto-stop delay in ms."
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "servos": [
+                  {"channel": 0, "speed": 50, "duration_ms": 500},
+                  {"channel": 1, "speed": -30}
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Operation completed successfully"},
+          "422": {"description": "Missing required parameters"},
+          "500": {"description": "Operation failed"},
+          "503": {"description": "Service not initialized or not started"}
         }
       }
     },

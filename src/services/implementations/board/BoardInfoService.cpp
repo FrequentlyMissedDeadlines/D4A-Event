@@ -312,11 +312,11 @@ bool BoardInfoService::messageHandler(const std::string &message,
     case BoardInfoConsts::udp_action_get_led_status:
     {
         JsonDocument doc;
-        JsonArray leds = doc.createNestedArray(FPSTR(BoardInfoConsts::str_leds));
+        JsonArray leds = doc[FPSTR(BoardInfoConsts::str_leds)].to<JsonArray>();
         
         for (uint8_t i = 0; i < 3; i++)
         {
-            JsonObject led = leds.createNestedObject();
+            JsonObject led = leds.add<JsonObject>();
             led[FPSTR(BoardInfoConsts::str_led)] = i;
             led[FPSTR(BoardInfoConsts::str_red)] = rgb_led_states_[i].red;
             led[FPSTR(BoardInfoConsts::str_green)] = rgb_led_states_[i].green;
@@ -386,11 +386,11 @@ void BoardInfoService::handle_get_rgb_leds(AsyncWebServerRequest *request)
     if (!checkServiceStarted(request)) return;
     
     JsonDocument doc;
-    JsonArray leds = doc.createNestedArray(FPSTR(BoardInfoConsts::str_leds));
+    JsonArray leds = doc[FPSTR(BoardInfoConsts::str_leds)].to<JsonArray>();
     
     for (uint8_t i = 0; i < 3; i++)
     {
-        JsonObject led = leds.createNestedObject();
+        JsonObject led = leds.add<JsonObject>();
         led[FPSTR(BoardInfoConsts::str_led)] = i;
         led[FPSTR(BoardInfoConsts::str_red)] = rgb_led_states_[i].red;
         led[FPSTR(BoardInfoConsts::str_green)] = rgb_led_states_[i].green;

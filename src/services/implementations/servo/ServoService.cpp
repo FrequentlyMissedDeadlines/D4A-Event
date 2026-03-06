@@ -25,6 +25,7 @@
 #include <ESPAsyncWebServer.h>
 #include <pgmspace.h>
 #include <ArduinoJson.h>
+#include <freertos/timers.h>
 #include "DFR1216/DFR1216.h"
 #include "services/SettingsService.h"
 #include "services/UDPService.h"
@@ -65,6 +66,7 @@ namespace ServoConsts
     constexpr const char path_servo[] PROGMEM = "servo/";
     constexpr const char servo_angle[] PROGMEM = "angle";
     constexpr const char servo_channel[] PROGMEM = "channel";
+    constexpr const char servo_duration_ms[] PROGMEM = "duration_ms";  ///< Optional auto-stop delay field
     constexpr const char servo_speed[] PROGMEM = "speed";
     constexpr const char servos[] PROGMEM = "servos";
     constexpr const char msg_no_saved_settings[] PROGMEM = "No saved servo settings found.";
@@ -127,22 +129,22 @@ namespace ServoConsts
     constexpr const char schema_channel_status[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\"},\"status\":{\"type\":\"string\"}}}";
     constexpr const char schema_all_servos[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
     constexpr const char req_channel_angle_07[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"channel\",\"angle\"]}";
-    constexpr const char req_channel_speed[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}},\"required\":[\"channel\",\"speed\"]}";
+    constexpr const char req_channel_speed[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100},\"duration_ms\":{\"type\":\"integer\",\"minimum\":1,\"description\":\"Auto-stop delay in ms (optional)\"}},\"required\":[\"channel\",\"speed\"]}";
     constexpr const char req_angle[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"angle\"]}";
-    constexpr const char req_speed[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}},\"required\":[\"speed\"]}";
+    constexpr const char req_speed[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100},\"duration_ms\":{\"type\":\"integer\",\"minimum\":1,\"description\":\"Auto-stop delay in ms (optional)\"}},\"required\":[\"speed\"]}";
     constexpr const char req_channel_connection[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"connection\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3,\"description\":\"0=None, 1=continuous, 2=angular 180 degree, 3=angular 270 degrees\"}},\"required\":[\"channel\",\"connection\"]}";
-    constexpr const char req_servos_speed_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}},\"required\":[\"channel\",\"speed\"]}}},\"required\":[\"servos\"]}";
+    constexpr const char req_servos_speed_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100},\"duration_ms\":{\"type\":\"integer\",\"minimum\":1}},\"required\":[\"channel\",\"speed\"]}}},\"required\":[\"servos\"]}";
     constexpr const char req_servos_angle_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"channel\",\"angle\"]}}},\"required\":[\"servos\"]}";
 
     // Example values
     constexpr const char ex_channel_angle[] PROGMEM = "{\"channel\":0,\"angle\":90}";
-    constexpr const char ex_channel_speed[] PROGMEM = "{\"channel\":0,\"speed\":50}";
+    constexpr const char ex_channel_speed[] PROGMEM = "{\"channel\":0,\"speed\":50,\"duration_ms\":500}";
     constexpr const char ex_channel_status[] PROGMEM = "{\"channel\":0,\"status\":\"ANGULAR_180\"}";
     constexpr const char ex_all_servos[] PROGMEM = "{\"servos\":[{\"channel\":0,\"status\":\"ANGULAR_180\"},{\"channel\":1,\"status\":\"NOT_CONNECTED\"}]}";
     constexpr const char ex_angle[] PROGMEM = "{\"angle\":90}";
     constexpr const char ex_speed[] PROGMEM = "{\"speed\":50}";
     constexpr const char ex_channel_connection[] PROGMEM = "{\"channel\":0,\"connection\":0}";
-    constexpr const char ex_servos_speed_multiple[] PROGMEM = "{\"servos\":[{\"channel\":0,\"speed\":50},{\"channel\":1,\"speed\":-30}]}";
+    constexpr const char ex_servos_speed_multiple[] PROGMEM = "{\"servos\":[{\"channel\":0,\"speed\":50,\"duration_ms\":500},{\"channel\":1,\"speed\":-30}]}";
     constexpr const char ex_servos_angle_multiple[] PROGMEM = "{\"servos\":[{\"channel\":0,\"angle\":90},{\"channel\":1,\"angle\":180}]}";
     constexpr const char ex_result_ok[] PROGMEM = "{\"result\":\"ok\",\"message\":\"setServoAngle\"}";
 
@@ -203,6 +205,21 @@ std::array<int8_t, MAX_SERVO_CHANNELS> servo_speeds = {-128, -128, -128, -128, -
 // Track current motor speeds to avoid redundant updates (initialized to invalid value)
 std::array<int8_t, MAX_MOTOR_CHANNELS> motor_speeds = {-128, -128, -128, -128};
 
+// Per-channel one-shot FreeRTOS timers for the optional auto-stop (duration_ms) feature
+static TimerHandle_t channel_stop_timers[MAX_SERVO_CHANNELS] = {};
+extern ServoService servo_service; // defined in main.cpp
+
+/**
+ * @brief FreeRTOS timer callback: stop the servo channel encoded in the timer ID.
+ * @note  Called from the FreeRTOS timer service task. The one-shot timer is already
+ *        dormant when the callback runs, so calling xTimerStop inside is safe.
+ */
+static void servo_stop_timer_cb(TimerHandle_t xTimer)
+{
+    const uint8_t ch = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(pvTimerGetTimerID(xTimer)));
+    servo_service.setServoSpeed(ch, 0); // duration_ms=0 → no recursive scheduling
+}
+
 bool ServoService::initializeService()
 {
     logger->info(progmem_to_string(ServoConsts::msg_initializing));
@@ -215,6 +232,17 @@ bool ServoService::initializeService()
     {
         logger->warning(progmem_to_string(ServoConsts::msg_issue_detected));
         setServiceStatus(INITIALIZED_FAILED);
+    }
+
+    // Create per-channel one-shot timers for the optional timed-stop feature
+    for (uint8_t ch = 0; ch < MAX_SERVO_CHANNELS; ++ch)
+    {
+        channel_stop_timers[ch] = xTimerCreate(
+            "svStop",
+            pdMS_TO_TICKS(1000),  // initial period is irrelevant; reset before each start
+            pdFALSE,              // one-shot (no auto-reload)
+            reinterpret_cast<void *>(static_cast<uintptr_t>(ch)),
+            servo_stop_timer_cb);
     }
 
     // Return true to allow other services to continue even if servo fails
@@ -312,7 +340,7 @@ bool ServoService::setServoAngle(uint8_t channel, uint16_t angle)
 }
 
 // Set servo speed for continuous rotation
-bool ServoService::setServoSpeed(uint8_t channel, int8_t speed)
+bool ServoService::setServoSpeed(uint8_t channel, int8_t speed, uint32_t duration_ms)
 {
     if (!isServiceStarted())
     {
@@ -341,6 +369,8 @@ bool ServoService::setServoSpeed(uint8_t channel, int8_t speed)
                                               : (speed < 0 ? eServo360Direction_t::eBackward
                                                            : eServo360Direction_t::eStop),
                                     static_cast<uint8_t>(std::abs(speed)));
+        // Schedule an auto-stop if requested; cancel any pending stop when speed == 0
+        scheduleChannelStop(channel, (speed != 0) ? duration_ms : 0);
         return true;
     }
     catch (const std::exception &e)
@@ -350,7 +380,7 @@ bool ServoService::setServoSpeed(uint8_t channel, int8_t speed)
     }
 }
 
-bool ServoService::setAllServoSpeed(int8_t speed)
+bool ServoService::setAllServoSpeed(int8_t speed, uint32_t duration_ms)
 {
 #ifdef SERVO_VERBOSE_DEBUG
     logger->debug("setAllServoSpeed " + std::to_string(speed));
@@ -364,7 +394,7 @@ bool ServoService::setAllServoSpeed(int8_t speed)
 #endif
         if (attached_servos[channel] == ServoConnection::ROTATIONAL)
         {
-            allSuccess = allSuccess && this->setServoSpeed(channel, speed);
+            allSuccess = allSuccess && this->setServoSpeed(channel, speed, duration_ms);
         }
     }
     return allSuccess;
@@ -404,10 +434,27 @@ bool ServoService::setServosSpeedMultiple(const std::vector<ServoSpeedOp> &ops)
 #ifdef SERVO_VERBOSE_DEBUG
         logger->debug("  op: channel=" + std::to_string(op.channel) + ", speed=" + std::to_string(op.speed));
 #endif
-        if (!setServoSpeed(op.channel, op.speed))
+        if (!setServoSpeed(op.channel, op.speed, op.duration_ms))
             all_success = false;
     }
     return all_success;
+}
+
+/**
+ * @brief Start or cancel the per-channel auto-stop FreeRTOS timer.
+ * @param channel     Servo channel (0-7).
+ * @param duration_ms Auto-stop delay in ms; 0 cancels any pending stop.
+ * @note  xTimerChangePeriod both changes the period AND starts the timer if it is dormant.
+ *        Calling it with an already-running timer resets the countdown to the new period.
+ */
+void ServoService::scheduleChannelStop(uint8_t channel, uint32_t duration_ms)
+{
+    if (channel >= MAX_SERVO_CHANNELS || !channel_stop_timers[channel])
+        return;
+    if (duration_ms > 0)
+        xTimerChangePeriod(channel_stop_timers[channel], pdMS_TO_TICKS(duration_ms), 0);
+    else
+        xTimerStop(channel_stop_timers[channel], 0);
 }
 
 /**
@@ -484,7 +531,16 @@ bool ServoService::setMotorSpeed(uint8_t motor, int8_t speed)
 
 bool ServoService::stopService()
 {
-    // Stop all servos when service stops
+    // Stop and delete per-channel auto-stop timers
+    for (uint8_t ch = 0; ch < MAX_SERVO_CHANNELS; ++ch)
+    {
+        if (channel_stop_timers[ch])
+        {
+            xTimerStop(channel_stop_timers[ch], 0);
+            xTimerDelete(channel_stop_timers[ch], 0);
+            channel_stop_timers[ch] = nullptr;
+        }
+    }
     setServiceStatus(STOPPED);
     return false;
 }
@@ -637,6 +693,7 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse> &sta
             
             uint8_t channel = doc[ServoConsts::servo_channel].as<uint8_t>();
             int8_t speed = doc[ServoConsts::servo_speed].as<int>();
+            uint32_t duration_ms = doc[ServoConsts::servo_duration_ms] | 0u;
             
             if (channel > 7 || speed < -100 || speed > 100)
             {
@@ -644,7 +701,7 @@ bool ServoService::addRouteSetServoSpeed(const std::vector<OpenAPIResponse> &sta
                 return;
             }
             
-            if (this->setServoSpeed(channel, speed))
+            if (this->setServoSpeed(channel, speed, duration_ms))
             {
                 ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_speed));
             }
@@ -875,6 +932,7 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse> &stand
             })) return;
 
             int8_t speed = doc[FPSTR(ServoConsts::servo_speed)].as<int8_t>();
+            uint32_t duration_ms = doc[FPSTR(ServoConsts::servo_duration_ms)] | 0u;
             
             if (speed < -100 || speed > 100)
             {
@@ -882,7 +940,7 @@ bool ServoService::addRouteSetAllSpeed(const std::vector<OpenAPIResponse> &stand
                 return;
             }
             
-            if (setAllServoSpeed(speed))
+            if (setAllServoSpeed(speed, duration_ms))
             {
                 ResponseHelper::sendSuccess(request, FPSTR(ServoConsts::action_set_all_speed));
             }
@@ -931,6 +989,7 @@ bool ServoService::addRouteSetServosSpeedMultiple(const std::vector<OpenAPIRespo
                 ServoSpeedOp op;
                 op.channel = servo_obj[ServoConsts::servo_channel].as<uint8_t>();
                 op.speed = servo_obj[ServoConsts::servo_speed].as<int8_t>();
+                op.duration_ms = servo_obj[ServoConsts::servo_duration_ms] | 0u;
                 ops.push_back(op);
             }
 
@@ -1476,6 +1535,21 @@ bool ServoService::messageHandler(const std::string &message,
                                                          : eServo360Direction_t::eStop;
             const uint8_t duty = static_cast<uint8_t>(speed < 0 ? -speed : speed);
             servoController.setServo360(static_cast<eServoNumber_t>(ch), dir, duty);
+        }
+        // Optional trailing uint16 LE at bytes 10-11: auto-stop duration_ms
+        // The sender must include all 8 speed bytes (total packet len ≥ 10) for this to apply.
+        // duration_ms = 0 means no auto-stop.
+        {
+            const uint32_t duration_ms = (len >= 12)
+                ? (static_cast<uint32_t>(d[10]) | (static_cast<uint32_t>(d[11]) << 8))
+                : 0;
+            for (uint8_t ch = 0; ch < MAX_SERVO_CHANNELS; ++ch)
+            {
+                if (!(mask & (1u << ch)) || attached_servos[ch] != ROTATIONAL)
+                    continue;
+                // Schedule stop for channels running (cancel stop for channels that were stopped)
+                scheduleChannelStop(ch, (servo_speeds[ch] != 0) ? duration_ms : 0);
+            }
         }
         udp_build(action, ok ? UDPProto::udp_resp_ok : UDPProto::udp_resp_operation_failed, nullptr, resp);
         break;

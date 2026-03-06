@@ -32,7 +32,7 @@ The **DFR1216Service** provides integration with the DFRobot Unihiker Expansion 
 
 ### Servo Control
 - **6 Independent Channels**: Control up to 6 standard RC servos
-- **Angle Control**: 0-180° for standard servos, 0-360° for continuous rotation
+- **Angle Control**: 0–180° for standard servos
 - **PWM Generation**: Hardware PWM via PCA9685 chip
 - **Precise Positioning**: High-resolution angle control
 
@@ -42,10 +42,16 @@ The **DFR1216Service** provides integration with the DFRobot Unihiker Expansion 
 - **H-Bridge Driver**: Built-in motor driver circuitry
 - **Independent Control**: Each motor controlled separately
 
+### WS2812 LED Control
+- **3 RGB LEDs** on the expansion board (indices 0–2)
+- Per-LED **brightness** control (0–255)
+- HTTP and UDP binary control
+
 ### REST API
 - **OpenAPI 3.0 Compliant**: Full API specification available
 - **Settings Persistence**: Save/load configuration via SettingsService
 - **JSON Responses**: Standard response format for all endpoints
+- **Master enforcement**: servo and motor POST routes check the registered master IP (via `IsMasterRegistryInterface`)
 
 ## API Endpoints
 
@@ -53,7 +59,7 @@ The **DFR1216Service** provides integration with the DFRobot Unihiker Expansion 
 
 #### Set Servo Angle
 ```http
-POST /api/DFR1216/v1/servo
+POST /api/DFR1216/v1/setServoAngle
 Content-Type: application/json
 
 {
@@ -63,23 +69,19 @@ Content-Type: application/json
 ```
 
 **Parameters:**
-- `channel` (0-5): Servo channel number
-- `angle` (0-180 or 0-360): Target angle in degrees
+- `channel` (0–5): Servo channel number
+- `angle` (0–180): Target angle in degrees
 
 **Response:**
 ```json
-{
-  "status": "success",
-  "channel": 0,
-  "angle": 90
-}
+{"result":"ok","channel":0,"angle":90}
 ```
 
 ### Motor Control
 
 #### Set Motor Speed
 ```http
-POST /api/DFR1216/v1/motor
+POST /api/DFR1216/v1/setMotorSpeed
 Content-Type: application/json
 
 {
@@ -89,43 +91,76 @@ Content-Type: application/json
 ```
 
 **Parameters:**
-- `motor` (1-4): Motor number
-- `speed` (-100 to +100): Speed and direction
-  - Negative: Reverse direction
-  - 0: Stop
-  - Positive: Forward direction
+- `motor` (1–4): Motor number
+- `speed` (-100 to +100): Speed and direction (negative = reverse, 0 = stop)
 
 **Response:**
 ```json
+{"result":"ok","motor":1,"speed":75}
+```
+
+### Status
+
+#### Get Status
+```http
+GET /api/DFR1216/v1/getStatus
+```
+
+**Response:**
+```json
+{"message":"DFR1216Service","status":"started"}
+```
+
+### WS2812 LED Control
+
+#### Set LED Color
+```http
+POST /api/DFR1216/v1/setLEDColor
+Content-Type: application/json
+
 {
-  "status": "success",
-  "motor": 1,
-  "speed": 75
+  "led": 0,
+  "red": 255,
+  "green": 0,
+  "blue": 0,
+  "brightness": 64
 }
 ```
 
-### Configuration Endpoints
+**Parameters:**
+- `led` (0–2): LED index
+- `red`, `green`, `blue` (0–255): Color channels
+- `brightness` (0–255, optional, default 32): Global brightness
+
+#### Turn Off LED
+```http
+POST /api/DFR1216/v1/turnOffLED
+Content-Type: application/json
+
+{ "led": 0 }
+```
+
+#### Get LED Status
+```http
+GET /api/DFR1216/v1/getLEDStatus
+```
+
+**Response:**
+```json
+{"leds":[{"id":0,"red":255,"green":0,"blue":0},{"id":1,"red":0,"green":0,"blue":0},{"id":2,"red":0,"green":0,"blue":0}]}
+```
+
+### Settings
 
 #### Save Settings
 ```http
-POST /api/DFR1216/v1/settings/save
+GET /api/DFR1216/v1/saveSettings
 ```
-
-Persists current DFR1216 configuration to non-volatile storage.
 
 #### Load Settings
 ```http
-POST /api/DFR1216/v1/settings/load
+GET /api/DFR1216/v1/loadSettings
 ```
-
-Restores DFR1216 configuration from non-volatile storage.
-
-#### Get Settings
-```http
-GET /api/DFR1216/v1/settings
-```
-
-Retrieves current DFR1216 configuration as JSON.
 
 ## API Methods
 
@@ -133,14 +168,30 @@ Retrieves current DFR1216 configuration as JSON.
 
 #### `bool setServoAngle(uint8_t channel, uint16_t angle)`
 Sets a servo to a specific angle:
-- **channel**: Servo channel (0-5)
-- **angle**: Target angle (0-180 or 0-360 depending on servo type)
+- **channel**: Servo channel (0–5)
+- **angle**: Target angle (0–180)
 - **Returns**: `true` on success, `false` on error
 
 #### `bool setMotorSpeed(uint8_t motor, int8_t speed)`
 Controls DC motor speed and direction:
-- **motor**: Motor number (1-4)
+- **motor**: Motor number (1–4)
 - **speed**: Speed value (-100 to +100)
+- **Returns**: `true` on success, `false` on error
+
+#### `bool setLEDColor(uint8_t led_index, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness = 32)`
+Sets the RGB color of a WS2812 LED on the expansion board:
+- **led_index**: LED index (0–2)
+- **red**, **green**, **blue**: Color channels (0–255)
+- **brightness**: Global brightness level (0–255, default 32)
+- **Returns**: `true` on success, `false` on error
+
+#### `bool turnOffLED(uint8_t led_index)`
+Turns off a single WS2812 LED (sets color to black):
+- **led_index**: LED index (0–2)
+- **Returns**: `true` on success, `false` on error
+
+#### `bool turnOffAllLEDs()`
+Turns off all 3 WS2812 LEDs on the expansion board.
 - **Returns**: `true` on success, `false` on error
 
 #### Service Lifecycle
@@ -217,7 +268,7 @@ for (uint8_t i = 1; i <= 4; i++) {
 
 ```javascript
 // Set servo position
-fetch('http://192.168.4.1/api/DFR1216/v1/servo', {
+fetch('http://192.168.4.1/api/DFR1216/v1/setServoAngle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ channel: 2, angle: 135 })
@@ -226,13 +277,22 @@ fetch('http://192.168.4.1/api/DFR1216/v1/servo', {
 .then(data => console.log('Servo response:', data));
 
 // Control motor
-fetch('http://192.168.4.1/api/DFR1216/v1/motor', {
+fetch('http://192.168.4.1/api/DFR1216/v1/setMotorSpeed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ motor: 1, speed: -80 })
 })
 .then(response => response.json())
 .then(data => console.log('Motor response:', data));
+
+// Set LED color
+fetch('http://192.168.4.1/api/DFR1216/v1/setLEDColor', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ led: 0, red: 0, green: 255, blue: 0, brightness: 64 })
+})
+.then(response => response.json())
+.then(data => console.log('LED response:', data));
 ```
 
 ### Python Control Script
@@ -245,15 +305,22 @@ BASE_URL = "http://192.168.4.1/api/DFR1216/v1"
 
 def set_servo(channel, angle):
     response = requests.post(
-        f"{BASE_URL}/servo",
+        f"{BASE_URL}/setServoAngle",
         json={"channel": channel, "angle": angle}
     )
     return response.json()
 
 def set_motor(motor, speed):
     response = requests.post(
-        f"{BASE_URL}/motor",
+        f"{BASE_URL}/setMotorSpeed",
         json={"motor": motor, "speed": speed}
+    )
+    return response.json()
+
+def set_led(led, red, green, blue, brightness=64):
+    response = requests.post(
+        f"{BASE_URL}/setLEDColor",
+        json={"led": led, "red": red, "green": green, "blue": blue, "brightness": brightness}
     )
     return response.json()
 
@@ -268,6 +335,9 @@ time.sleep(2)
 set_motor(1, -100)
 time.sleep(2)
 set_motor(1, 0)
+
+# Set LED 0 green
+set_led(0, 0, 255, 0)
 ```
 
 ## Hardware Setup

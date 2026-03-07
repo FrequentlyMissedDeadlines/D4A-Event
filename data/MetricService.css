@@ -1,0 +1,55 @@
+/* MetricService custom styles */
+.metrics-container {
+  margin: 0 auto;
+}
+.metrics-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 400px));
+  gap: 20px;
+  margin: 20px 0;
+  justify-content: center;
+}
+.metric-panel {
+  background: white;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.metric-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #f0f0f0;
+}
+.metric-header h2 {
+  margin: 0;
+  color: #333;
+  font-size: 1.3em;
+}
+.metric-header .btn {
+  padding: 8px 15px;
+  font-size: 0.9em;
+}
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+.metric-row:last-child {
+  border-bottom: none;
+}
+.metric-label {
+  font-weight: bold;
+  color: #555;
+}
+.metric-value {
+  color: #333;
+  font-family: 'Courier New', monospace;
+}
+.metric-highlight {
+  /* ...rest of the styles... */
+}

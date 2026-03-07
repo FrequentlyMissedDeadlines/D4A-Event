@@ -1,0 +1,52 @@
+/* LedService custom styles */
+.led-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 15px;
+  margin: 20px 0;
+}
+.led-card {
+  padding: 1%;
+  border-radius: 12px;
+  background: #1e1e2e;
+  border: 2px solid #44475a;
+  color: #a3a3a3;
+}
+.led-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #44475a;
+}
+.led-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #f8f8f8;
+}
+.led-status-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: #313244;
+  color: #a6adc8;
+  font-weight: bold;
+}
+.led-status-badge.on {
+  background: #a6e3a1;
+  color: #1e1e2e;
+}
+.led-preview-wrap {
+  text-align: center;
+  margin: 10px 0 18px;
+}
+.led-preview {
+  display: inline-block;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #11111b;
+  border: 3px solid #585b70;
+  transition: background 0.25s, box-shadow 0.25s;
+}

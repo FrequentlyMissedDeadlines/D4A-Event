@@ -3,152 +3,61 @@
 <head>
   <meta charset="UTF-8">
   <title>K10 Bot Control Panel</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./amaker.css">
   <link rel="icon" href="./favicon.svg">
 
 </head>
 <body>
-  <h1>🤖 K10 Bot Control Panel</h1>
-  
-  <div class="panel">
-    <div class="service-grid">
-      <a href="./ServoService.html" class="service-card">
-        <div class="service-title">🔧 Servo Control</div>
-        <div class="service-desc">Control servo motors (channels 0-7)</div>
-      </a>
-      <a href="./CamService.html" class="service-card">
-        <div class="service-title">📷 Webcam</div>
-        <div class="service-desc">View camera feed and capture images</div>
-      </a>
-      <a href="./LogService.html" class="service-card">
-        <div class="service-title">📖 Logs</div>
-        <div class="service-desc">View logs</div>
-      </a>
-      <a href="./MetricService.html" class="service-card">
-        <div class="service-title">📊 Metrics</div>
-        <div class="service-desc">View system metrics</div>
-      </a>
-      <a href="./MusicService.html" class="service-card">
-        <div class="service-title">🎵 Music Control</div>
-        <div class="service-desc">Control music playback and tones</div>
-      </a>
-      <a href="./LedService.html" class="service-card">
-        <div class="service-title">💡 LEDs </div>
-        <div class="service-desc">Control RGB LEDs and view K10 sensor readings</div>
-      </a>
-      <a href="./api/openapi.json" class="service-card">
-        <div class="service-title">📖 OpenAPI</div>
-        <div class="service-desc">View OpenAPI documentation</div>
-      </a>
-      <a href="./api/docs/index.html" class="service-card">
-        <div class="service-title">⚙️ OpenAPI</div>
-        <div class="service-desc">Test OpenAPI</div>
-      </a>
-      
-    </div>
-  </div>
+  <nav class="topnav">
+    <a href="./index.html" class="active">🧠 Bot</a>
+    <a href="./ServoService.html">🛵 Moves</a>
+    <a href="./CamService.html">📷 Cam</a>
+    <a href="./LogService.html">📖 Logs</a>
+    <a href="./MetricService.html">📊 Metrics</a>
+    <a href="./MusicService.html">🎵 Music</a>
+    <a href="./LedService.html">💡 LEDs</a>
+  </nav>
+    <h1 id="pageTitle">🧠 aMaker Bot Control panel.<span id="titleStatus" style="font-size: 0.6em; color: #999;"></span></h1>
 
-  <!-- Master Control Panel -->
-  <div class="panel">
-    <h2>🔑 Master Control</h2>
-    <div id="master-status-box" style="padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:14px;background:#f0f0f0;color:#555;">
-      Checking master status…
-    </div>
+  <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">
 
-    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-      <div style="flex:1;min-width:180px;">
-        <label style="display:block;font-weight:bold;font-size:13px;margin-bottom:4px;" for="master-token-input">Token</label>
-        <input id="master-token-input" type="text" placeholder="Enter your secret token" autocomplete="off"
-               style="padding:8px;border:1px solid #ccc;border-radius:4px;width:100%;box-sizing:border-box;font-size:14px;">
+    <div class="panel" style="flex:1;min-width:240px;">
+      <h2>🔑 Master Control</h2>
+      <div id="master-status-box" style="padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;background:#f0f0f0;color:#555;">
+        Checking master status…
       </div>
-      <button id="btn-register" class="btn" onclick="doRegister()" style="height:38px;padding:0 18px;">Register as Master</button>
-      <button id="btn-unregister" class="btn" onclick="doUnregister()"
-              style="height:38px;padding:0 18px;background:#e53935;">Unregister</button>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:140px;">
+          <label style="display:block;font-weight:bold;font-size:12px;margin-bottom:3px;" for="master-token-input">Token</label>
+          <input id="master-token-input" type="text" placeholder="Enter bot token" autocomplete="off">
+        </div>
+        <button id="btn-register" class="btn" onclick="doRegister()">Register as Master</button>
+        <button id="btn-unregister" class="btn" onclick="doUnregister()" style="background:#e53935;">Unregister</button>
+      </div>
+      <div id="master-feedback" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     </div>
 
-    <div id="master-feedback" style="margin-top:10px;font-size:13px;min-height:18px;"></div>
+    <div class="panel" style="flex:1;min-width:220px;">
+      <h2>🖥️ K10 Display</h2>
+      <div id="display-status-box" style="padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;background:#f0f0f0;color:#555;">
+        Checking display mode…
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn" onclick="setDisplayMode('APP_UI')">App UI</button>
+        <button class="btn" onclick="setDisplayMode('APP_LOG')">App Log</button>
+        <button class="btn" onclick="setDisplayMode('DEBUG_LOG')">Debug Log</button>
+        <button class="btn" onclick="setDisplayMode('ESP_LOG')">ESP Log</button>
+        <button class="btn" onclick="cycleDisplayMode()" style="background:#1565c0;">⏭ Next</button>
+      </div>
+      <div id="display-feedback" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    </div>
+
   </div>
 
-  <!-- <div class="panel">
-    <h2>API Routes</h2>
-    <div class="route-tree" id="routesList">
-      Routes are dynamically loaded
-    </div>
-  </div> -->
-
-  <script>
-    // ── Master Control ──────────────────────────────────────────────────────
-    const MASTER_BASE = '/api/amakerbot/v1';
-
-    function setFeedback(msg, ok) {
-      const el = document.getElementById('master-feedback');
-      el.textContent = msg;
-      el.style.color = ok ? '#388e3c' : '#c62828';
-    }
-
-    function renderMasterStatus(data) {
-      const box = document.getElementById('master-status-box');
-      if (data && data.registered) {
-        box.style.background = '#e8f5e9';
-        box.style.color = '#2e7d32';
-        box.innerHTML = '✅ <strong>Master registered</strong> — IP: <code>' + data.ip +
-                        '</code>&nbsp;&nbsp;Token: <code>' + (data.token || '—') + '</code>';
-      } else {
-        box.style.background = '#fff3e0';
-        box.style.color = '#e65100';
-        box.innerHTML = '⚠️ <strong>No master registered</strong>';
-      }
-    }
-
-    function refreshMasterStatus() {
-      fetch(MASTER_BASE + '/master')
-        .then(r => r.json())
-        .then(renderMasterStatus)
-        .catch(() => {
-          const box = document.getElementById('master-status-box');
-          box.style.background = '#ffebee';
-          box.style.color = '#b71c1c';
-          box.textContent = '❌ Could not reach AmakerBot service';
-        });
-    }
-
-    function doRegister() {
-      const token = document.getElementById('master-token-input').value.trim();
-      if (!token) { setFeedback('Please enter a token.', false); return; }
-      fetch(MASTER_BASE + '/register?token=' + encodeURIComponent(token), { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-          if (data.result === 'ok') {
-            setFeedback('Registered successfully (token logged on device).', true);
-            refreshMasterStatus();
-          } else {
-            setFeedback('Error: ' + (data.message || JSON.stringify(data)), false);
-          }
-        })
-        .catch(e => setFeedback('Request failed: ' + e, false));
-    }
-
-    function doUnregister() {
-      const token = document.getElementById('master-token-input').value.trim();
-      const url = token
-        ? MASTER_BASE + '/unregister?token=' + encodeURIComponent(token)
-        : MASTER_BASE + '/unregister';
-      fetch(url, { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-          if (data.result === 'ok') {
-            setFeedback('Master unregistered.', true);
-            refreshMasterStatus();
-          } else {
-            setFeedback('Error: ' + (data.message || JSON.stringify(data)), false);
-          }
-        })
-        .catch(e => setFeedback('Request failed: ' + e, false));
-    }
-
-    // Auto-refresh master status every 5 s
-    refreshMasterStatus();
-    setInterval(refreshMasterStatus, 5000);
-  </script>
+  <script src="./index.js"></script>
+  <div class="statusbar">
+    <span class="status-left" id="page-status"></span>
+    <span class="status-right">🏠 K10 Bot</span>
+  </div>
 </body>
 </html>

@@ -51,6 +51,10 @@
     {
       "name": "Settings",
       "description": "Persistent settings management"
+    },
+    {
+      "name": "AmakerBot",
+      "description": "Master controller registration, heartbeat, and display control"
     }
   ],
   "x-service-settings-pattern": "Each service that implements settings persistence automatically gets two routes: /{service}/saveSettings (GET) to save current settings, and /{service}/loadSettings (GET) to load persisted settings. These routes are not individually documented below but follow a standard pattern.",
@@ -1765,6 +1769,153 @@
         "responses": {
           "200": {
             "description": "Settings loaded successfully"
+          }
+        }
+      }
+    },
+    "/amakerbot/v1/register": {
+      "post": {
+        "tags": ["AmakerBot"],
+        "summary": "Register as master controller",
+        "description": "Register the calling client as the master controller. Requires the server-generated token shown in MODE_APP_LOG.",
+        "operationId": "amakerBotRegister",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Server-generated token (shown in MODE_APP_LOG)"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Master registered successfully" },
+          "400": { "description": "Missing token parameter" },
+          "401": { "description": "Invalid token" }
+        }
+      }
+    },
+    "/amakerbot/v1/unregister": {
+      "post": {
+        "tags": ["AmakerBot"],
+        "summary": "Unregister master controller",
+        "description": "Unregister the current master. Only the registered master IP can call this.",
+        "operationId": "amakerBotUnregister",
+        "responses": {
+          "200": { "description": "Master unregistered" },
+          "403": { "description": "Not authorized: caller is not the master" }
+        }
+      }
+    },
+    "/amakerbot/v1/master": {
+      "get": {
+        "tags": ["AmakerBot"],
+        "summary": "Get current master info",
+        "description": "Return the IP address and registration status of the current master controller.",
+        "operationId": "amakerBotMaster",
+        "responses": {
+          "200": {
+            "description": "Current master info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "registered": { "type": "boolean" },
+                    "ip": { "type": "string" }
+                  }
+                },
+                "example": { "registered": true, "ip": "192.168.1.42" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/amakerbot/v1/token": {
+      "get": {
+        "tags": ["AmakerBot"],
+        "summary": "Get server token",
+        "description": "Retrieve the server-generated token required for master registration.",
+        "operationId": "amakerBotToken",
+        "responses": {
+          "200": {
+            "description": "Server token",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "token": { "type": "string" } } },
+                "example": { "token": "A3K9B" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/amakerbot/v1/display": {
+      "get": {
+        "tags": ["AmakerBot"],
+        "summary": "Get current display mode",
+        "description": "Get current TFT display mode.",
+        "operationId": "amakerBotDisplayGet",
+        "responses": {
+          "200": {
+            "description": "Current display mode",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": { "type": "string", "enum": ["APP_UI", "APP_LOG", "DEBUG_LOG", "ESP_LOG"] },
+                    "mode_index": { "type": "integer" }
+                  }
+                },
+                "example": { "mode": "APP_LOG", "mode_index": 1 }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["AmakerBot"],
+        "summary": "Set display mode",
+        "description": "Set TFT display mode directly. Accepted values: APP_UI, APP_LOG, DEBUG_LOG, ESP_LOG.",
+        "operationId": "amakerBotDisplaySet",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "enum": ["APP_UI", "APP_LOG", "DEBUG_LOG", "ESP_LOG"] },
+            "description": "Target display mode"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Display mode changed" },
+          "400": { "description": "Invalid mode value" }
+        }
+      }
+    },
+    "/amakerbot/v1/display/next": {
+      "post": {
+        "tags": ["AmakerBot"],
+        "summary": "Cycle to next display mode",
+        "description": "Cycle TFT display to next mode (same as pressing button A). Order: APP_UI → APP_LOG → DEBUG_LOG → ESP_LOG → APP_UI.",
+        "operationId": "amakerBotDisplayNext",
+        "responses": {
+          "200": {
+            "description": "Display mode changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": { "type": "string" },
+                    "mode_index": { "type": "integer" }
+                  }
+                },
+                "example": { "mode": "DEBUG_LOG", "mode_index": 2 }
+              }
+            }
           }
         }
       }

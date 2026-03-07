@@ -1,0 +1,53 @@
+/* MusicService custom styles */
+.music-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin: 20px 0;
+}
+.music-card {
+  background: #2c3e50;
+  padding: 20px;
+  border-radius: 8px;
+  border: 2px solid #34495e;
+}
+.music-card h3 {
+  margin-top: 0;
+  color: #3498db;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 10px;
+}
+.control-label { color: #bdc3c7; }
+.melody-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.melody-btn {
+  padding: 10px;
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s;
+  text-align: center;
+}
+.melody-btn:hover {
+  background: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+}
+.melody-btn:active {
+  transform: translateY(0);
+}
+.option-group {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 10px 0;
+}
+.option-btn {
+  padding: 8px;

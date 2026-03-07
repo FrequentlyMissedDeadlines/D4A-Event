@@ -10,6 +10,8 @@
  */
 #include "DFR1216/DFR1216.h"
 
+SemaphoreHandle_t DFR1216_I2C::__i2c_mutex = nullptr;
+
 DFR1216::DFR1216(){}
 DFR1216::~DFR1216(){}
 
@@ -37,7 +39,7 @@ void DFR1216::setMotorPeriod(ePeriod_t number ,uint16_t motorPeriod)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return;
 }
@@ -57,7 +59,7 @@ void DFR1216::setMotorDuty(eMotorNumber_t number, uint16_t duty)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return;
 }
@@ -95,7 +97,7 @@ void DFR1216::setServo360(eServoNumber_t number, eServo360Direction_t direction,
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
 }
 
@@ -119,7 +121,7 @@ void DFR1216::setServoAngle(eServoNumber_t number, uint8_t angle)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return;
 }
@@ -135,7 +137,7 @@ uint8_t DFR1216::getBattery(void)
     }else{
       DBG("i2c read error, please wait !");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xFF;
 }
@@ -155,7 +157,7 @@ uint32_t DFR1216::getIRData(void)
     }else{
       DBG("i2c read error, please wait !");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xFFFFFFFF;
 }
@@ -177,7 +179,7 @@ uint8_t DFR1216::sendIR(uint32_t data)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xff;
 }
@@ -201,7 +203,7 @@ uint8_t DFR1216::setWS2812(uint32_t *data, uint8_t bright)
     }else{
       DBG("i2c write error");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xff;
 }
@@ -221,7 +223,7 @@ uint8_t DFR1216::setMode(eIONumber_t number, eIOType_t mode)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xff;
 }
@@ -240,7 +242,7 @@ uint8_t DFR1216::setGpioState(eIONumber_t number, eGpioState_t state)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xff;
 }
@@ -257,7 +259,7 @@ uint8_t DFR1216::getGpioState(eIONumber_t number)
     }else{
       DBG("i2c read error, please wait !");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xFF;
 }
@@ -288,7 +290,7 @@ uint16_t DFR1216::getADCValue(eIONumber_t number)
     }else{
       DBG("i2c read error! please wait !");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   return 0xFFFF;
 }
@@ -311,7 +313,7 @@ sDhtData_t DFR1216::getDHTValue(eIONumber_t number)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   delay(30);
   for (uint8_t i = 0; i < RETRY_COUNT; i++) {
@@ -356,7 +358,7 @@ float DFR1216::get18b20Value(eIONumber_t number)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   delay(50);
   for (uint8_t i = 0; i < RETRY_COUNT; i++) {
@@ -403,7 +405,7 @@ int16_t  DFR1216::getSr04Distance(void)
     }else{
       DBG("i2c write error ");
     }
-    delay(20);
+    delay(I2C_RETRY_DELAY_MS);
   }
   delay(30);
   for (uint8_t i = 0; i < RETRY_COUNT; i++) {
@@ -432,6 +434,10 @@ DFR1216_I2C::DFR1216_I2C(TwoWire *pWire, uint8_t addr)
 
 bool DFR1216_I2C::begin()
 {
+  // Create shared I2C mutex on first begin() call (safe: called from setup, single-threaded)
+  if (!__i2c_mutex) {
+    __i2c_mutex = xSemaphoreCreateRecursiveMutex();
+  }
   bool result = false;
   uint8_t retry = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
@@ -466,6 +472,7 @@ bool DFR1216_I2C::begin()
 
 uint8_t DFR1216_I2C::writeReg(uint8_t reg, uint8_t *data, uint8_t len)
 {
+  if (__i2c_mutex) xSemaphoreTakeRecursive(__i2c_mutex, portMAX_DELAY);
   uint8_t result = 0;
   __pWire->beginTransmission(this->__I2C_addr);
   __pWire->write(reg);
@@ -473,21 +480,25 @@ uint8_t DFR1216_I2C::writeReg(uint8_t reg, uint8_t *data, uint8_t len)
     __pWire->write(data[i]);
   }
   result = __pWire->endTransmission();
+  if (__i2c_mutex) xSemaphoreGiveRecursive(__i2c_mutex);
   return result;
 }
 
 int16_t DFR1216_I2C::readReg(uint8_t reg, uint8_t *data, uint8_t len)
 {
+  if (__i2c_mutex) xSemaphoreTakeRecursive(__i2c_mutex, portMAX_DELAY);
   uint8_t result = 0;
   uint8_t i = 0;
   result = writeReg(reg, NULL, 0);
   if(result!= 0){
+    if (__i2c_mutex) xSemaphoreGiveRecursive(__i2c_mutex);
     return -1;
   }
   result = __pWire->requestFrom((uint8_t)this->__I2C_addr,(uint8_t)len);
   while (__pWire->available()){
     data[i++]=__pWire->read();
   }
+  if (__i2c_mutex) xSemaphoreGiveRecursive(__i2c_mutex);
   if(i == len){
     return 0;
   }else{

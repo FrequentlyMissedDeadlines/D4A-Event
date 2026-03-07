@@ -92,10 +92,22 @@ public:
     void draw_all();
 
     /**
+     * @brief Render DC motor status display
+     * @details Shows each motor's last commanded speed, or 'not connected' if never commanded
+     */
+    void draw_motors();
+
+    /**
      * @brief Render servo status display
      * @details Updates and displays servo channel values and connection status
      */
     void draw_servos();
+
+    /**
+     * @brief Render UDP handler statistics
+     * @details One line per action code seen: code | accepted count | rejected count
+     */
+    void draw_udp_handlers();
 
     /**
      * @brief Render network information display
@@ -129,6 +141,12 @@ public:
      * @return Current DisplayMode
      */
     DisplayMode get_display_mode() const;
+
+    /**
+     * @brief Set display mode directly
+     * @param mode Target DisplayMode to switch to
+     */
+    void set_display_mode(DisplayMode mode);
 
     /**
      * @brief Set references to logger instances

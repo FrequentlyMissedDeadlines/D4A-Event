@@ -32,6 +32,16 @@ using UDPMessageHandler = std::function<bool(const std::string& message, const I
 class UDPService : public IsOpenAPIInterface
 {
 public:
+    /**
+     * @brief Per-action-code UDP statistics entry
+     */
+    struct UDPActionStat {
+        uint8_t  action_code = 0; ///< 0x00 = empty slot
+        uint32_t accepted    = 0; ///< replies with resp_ok
+        uint32_t rejected    = 0; ///< replies with any non-ok code
+    };
+    static constexpr uint8_t UDP_MAX_ACTION_STATS = 16;
+
     bool registerRoutes() override;
     std::string getServiceSubPath() override;
     bool initializeService() override;
@@ -67,6 +77,14 @@ public:
      */
     bool unregisterMessageHandler(int handlerId);
 
+    /**
+     * @brief Copy per-action-code stats into caller-supplied array.
+     * @param out       Array of at least max_count entries to fill.
+     * @param max_count Maximum entries to copy.
+     * @return Number of entries actually filled (active action codes seen so far).
+     */
+    uint8_t getActionStats(UDPActionStat out[], uint8_t max_count) const;
+
 protected:
     AsyncUDP *udp = nullptr;
     AsyncUDP *udpHandle = nullptr;
@@ -84,7 +102,6 @@ protected:
     unsigned long getDroppedPackets();
     // Get the number of handled packets (thread-safe)
     unsigned long getHandledPackets();
-
 private:
 
     struct MessageHandlerEntry {
@@ -94,6 +111,14 @@ private:
     std::vector<MessageHandlerEntry> message_handlers;
     int next_handler_id = 1;
     SemaphoreHandle_t handler_mutex = nullptr;
+
+    UDPActionStat action_stats_[UDP_MAX_ACTION_STATS] = {};
+    /**
+     * @brief Record one reply's outcome into action_stats_.
+     * @param action_byte First byte of the binary reply frame (action code).
+     * @param ok          true when the second byte equals udp_resp_ok.
+     */
+    void recordActionResult(uint8_t action_byte, bool ok);
 
     friend void handleUDPPacket(AsyncUDPPacket packet);
 };

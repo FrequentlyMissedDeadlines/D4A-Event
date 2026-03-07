@@ -20,6 +20,9 @@
  *   GET  /api/amakerbot/v1/master                  — query current master info
  *   POST /api/amakerbot/v1/unregister              — clear master (master IP only)
  *   GET  /api/amakerbot/v1/token                   — retrieve the server-generated token (for reference)
+ *   GET  /api/amakerbot/v1/display                 — get current TFT display mode
+ *   POST /api/amakerbot/v1/display/next            — cycle to next display mode (same as button A)
+ *   POST /api/amakerbot/v1/display?mode=<mode>     — set display mode (APP_UI|APP_LOG|DEBUG_LOG|ESP_LOG)
  *
  * UDP protocol (service_id 0x4):
  *   [0x41]<token>  — register UDP sender IP as master (if token matches); 

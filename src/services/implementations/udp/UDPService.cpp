@@ -15,6 +15,7 @@
 #include <freertos/semphr.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include "isUDPMessageHandlerInterface.h"
 
 // UDPService constants namespace
 namespace UDPConsts
@@ -73,6 +74,13 @@ bool UDPService::sendReply(const std::string &message, const IPAddress &remoteIP
 {
   if (!udpHandle)
     return false;
+  // Track per-action outcome from binary response frame: [action:1B][resp_code:1B]
+  if (message.size() >= 2)
+  {
+    const uint8_t action = static_cast<uint8_t>(message[0]);
+    const bool ok = (static_cast<uint8_t>(message[1]) == UDPProto::udp_resp_ok);
+    recordActionResult(action, ok);
+  }
   return udpHandle->writeTo(
              reinterpret_cast<const uint8_t *>(message.c_str()),
              message.length(),
@@ -144,6 +152,41 @@ void handleUDPPacket(AsyncUDPPacket packet)
 }
 
 
+
+void UDPService::recordActionResult(uint8_t action_byte, bool ok)
+{
+  // Find existing slot or claim the first empty one.
+  // Called from sendReply which may run in any task; uint32_t increments on
+  // ESP32 are effectively atomic for display purposes — no mutex needed.
+  for (uint8_t i = 0; i < UDP_MAX_ACTION_STATS; ++i)
+  {
+    if (action_stats_[i].action_code == action_byte)
+    {
+      if (ok) ++action_stats_[i].accepted;
+      else    ++action_stats_[i].rejected;
+      return;
+    }
+    if (action_stats_[i].action_code == 0)
+    {
+      action_stats_[i].action_code = action_byte;
+      if (ok) action_stats_[i].accepted = 1;
+      else    action_stats_[i].rejected = 1;
+      return;
+    }
+  }
+  // Table full — silently drop (shouldn't happen with ≤16 distinct action codes)
+}
+
+uint8_t UDPService::getActionStats(UDPActionStat out[], uint8_t max_count) const
+{
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < UDP_MAX_ACTION_STATS && count < max_count; ++i)
+  {
+    if (action_stats_[i].action_code != 0)
+      out[count++] = action_stats_[i];
+  }
+  return count;
+}
 
 bool UDPService::initializeService()
 {

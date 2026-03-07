@@ -250,7 +250,8 @@ For detailed documentation on specific services, see:
 - `LogService.html` - Logging interface
 - `MetricService.html` - Metrics and board info interface
 - `LedService.html` - RGB LED control interface (K10 onboard + DFR1216 expansion)
-- `style.css` - Common styles
+- `amaker.css` - Common styles
+- `amaker.js` - Common javascript
 
 ---
 

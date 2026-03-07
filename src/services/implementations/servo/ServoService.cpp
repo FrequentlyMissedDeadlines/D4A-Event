@@ -202,6 +202,9 @@ std::array<ServoConnection, MAX_SERVO_CHANNELS> attached_servos = {NOT_CONNECTED
 // Track current servo speeds to avoid redundant updates (initialized to invalid value)
 std::array<int8_t, MAX_SERVO_CHANNELS> servo_speeds = {-128, -128, -128, -128, -128, -128, -128, -128};
 
+// Track current servo angles for angular servos (initialized to -1 = never set)
+std::array<int16_t, MAX_SERVO_CHANNELS> servo_angles = {-1, -1, -1, -1, -1, -1, -1, -1};
+
 // Track current motor speeds to avoid redundant updates (initialized to invalid value)
 std::array<int8_t, MAX_MOTOR_CHANNELS> motor_speeds = {-128, -128, -128, -128};
 
@@ -316,6 +319,7 @@ bool ServoService::setServoAngle(uint8_t channel, uint16_t angle)
                 throw std::out_of_range(reinterpret_cast<const char *>(FPSTR(ServoConsts::err_angle_range_180)));
             }
             servoController.setServoAngle(eServoNumber_t(channel), angle);
+            servo_angles[channel] = static_cast<int16_t>(angle);
             return true;
         }
         else if (attached_servos[channel] == ServoConnection::ANGULAR_270)
@@ -325,6 +329,7 @@ bool ServoService::setServoAngle(uint8_t channel, uint16_t angle)
                 throw std::out_of_range(reinterpret_cast<const char *>(FPSTR(ServoConsts::err_angle_range_270)));
             }
             servoController.setServoAngle(eServoNumber_t(channel), angle);
+            servo_angles[channel] = static_cast<int16_t>(angle);
             return true;
         }
         else
@@ -369,6 +374,7 @@ bool ServoService::setServoSpeed(uint8_t channel, int8_t speed, uint32_t duratio
                                               : (speed < 0 ? eServo360Direction_t::eBackward
                                                            : eServo360Direction_t::eStop),
                                     static_cast<uint8_t>(std::abs(speed)));
+        servo_speeds[channel] = speed; // Track speed for UI display
         // Schedule an auto-stop if requested; cancel any pending stop when speed == 0
         scheduleChannelStop(channel, (speed != 0) ? duration_ms : 0);
         return true;
@@ -520,6 +526,7 @@ bool ServoService::setMotorSpeed(uint8_t motor, int8_t speed)
             servoController.setMotorDuty(motor_a, 0);
             servoController.setMotorDuty(motor_b, 0);
         }
+        motor_speeds[motor - 1] = speed; // Track speed for UI display
         return true;
     }
     catch (const std::exception &e)
@@ -527,6 +534,54 @@ bool ServoService::setMotorSpeed(uint8_t motor, int8_t speed)
         logger->error(e.what());
         return false;
     }
+}
+
+/**
+ * @brief Get the last commanded speed for a DC motor
+ * @param motor Motor number (1-4)
+ * @return Speed value (-100 to +100), or -128 if not yet commanded
+ */
+int8_t ServoService::getMotorSpeed(uint8_t motor) const
+{
+    if (motor < 1 || motor > MAX_MOTOR_CHANNELS)
+        return -128;
+    return motor_speeds[motor - 1];
+}
+
+/**
+ * @brief Get the connection type of a servo channel
+ * @param channel Servo channel (0-7)
+ * @return ServoConnection enum value (NOT_CONNECTED if out of range)
+ */
+ServoConnection ServoService::getServoConnection(uint8_t channel) const
+{
+    if (channel >= MAX_SERVO_CHANNELS)
+        return NOT_CONNECTED;
+    return attached_servos[channel];
+}
+
+/**
+ * @brief Get the last commanded speed for a rotational servo
+ * @param channel Servo channel (0-7)
+ * @return Speed value (-100 to +100), or -128 if not yet commanded
+ */
+int8_t ServoService::getServoSpeed(uint8_t channel) const
+{
+    if (channel >= MAX_SERVO_CHANNELS)
+        return -128;
+    return servo_speeds[channel];
+}
+
+/**
+ * @brief Get the last commanded angle for an angular servo
+ * @param channel Servo channel (0-7)
+ * @return Angle in degrees, or -1 if not yet commanded
+ */
+int16_t ServoService::getServoAngle(uint8_t channel) const
+{
+    if (channel >= MAX_SERVO_CHANNELS)
+        return -1;
+    return servo_angles[channel];
 }
 
 bool ServoService::stopService()
@@ -1438,7 +1493,7 @@ bool ServoService::messageHandler(const std::string &message,
         snprintf(buf, sizeof(buf), "%02X ", d[i]);
         hex_dump += buf;
     }
-    logger->debug("UDP rx " + std::to_string(len) + "bytes : " + hex_dump);
+    logger->debug("UDP rx " + std::to_string(len) + "B: " + hex_dump);
 #endif
     static std::string resp;
     resp.clear();
@@ -1487,6 +1542,7 @@ bool ServoService::messageHandler(const std::string &message,
                 continue;
             }
             servoController.setServoAngle(static_cast<eServoNumber_t>(ch), hw);
+            servo_angles[ch] = static_cast<int16_t>(hw); // Track angle for UI display
         }
         udp_build(action, ok ? UDPProto::udp_resp_ok : UDPProto::udp_resp_operation_failed, nullptr, resp);
         break;

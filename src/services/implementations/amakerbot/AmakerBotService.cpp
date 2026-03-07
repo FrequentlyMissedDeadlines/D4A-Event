@@ -6,6 +6,9 @@
  *          - GET  /api/amakerbot/v1/master                  Query current master info
  *          - POST /api/amakerbot/v1/unregister              Clear master (master IP only)
  *          - GET  /api/amakerbot/v1/token                   Retrieve server-generated token
+ *          - GET  /api/amakerbot/v1/display                 Get current TFT display mode
+ *          - POST /api/amakerbot/v1/display?mode=<mode>     Set TFT display mode (APP_UI|APP_LOG|DEBUG_LOG|ESP_LOG)
+ *          - POST /api/amakerbot/v1/display/next            Cycle to next display mode (same as button A)
  *
  *          UDP protocol (service_id 0x4):
  *          - [0x41]<token>  Register UDP sender as master (if token valid); 
@@ -19,16 +22,17 @@
 #include "services/AmakerBotService.h"
 #include "services/ServoService.h"
 #include "FlashStringHelper.h"
+#include "utb2026.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
-#include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <random>
 
-// Access app_info_logger and servo_service defined in main.cpp
+// Access globals defined in main.cpp
 extern RollingLogger app_info_logger;
 extern ServoService  servo_service;
+extern UTB2026       ui;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -80,6 +84,23 @@ namespace AmakerBotConsts
     constexpr const char desc_unregister[]    PROGMEM = "Unregister the current master. Only the currently registered master IP can call this endpoint.";
     constexpr const char desc_master[]        PROGMEM = "Return the IP address of the currently registered master and the master status.";
     constexpr const char desc_token[]         PROGMEM = "Retrieve the server-generated token required for master registration.";
+
+    // Display mode routes
+    constexpr const char path_display[]        PROGMEM = "display";
+    constexpr const char path_display_next[]   PROGMEM = "display/next";
+    constexpr const char field_mode[]          PROGMEM = "mode";
+    constexpr const char field_mode_index[]    PROGMEM = "mode_index";
+    constexpr const char param_mode[]          PROGMEM = "mode";
+    constexpr const char mode_app_ui[]         PROGMEM = "APP_UI";
+    constexpr const char mode_app_log[]        PROGMEM = "APP_LOG";
+    constexpr const char mode_debug_log[]      PROGMEM = "DEBUG_LOG";
+    constexpr const char mode_esp_log[]        PROGMEM = "ESP_LOG";
+    constexpr const char desc_display_get[]    PROGMEM = "Get current TFT display mode.";
+    constexpr const char desc_display_next[]   PROGMEM = "Cycle TFT display to next mode (same as pressing button A).";
+    constexpr const char desc_display_set[]    PROGMEM = "Set TFT display mode directly. Accepted values: APP_UI, APP_LOG, DEBUG_LOG, ESP_LOG.";
+    constexpr const char resp_display_ok[]     PROGMEM = "Current display mode";
+    constexpr const char resp_display_changed[] PROGMEM = "Display mode changed";
+    constexpr const char resp_invalid_mode[]   PROGMEM = "Invalid mode value";
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +109,7 @@ namespace AmakerBotConsts
 
 std::string AmakerBotService::generateRandomToken()
 {
-    const char charset[] = "0123456789ABCDEF";
+    const char charset[] = "0123456789abcdef";
     const int charset_size = 16;
     std::string token;
     
@@ -214,12 +235,24 @@ std::string AmakerBotService::getServiceSubPath()
 
 bool AmakerBotService::isMaster(const std::string &ip) const
 {
-    return !master_ip_.empty() && master_ip_ == ip;
+    if (master_mutex_ && xSemaphoreTake(master_mutex_, pdMS_TO_TICKS(10)))
+    {
+        bool result = !master_ip_.empty() && master_ip_ == ip;
+        xSemaphoreGive(master_mutex_);
+        return result;
+    }
+    return false;
 }
 
 std::string AmakerBotService::getMasterIP() const
 {
-    return master_ip_;
+    if (master_mutex_ && xSemaphoreTake(master_mutex_, pdMS_TO_TICKS(10)))
+    {
+        std::string ip = master_ip_;
+        xSemaphoreGive(master_mutex_);
+        return ip;
+    }
+    return "";
 }
 
 std::string AmakerBotService::getServerToken() const
@@ -305,8 +338,16 @@ bool AmakerBotService::messageHandler(const std::string &message,
  */
 void AmakerBotService::checkHeartbeatTimeout()
 {
+    // Check master_ip_ under mutex (std::string is not safe to read across cores)
+    bool has_master = false;
+    if (master_mutex_ && xSemaphoreTake(master_mutex_, pdMS_TO_TICKS(5)))
+    {
+        has_master = !master_ip_.empty();
+        xSemaphoreGive(master_mutex_);
+    }
+
     // Nothing to watch if no master is registered or no heartbeat has been sent yet
-    if (master_ip_.empty() || !heartbeat_active_)
+    if (!has_master || !heartbeat_active_)
         return;
 
     // we're not at risk of millis() overflow during a game session as millis() rolls over every ~50 days :)
@@ -316,9 +357,10 @@ void AmakerBotService::checkHeartbeatTimeout()
         {
             heartbeat_timed_out_ = true;
 
-            // Emergency stop — halt all DC motors and continuous servos
+            // Emergency stop — halt all DC motors and continuous servos (once)
             servo_service.setAllMotorsSpeed(0);
             servo_service.setAllServoSpeed(0);
+            ui.set_info(ui.KEY_UDP_STATE, "down");
 
             app_info_logger.error(progmem_to_string(AmakerBotConsts::msg_heartbeat_timeout));
 #ifdef VERBOSE_DEBUG
@@ -331,6 +373,7 @@ void AmakerBotService::checkHeartbeatTimeout()
     {
         // Heartbeat just came back — clear the timed-out flag
         heartbeat_timed_out_ = false;
+        ui.set_info(ui.KEY_UDP_STATE, "up");
         app_info_logger.info(progmem_to_string(AmakerBotConsts::msg_heartbeat_restored));
     }
 }
@@ -527,6 +570,161 @@ bool AmakerBotService::registerRoutes()
 
             JsonDocument doc;
             doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
+            String out;
+            serializeJson(doc, out);
+            request->send(200, FPSTR(RoutesConsts::mime_json), out);
+        });
+
+    // ------------------------------------------------------------------
+    // Helper: convert DisplayMode enum → name string (PROGMEM safe)
+    // ------------------------------------------------------------------
+    auto mode_to_string = [](UTB2026::DisplayMode m) -> const char * {
+        switch (m) {
+            case UTB2026::MODE_APP_UI:    return "APP_UI";
+            case UTB2026::MODE_APP_LOG:   return "APP_LOG";
+            case UTB2026::MODE_DEBUG_LOG: return "DEBUG_LOG";
+            case UTB2026::MODE_ESP_LOG:   return "ESP_LOG";
+            default:                      return "UNKNOWN";
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // GET /api/amakerbot/v1/display
+    // ------------------------------------------------------------------
+    std::string path_display      = getPath(progmem_to_string(AmakerBotConsts::path_display).c_str());
+    std::string path_display_next = getPath(progmem_to_string(AmakerBotConsts::path_display_next).c_str());
+
+    std::vector<OpenAPIResponse> display_get_responses;
+    OpenAPIResponse dsp_ok(200, AmakerBotConsts::resp_display_ok);
+    dsp_ok.schema  = R"({"type":"object","properties":{"mode":{"type":"string","enum":["APP_UI","APP_LOG","DEBUG_LOG","ESP_LOG"]},"mode_index":{"type":"integer"}}})";
+    dsp_ok.example = R"({"mode":"APP_LOG","mode_index":1})";
+    display_get_responses.push_back(dsp_ok);
+    display_get_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(path_display.c_str(), RoutesConsts::method_get,
+                     AmakerBotConsts::desc_display_get,
+                     AmakerBotConsts::tag_service, false,
+                     {}, display_get_responses));
+
+    webserver.on(path_display.c_str(), HTTP_GET,
+        [this, mode_to_string](AsyncWebServerRequest *request)
+        {
+            if (!checkServiceStarted(request)) return;
+            UTB2026::DisplayMode m = ui.get_display_mode();
+            JsonDocument doc;
+            doc[FPSTR(AmakerBotConsts::field_mode)]       = mode_to_string(m);
+            doc[FPSTR(AmakerBotConsts::field_mode_index)] = static_cast<int>(m);
+            String out;
+            serializeJson(doc, out);
+            request->send(200, FPSTR(RoutesConsts::mime_json), out);
+        });
+
+    // ------------------------------------------------------------------
+    // POST /api/amakerbot/v1/display/next
+    // ------------------------------------------------------------------
+    std::vector<OpenAPIResponse> display_next_responses;
+    OpenAPIResponse dsp_next_ok(200, AmakerBotConsts::resp_display_changed);
+    dsp_next_ok.schema  = R"({"type":"object","properties":{"mode":{"type":"string"},"mode_index":{"type":"integer"}}})";
+    dsp_next_ok.example = R"({"mode":"DEBUG_LOG","mode_index":2})";
+    display_next_responses.push_back(dsp_next_ok);
+    display_next_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(path_display_next.c_str(), RoutesConsts::method_post,
+                     AmakerBotConsts::desc_display_next,
+                     AmakerBotConsts::tag_service, false,
+                     {}, display_next_responses));
+
+    webserver.on(path_display_next.c_str(), HTTP_POST,
+        [this, mode_to_string](AsyncWebServerRequest *request)
+        {
+            if (!checkServiceStarted(request)) return;
+            ui.next_display_mode();
+            UTB2026::DisplayMode m = ui.get_display_mode();
+            JsonDocument doc;
+            doc[FPSTR(AmakerBotConsts::field_mode)]       = mode_to_string(m);
+            doc[FPSTR(AmakerBotConsts::field_mode_index)] = static_cast<int>(m);
+            String out;
+            serializeJson(doc, out);
+            request->send(200, FPSTR(RoutesConsts::mime_json), out);
+        });
+
+    // ------------------------------------------------------------------
+    // POST /api/amakerbot/v1/display?mode=<APP_UI|APP_LOG|DEBUG_LOG|ESP_LOG>
+    // ------------------------------------------------------------------
+    std::vector<OpenAPIParameter> display_set_params;
+    display_set_params.push_back(
+        OpenAPIParameter(AmakerBotConsts::param_mode,
+                         RoutesConsts::type_string,
+                         RoutesConsts::in_query,
+                         "Target mode: APP_UI, APP_LOG, DEBUG_LOG, ESP_LOG",
+                         true));
+
+    std::vector<OpenAPIResponse> display_set_responses;
+    display_set_responses.push_back(OpenAPIResponse(200, AmakerBotConsts::resp_display_changed));
+    display_set_responses.push_back(OpenAPIResponse(400, AmakerBotConsts::resp_invalid_mode));
+    display_set_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(path_display.c_str(), RoutesConsts::method_post,
+                     AmakerBotConsts::desc_display_set,
+                     AmakerBotConsts::tag_service, false,
+                     display_set_params, display_set_responses));
+
+    webserver.on(path_display.c_str(), HTTP_POST,
+        [this, mode_to_string](AsyncWebServerRequest *request)
+        {
+            if (!checkServiceStarted(request)) return;
+
+            if (!request->hasParam(FPSTR(AmakerBotConsts::param_mode)) &&
+                !request->hasParam(FPSTR(AmakerBotConsts::param_mode), true))
+            {
+                JsonDocument err;
+                err[FPSTR(RoutesConsts::result)]  = FPSTR(RoutesConsts::result_err);
+                err[FPSTR(RoutesConsts::message)] = FPSTR(AmakerBotConsts::resp_invalid_mode);
+                String out;
+                serializeJson(err, out);
+                request->send(400, FPSTR(RoutesConsts::mime_json), out);
+                return;
+            }
+
+            const AsyncWebParameter *p = request->hasParam(FPSTR(AmakerBotConsts::param_mode), true)
+                ? request->getParam(FPSTR(AmakerBotConsts::param_mode), true)
+                : request->getParam(FPSTR(AmakerBotConsts::param_mode));
+
+            std::string mode_str = p->value().c_str();
+            UTB2026::DisplayMode target;
+            bool valid = true;
+
+            if (mode_str == progmem_to_string(AmakerBotConsts::mode_app_ui))
+                target = UTB2026::MODE_APP_UI;
+            else if (mode_str == progmem_to_string(AmakerBotConsts::mode_app_log))
+                target = UTB2026::MODE_APP_LOG;
+            else if (mode_str == progmem_to_string(AmakerBotConsts::mode_debug_log))
+                target = UTB2026::MODE_DEBUG_LOG;
+            else if (mode_str == progmem_to_string(AmakerBotConsts::mode_esp_log))
+                target = UTB2026::MODE_ESP_LOG;
+            else
+                valid = false;
+
+            if (!valid)
+            {
+                JsonDocument err;
+                err[FPSTR(RoutesConsts::result)]  = FPSTR(RoutesConsts::result_err);
+                err[FPSTR(RoutesConsts::message)] = FPSTR(AmakerBotConsts::resp_invalid_mode);
+                String out;
+                serializeJson(err, out);
+                request->send(400, FPSTR(RoutesConsts::mime_json), out);
+                return;
+            }
+
+            ui.set_display_mode(target);
+
+            JsonDocument doc;
+            doc[FPSTR(RoutesConsts::result)]              = FPSTR(RoutesConsts::result_ok);
+            doc[FPSTR(AmakerBotConsts::field_mode)]       = mode_to_string(target);
+            doc[FPSTR(AmakerBotConsts::field_mode_index)] = static_cast<int>(target);
             String out;
             serializeJson(doc, out);
             request->send(200, FPSTR(RoutesConsts::mime_json), out);

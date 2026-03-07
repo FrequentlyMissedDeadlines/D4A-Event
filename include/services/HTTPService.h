@@ -8,6 +8,7 @@
 // Include ESPAsyncWebServer first to avoid HTTP method enum conflicts
 #include <ESPAsyncWebServer.h>
 #include <vector>
+#include <atomic>
 #include "IsServiceInterface.h"
 #include "IsOpenAPIInterface.h"
 
@@ -96,6 +97,18 @@ public:
      */
     bool startWebServer();
 
+    /**
+     * @brief Reset the web server by stopping and restarting it
+     * @details Used by the watchdog to recover from deadlocked connections
+     * @return true if server restarted successfully
+     */
+    bool resetServer();
+
+    /**
+     * @brief Get timestamp of last successfully handled request
+     * @return millis() value of last request
+     */
+    unsigned long lastRequestTime() const { return last_request_time_.load(); }
 
     virtual bool startService() override;
     virtual bool stopService() override;
@@ -104,6 +117,7 @@ public:
 protected:
     std::vector<IsOpenAPIInterface *> openAPIServices;
     bool routesRegistered = false;
+    std::atomic<unsigned long> last_request_time_{0};
 
 
 

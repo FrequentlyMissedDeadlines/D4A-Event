@@ -12,6 +12,7 @@
 #define __DFROBOT__UNIHIKEREXPANSION__H__
 #include <Arduino.h>
 #include <Wire.h>
+#include <freertos/semphr.h>
 
 // #define ENABLE_DBG  1 ///> Open this macro and you can see the details of the program
 #ifdef ENABLE_DBG
@@ -139,7 +140,8 @@ typedef struct
 #define DATA_ENABLE 0x01  ///> enable
 #define DATA_DISABLE 0x00 ///> disable
 #define MODE_ERROR 0x02
-#define RETRY_COUNT 10
+#define RETRY_COUNT 3
+#define I2C_RETRY_DELAY_MS 5  ///> Delay between I2C retries (ms)
 #define TEMP_LEN 32
 
 class DFR1216
@@ -302,5 +304,6 @@ protected:
 private:
   TwoWire *__pWire;
   uint8_t __I2C_addr;
+  static SemaphoreHandle_t __i2c_mutex;  ///< Shared recursive mutex for I2C bus access
 };
 #endif

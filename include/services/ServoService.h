@@ -113,6 +113,34 @@ public:
      */
     bool setAllMotorsSpeed(int8_t speed);
 
+    /**
+     * @brief Get the last commanded speed for a DC motor
+     * @param motor Motor number (1-4)
+     * @return Speed value (-100 to +100), or -128 if not yet commanded
+     */
+    int8_t getMotorSpeed(uint8_t motor) const;
+
+    /**
+     * @brief Get the connection type of a servo channel
+     * @param channel Servo channel (0-7)
+     * @return ServoConnection enum value
+     */
+    ServoConnection getServoConnection(uint8_t channel) const;
+
+    /**
+     * @brief Get the last commanded speed for a rotational servo
+     * @param channel Servo channel (0-7)
+     * @return Speed value (-100 to +100), or -128 if not yet commanded
+     */
+    int8_t getServoSpeed(uint8_t channel) const;
+
+    /**
+     * @brief Get the last commanded angle for an angular servo
+     * @param channel Servo channel (0-7)
+     * @return Angle in degrees, or -1 if not yet commanded
+     */
+    int16_t getServoAngle(uint8_t channel) const;
+
     // Get servo status
     /**
      * @brief Get the status of a servo channel

@@ -57,6 +57,12 @@ bool HTTPService::startService()
 #endif
   }
 
+  // Force connection close after every response to prevent lwIP PCB table exhaustion.
+  // With only 16 PCB slots and TIME_WAIT lasting 2×MSL=120s, keep-alive connections
+  // from browsers can fill the table in seconds. Connection:close ensures each PCB
+  // is freed promptly after the response is sent.
+  DefaultHeaders::Instance().addHeader("Connection", "close");
+
   // AsyncWebServer starts automatically when routes are registered
   try
   {
@@ -107,6 +113,30 @@ bool HTTPService::stopService()
   if (logger)
     logger->error(getServiceName() + " " + getStatusString());
   return false;
+}
+
+bool HTTPService::resetServer()
+{
+  if (logger)
+    logger->warning("Watchdog: resetting web server...");
+
+  try
+  {
+    webserver.end();
+    vTaskDelay(pdMS_TO_TICKS(100));
+    webserver.begin();
+    last_request_time_.store(millis());
+    setServiceStatus(STARTED);
+    if (logger)
+      logger->info("Web server reset complete");
+    return true;
+  }
+  catch (const std::exception &e)
+  {
+    if (logger)
+      logger->error(std::string("Reset failed: ") + e.what());
+    return false;
+  }
 }
 
 void HTTPService::registerOpenAPIService(IsOpenAPIInterface *service)
@@ -391,8 +421,13 @@ void HTTPService::handleNotFoundClient(AsyncWebServerRequest *request)
  */
 void HTTPService::logRequest(AsyncWebServerRequest *request)
 {
-  if (request && logger)
+  if (request)
   {
+    // Update watchdog timestamp — proves the async event loop is still serving requests
+    last_request_time_.store(millis());
+
+    if (logger)
+    {
     std::string method_str;
     switch (request->method())
     {
@@ -424,6 +459,7 @@ void HTTPService::logRequest(AsyncWebServerRequest *request)
 
     std::string log_msg = method_str + " " + std::string(request->url().c_str());
     logger->info(log_msg);
+    }
   }
 }
 
@@ -449,6 +485,12 @@ bool HTTPService::registerRoutes()
                { 
                  if (!checkServiceStarted(request)) return;
                  this->handleHomeClient(request); });
+
+  // Lightweight health-check endpoint — no JSON, no flash I/O
+  webserver.on("/ping", HTTP_GET, [this](AsyncWebServerRequest *request)
+               {
+                 last_request_time_.store(millis());
+                 request->send(200, RoutesConsts::mime_plain_text, "pong"); });
 
   // Test interface endpoint
   // webserver.on("/api/docs", HTTP_GET, [this](AsyncWebServerRequest *request)
@@ -516,13 +558,10 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
     return false;
   }
 
-  // Check if file exists in LittleFS
-  if (!LittleFS.exists(path))
-  {
-    return false;
-  }
-
-  // Open and validate file
+  // Read file fully into memory, then close the LittleFS handle immediately.
+  // This prevents holding SPI flash file descriptors open during the entire
+  // TCP transmission, which blocks the async event loop and causes hangs
+  // when concurrent HTTP requests arrive.
   File file = LittleFS.open(path, "r");
   if (!file || file.isDirectory())
   {
@@ -538,15 +577,48 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
     return false;
   }
 
-  file.close();
+  // Read entire file into a heap buffer, then close the flash handle.
+  // We use beginResponse(code, type, uint8_t*, len) which creates an
+  // AsyncProgmemResponse — this uses AsyncAbstractResponse::write_send_buffs()
+  // with chunk-inflight flow control, properly sharing TCP window space across
+  // concurrent connections. AsyncBasicResponse bypasses this flow control and
+  // can deadlock when multiple responses compete for TCP buffer space.
+  uint8_t *buf = static_cast<uint8_t *>(malloc(fileSize));
+  if (!buf)
+  {
+    file.close();
+    if (logger)
+      logger->error("OOM serving " + std::string(path.c_str()) + " (" + std::to_string(fileSize) + "B)");
+    request->send(503, RoutesConsts::mime_plain_text, "Out of memory");
+    return true; // handled (with error), don't fall through to 404
+  }
 
-  // Get content type and serve file
+  size_t totalRead = file.read(buf, fileSize);
+  file.close(); // LittleFS handle released — SPI flash is free for other requests
+
+  if (totalRead != fileSize)
+  {
+    free(buf);
+    if (logger)
+      logger->error("Short read on " + std::string(path.c_str()));
+    return false;
+  }
+
+  // AsyncProgmemResponse reads from buf pointer during TCP send via _fillBuffer(),
+  // so buf must stay alive until the response is fully sent. Free on disconnect.
   const String contentType = getContentTypeForPath(path);
-  request->send(LittleFS, path, contentType);
+  AsyncWebServerResponse *response = request->beginResponse(200, contentType, buf, fileSize);
+  response->addHeader("Cache-Control", "max-age=600");
+
+  // Release heap buffer when connection closes (response fully sent or aborted)
+  uint8_t *captured_buf = buf;
+  request->onDisconnect([captured_buf]()
+                        { free(captured_buf); });
+  request->send(response);
 
 #ifdef VERBOSE_DEBUG
   if (logger)
-    logger->debug(std::string(path.c_str()) + " sent.");
+    logger->debug(std::string(path.c_str()) + " sent (" + std::to_string(totalRead) + "B from RAM)");
 #endif
 
   return true;

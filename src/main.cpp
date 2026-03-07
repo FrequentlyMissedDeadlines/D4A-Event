@@ -36,7 +36,7 @@
 #include "services/AmakerBotService.h"
 #include "utb2026.h"
 
-#define LOAD_FONT8N   // TFT font - special case for library config
+#define LOAD_FONT8   // TFT font - special case for library config
 #define VERBOSE_DEBUG // Enable verbose debug logging
 
 // Main application constants
@@ -174,12 +174,22 @@ void task_HTTP_SVR(void *pvParameters)
 {
   debug_logger.info(progmem_to_string(MainConsts::msg_http_task_started));
   
-  // AsyncWebServer runs in background, this task just keeps alive
+  constexpr unsigned long watchdog_timeout_ms = 30000; // 30 seconds without any request = stalled
+  constexpr TickType_t check_interval = pdMS_TO_TICKS(5000); // check every 5 seconds
+
   for (;;)
   {
-    // Async server handles everything automatically
-    // Just yield to other tasks
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(check_interval);
+
+    unsigned long last = http_service.lastRequestTime();
+    unsigned long now = millis();
+
+    // Only trigger after the server has been running for a while (skip first 30s)
+    if (last > 0 && (now - last) > watchdog_timeout_ms)
+    {
+      debug_logger.warning("HTTP watchdog: no request in " + std::to_string((now - last) / 1000) + "s, resetting server");
+      http_service.resetServer();
+    }
   }
 }
 

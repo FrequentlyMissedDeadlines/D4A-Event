@@ -558,16 +558,52 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
     return false;
   }
 
+  // Prefer the gzip-compressed variant when the client accepts it and the
+  // file exists on LittleFS.  The compress_data.py pre-build script produces
+  // a <file>.gz sibling for every HTML/CSS/JS/JSON asset, so for most static
+  // assets this branch will be taken, saving flash-read bandwidth and RAM.
+  bool useGzip = false;
+  String filePath = path;
+  if (request->hasHeader("Accept-Encoding"))
+  {
+    String acceptEncoding = request->getHeader("Accept-Encoding")->value();
+    if (acceptEncoding.indexOf("gzip") >= 0)
+    {
+      String gzPath = path + ".gz";
+      if (LittleFS.exists(gzPath))
+      {
+        filePath = gzPath;
+        useGzip  = true;
+      }
+    }
+  }
+
   // Read file fully into memory, then close the LittleFS handle immediately.
   // This prevents holding SPI flash file descriptors open during the entire
   // TCP transmission, which blocks the async event loop and causes hangs
   // when concurrent HTTP requests arrive.
-  File file = LittleFS.open(path, "r");
+  File file = LittleFS.open(filePath, "r");
   if (!file || file.isDirectory())
   {
     if (file)
       file.close();
-    return false;
+    // If the .gz open failed, fall back to the plain file
+    if (useGzip)
+    {
+      useGzip  = false;
+      filePath = path;
+      file     = LittleFS.open(filePath, "r");
+      if (!file || file.isDirectory())
+      {
+        if (file)
+          file.close();
+        return false;
+      }
+    }
+    else
+    {
+      return false;
+    }
   }
 
   size_t fileSize = file.size();
@@ -588,7 +624,7 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
   {
     file.close();
     if (logger)
-      logger->error("OOM serving " + std::string(path.c_str()) + " (" + std::to_string(fileSize) + "B)");
+      logger->error("OOM serving " + std::string(filePath.c_str()) + " (" + std::to_string(fileSize) + "B)");
     request->send(503, RoutesConsts::mime_plain_text, "Out of memory");
     return true; // handled (with error), don't fall through to 404
   }
@@ -600,15 +636,20 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
   {
     free(buf);
     if (logger)
-      logger->error("Short read on " + std::string(path.c_str()));
+      logger->error("Short read on " + std::string(filePath.c_str()));
     return false;
   }
 
   // AsyncProgmemResponse reads from buf pointer during TCP send via _fillBuffer(),
   // so buf must stay alive until the response is fully sent. Free on disconnect.
+  // Use the original (non-.gz) path to derive the correct Content-Type.
   const String contentType = getContentTypeForPath(path);
   AsyncWebServerResponse *response = request->beginResponse(200, contentType, buf, fileSize);
   response->addHeader("Cache-Control", "max-age=600");
+  if (useGzip)
+  {
+    response->addHeader("Content-Encoding", "gzip");
+  }
 
   // Release heap buffer when connection closes (response fully sent or aborted)
   uint8_t *captured_buf = buf;
@@ -618,7 +659,7 @@ bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
 
 #ifdef VERBOSE_DEBUG
   if (logger)
-    logger->debug(std::string(path.c_str()) + " sent (" + std::to_string(totalRead) + "B from RAM)");
+    logger->debug(std::string(filePath.c_str()) + " sent (" + std::to_string(totalRead) + "B from RAM" + (useGzip ? ", gzip" : "") + ")");
 #endif
 
   return true;

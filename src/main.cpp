@@ -174,8 +174,8 @@ void task_HTTP_SVR(void *pvParameters)
 {
   debug_logger.info(progmem_to_string(MainConsts::msg_http_task_started));
   
-  constexpr unsigned long watchdog_timeout_ms = 30000; // 30 seconds without any request = stalled
-  constexpr TickType_t check_interval = pdMS_TO_TICKS(5000); // check every 5 seconds
+  constexpr unsigned long watchdog_timeout_ms = 3; // 3 seconds without any request = stalled
+  constexpr TickType_t check_interval = pdMS_TO_TICKS(50); // check every 5 seconds
 
   for (;;)
   {

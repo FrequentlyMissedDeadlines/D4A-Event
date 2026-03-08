@@ -693,13 +693,12 @@ bool ServoService::addRouteSetServoAngle(const std::vector<OpenAPIResponse> &sta
             JsonDocument doc;
             if (!JsonBodyParser::parseBody(request, doc, [](const JsonDocument& d) {
                 return d[ServoConsts::servo_channel].is<uint8_t>() && 
-                       d[ServoConsts::servo_angle].is<uint16_t>();
+                       d[ServoConsts::servo_angle].is<int16_t>();
             })) return;
 
             uint8_t ch = doc[ServoConsts::servo_channel].as<uint8_t>();
-            uint16_t angle = doc[ServoConsts::servo_angle].as<uint16_t>();
-
-            if (angle > 360 || ch > 7)
+            int16_t angle = doc[ServoConsts::servo_angle].as<int16_t>();
+            if (angle > 360 || angle < -360 || ch > 7)
             {
                 ResponseHelper::sendError(request, ResponseHelper::INVALID_PARAMS, RoutesConsts::msg_invalid_values);
                 return;
@@ -1493,7 +1492,7 @@ bool ServoService::messageHandler(const std::string &message,
         snprintf(buf, sizeof(buf), "%02X ", d[i]);
         hex_dump += buf;
     }
-    logger->debug("UDP rx " + std::to_string(len) + "B: " + hex_dump);
+    logger->debug("UDP rx " + std::to_string(len) + "Bytes: " + hex_dump);
 #endif
     static std::string resp;
     resp.clear();

@@ -4,6 +4,7 @@
 #include "IsOpenAPIInterface.h"
 #include "isUDPMessageHandlerInterface.h"
 #include "IsMasterRegistryInterface.h"
+#include "services/UDPService.h"
 #include <freertos/semphr.h>
 #include <string>
 
@@ -79,10 +80,7 @@ public:
      */
     bool setMasterIfTokenValid(const std::string &ip, const std::string &token);
 
-    /**
-     * @brief Programmatically clear the current master registration.
-     */
-    void clearMaster();
+
 
     /**
      * @brief Check whether the master heartbeat has timed out (>50 ms without a
@@ -104,12 +102,22 @@ private:
      * @brief Register a client as master (thread-safe) and log to app_info_logger.
      * @param ip IP address of the new master
      */
-    void registerMaster(const std::string &ip);
+    bool registerMaster(const std::string &ip);
 
     /**
      * @brief Internal helper — atomically clear master registration and log to app_info_logger.
      */
-    void unregisterMaster();
+    bool unregisterMaster(const std::string &ip);
+
+    /**
+     * @brief Send a UDP reply echoing the original message followed by a status byte.
+     * @param message Original incoming message (echoed back as-is)
+     * @param status  UDPResponseStatus value appended as trailing byte
+     * @param remoteIP    Destination IP
+     * @param remotePort  Destination port
+     */
+    void udp_reply(const std::string &message, UDPResponseStatus status,
+                   const IPAddress &remoteIP, uint16_t remotePort);
 
     std::string server_token_;    // Generated once on init, never changes
     std::string master_ip_;       // Current master's IP, empty if none

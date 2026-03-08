@@ -76,16 +76,15 @@ void DFR1216::setServo360(eServoNumber_t number, eServo360Direction_t direction,
   }
   
   if (direction == eBackward) {
-    period = 1550 + (speed * 4.5); // 1550 ~ 2000
+    // SERVO360_STOP_US ~ SERVO360_BACKWARD_MAX_US
+    period = SERVO360_STOP_US + (speed * (SERVO360_BACKWARD_MAX_US - SERVO360_STOP_US) / 100);
   } else if (direction == eForward) {
-    period = 1450 - (speed * 4.5); // 1500 ~ 1000
+    // SERVO360_STOP_US ~ SERVO360_FORWARD_MIN_US
+    period = SERVO360_STOP_US - (speed * (SERVO360_STOP_US - SERVO360_FORWARD_MIN_US) / 100);
   } else if (direction == eStop) {
-    period = 1500;
+    period = SERVO360_STOP_US;
   } else {
     return;
-  }
-  if(speed == 0){
-    period = 1500;
   }
   reg = number*2+I2C_SERVO0_DUTY_H;
   _tempData[0] = (period >> 8)& 0xFF;

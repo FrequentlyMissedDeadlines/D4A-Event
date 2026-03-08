@@ -29,6 +29,22 @@ using UDPMessageHandler = std::function<bool(const std::string& message, const I
  * Supports callback registration for message handling by other classes.
  *
  */
+/**
+ * @enum UDPResponseStatus
+ * @brief Standard status byte appended to UDP reply payloads.
+ * @details Sent as the last byte of every reply: [echo of request][status].
+ *   - SUCCESS : command executed successfully
+ *   - IGNORED : message was valid but had no effect (e.g. no-op, already in desired state)
+ *   - DENIED  : request refused (e.g. caller is not the master, wrong token)
+ *   - ERROR   : command was understood but failed internally
+ */
+enum class UDPResponseStatus : uint8_t {
+    SUCCESS = 0x01, ///< Command executed successfully
+    IGNORED = 0x02, ///< Valid command, no action taken
+    DENIED  = 0x03, ///< Request refused (auth / precondition failed)
+    ERROR   = 0x04, ///< Internal failure
+};
+
 class UDPService : public IsOpenAPIInterface
 {
 public:

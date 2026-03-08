@@ -144,6 +144,12 @@ typedef struct
 #define I2C_RETRY_DELAY_MS 5  ///> Delay between I2C retries (ms)
 #define TEMP_LEN 32
 
+/// Servo 360 PWM pulse-width constants (microseconds)
+/// Tune these to match your specific servo's dead-band and full-speed points.
+constexpr uint16_t SERVO360_STOP_US         = 1500; ///< Neutral / stop pulse width
+constexpr uint16_t SERVO360_FORWARD_MIN_US  = 520; ///< Full-speed forward pulse width
+constexpr uint16_t SERVO360_BACKWARD_MAX_US = 2480; ///< Full-speed backward pulse width
+
 class DFR1216
 {
 public:
@@ -168,7 +174,7 @@ public:
    * @brief: Send the IR data
    * @param data: The infrared code to be sent
    * @return: uint8_t result
-   * @retval: 0x00 is success
+   * @retval: 0x00 is successSERVO360_STOP_US
    * @retval: 0xff is failure
    */
   uint8_t sendIR(uint32_t data);

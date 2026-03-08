@@ -27,10 +27,36 @@ namespace UTB2026Consts
     constexpr int output_len = 40;
     constexpr int line_height = 8;
     constexpr int char_width = 6;
+    constexpr uint16_t color_module_started_bkg = TFT_DARKGREEN;
+    constexpr uint16_t color_module_started_txt = TFT_WHITE;
+    constexpr uint16_t color_module_started_failed_bkg = TFT_RED;
+    constexpr uint16_t color_module_started_failed_txt = TFT_YELLOW;
+    constexpr uint16_t color_module_uninitialized_bkg = TFT_RED;;
+    constexpr uint16_t color_module_uninitialized_txt = TFT_LIGHTGREY;
+    constexpr uint16_t color_module_initialized_bkg = TFT_GOLD;
+    constexpr uint16_t color_module_initialized_txt = TFT_WHITE;
+    constexpr uint16_t color_module_initialized_failed_bkg = TFT_RED;
+    constexpr uint16_t color_module_initialized_failed_txt = TFT_YELLOW;
+    constexpr uint16_t color_module_stopped_bkg = TFT_RED;
+    constexpr uint16_t color_module_stopped_txt = TFT_WHITE;
+    constexpr uint16_t color_module_stop_failed_bkg = TFT_RED;
+    constexpr uint16_t color_module_stop_failed_txt = TFT_YELLOW;
     constexpr uint16_t color_error = TFT_RED;
     constexpr uint16_t color_warning = TFT_YELLOW;
     constexpr uint16_t color_info = TFT_WHITE;
     constexpr uint16_t color_debug = TFT_LIGHTGREY;
+    constexpr uint16_t color_module_default_bkg = TFT_DARKGREY;
+    constexpr uint16_t color_module_default_txt = TFT_WHITE;
+    // line is line number (position increments by line_height), column is character position (increments by char_width)
+    constexpr uint16_t table_motor_line = 23;
+    constexpr uint16_t table_motor_column = 21* UTB2026Consts::char_width;
+    constexpr uint16_t table_servo_line = 12;
+    constexpr uint16_t table_servo_column = 21* UTB2026Consts::char_width;
+    constexpr uint16_t table_amakerbot_line = 0;
+    constexpr uint16_t table_amakerbot_column = 0* UTB2026Consts::char_width;
+    constexpr uint16_t table_udp_line = 12;
+    constexpr uint16_t table_udp_column = 0* UTB2026Consts::char_width;
+    
 }
 
 extern TFT_eSPI tft;
@@ -42,7 +68,7 @@ extern ServoService servo_service;
 extern AmakerBotService amakerbot_service;
 extern WifiService wifi_service;
 
-const int R_OUTER = 24; // * - 3 strings, len 60: strin 240/num/2 servos per row
+// const int R_OUTER = 24; // * - 3 strings, len 60: strin 240/num/2 servos per row
 
 /**
  * Formats strings with first characters equally positioned across output length.
@@ -193,15 +219,15 @@ void UTB2026::inc_counter(const std::string &name, long increment)
     }
 };
 
-void UTB2026::update_servo(const char &number, int &value, ServoConnection &status)
-{
-    if (number < 1 || number > 5)
-    {
-        return;
-    }
-    // servos[number - 1].setValue(value);
-    // servos[number - 1].connectionStatus = status;
-};
+// void UTB2026::update_servo(const char &number, int &value, ServoConnection &status)
+// {
+//     if (number < 1 || number > 5)
+//     {
+//         return;
+//     }
+//     // servos[number - 1].setValue(value);
+//     // servos[number - 1].connectionStatus = status;
+// };
 
 std::map<std::string, std::string> UTB2026::get_infos()
 {
@@ -229,6 +255,37 @@ long UTB2026::get_counter(std::string key)
     }
     return counters[key];
 };
+
+void  set_colors_for_module_status(IsServiceInterface &service)
+{
+    switch (service.getStatus())
+    {    case UNINITIALIZED:
+        tft.setTextColor(UTB2026Consts::color_module_uninitialized_txt, UTB2026Consts::color_module_uninitialized_bkg);
+        break;
+    case INITIALIZED:
+        tft.setTextColor(UTB2026Consts::color_module_initialized_txt, UTB2026Consts::color_module_initialized_bkg);
+        break;
+    case INITIALIZED_FAILED:
+        tft.setTextColor(UTB2026Consts::color_module_initialized_failed_txt, UTB2026Consts::color_module_initialized_failed_bkg);
+        break;
+    case STARTED:
+        tft.setTextColor(UTB2026Consts::color_module_started_txt, UTB2026Consts::color_module_started_bkg);
+        break;
+    case START_FAILED:
+        tft.setTextColor(UTB2026Consts::color_module_started_failed_txt, UTB2026Consts::color_module_started_failed_bkg);
+        break;  
+    case STOPPED:
+        tft.setTextColor(UTB2026Consts::color_module_stopped_txt, UTB2026Consts::color_module_stopped_bkg);
+        break;
+    case STOP_FAILED:
+        tft.setTextColor(UTB2026Consts::color_module_stop_failed_txt, UTB2026Consts::color_module_stop_failed_bkg);
+        break;
+    default:
+        tft.setTextColor(UTB2026Consts::color_module_default_txt, UTB2026Consts::color_module_default_bkg);
+        break;  
+
+    }
+}
 /**
  * @brief Render servo status — one line per channel (0-7)
  * Format:
@@ -242,9 +299,9 @@ long UTB2026::get_counter(std::string key)
  */
 void UTB2026::draw_servos()
 {
-    int LINE = 10;
-    constexpr int START_CHAR = 21 * UTB2026Consts::char_width; // indent from left for servo section
-    tft.setTextColor(TFT_WHITE, TFT_DARKGREEN);
+    int LINE = UTB2026Consts::table_servo_line;
+    constexpr int START_CHAR = UTB2026Consts::table_servo_column; // indent from left for servo section
+    set_colors_for_module_status(servo_service);
     tft.setTextDatum(TL_DATUM);
 
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
@@ -309,17 +366,17 @@ void UTB2026::draw_servos()
     * @brief Render UDP handler statistics — one line per action code seen
  */
 void UTB2026::draw_udp_handlers()
-{    tft.setTextColor(TFT_WHITE, TFT_BLUE);
+{   set_colors_for_module_status(udp_service);
     tft.setTextDatum(TL_DATUM);
-    int LINE = 20;
-    constexpr int START_CHAR = 0 * UTB2026Consts::char_width;
-    const int MAX_DISPLAY = 6; // Max lines to display to avoid overflowing screen
+    int LINE = UTB2026Consts::table_udp_line;
+    constexpr int START_CHAR = UTB2026Consts::table_udp_column;
+    const int MAX_DISPLAY = 15; // Max lines to display to avoid overflowing screen
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
-    tft.print("+------+----------+----------+");
+    tft.print("+----+------+------+");
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
-    tft.print("| UDP  | Accepted | Rejected |");
+    tft.print("|UDP |  kept|denied|");
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
-    tft.print("+------+----------+----------+");
+    tft.print("+----+------+------+");
     
     UDPService::UDPActionStat stats[UDPService::UDP_MAX_ACTION_STATS];
     const uint8_t count = udp_service.getActionStats(stats, UDPService::UDP_MAX_ACTION_STATS);
@@ -328,7 +385,7 @@ void UTB2026::draw_udp_handlers()
         char linebuf[41];
         if (i < count)
         {
-            snprintf(linebuf, sizeof(linebuf), "| 0x%02X |%10lu|%10lu|",
+            snprintf(linebuf, sizeof(linebuf), "|0x%02X|%6lu|%6lu|",
                      static_cast<unsigned>(stats[i].action_code),
                      static_cast<unsigned long>(stats[i].accepted),
                      static_cast<unsigned long>(stats[i].rejected));
@@ -336,22 +393,24 @@ void UTB2026::draw_udp_handlers()
                         tft.print(linebuf);
     
         }
-        else
-        {
-            linebuf[0] = '\0';
-        }
+        // else
+        // {
+        //     linebuf[0] = '\0';
+        // }
         // Pad to 40 chars to overwrite stale content
     }
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
-    tft.print("+----------------------------+");
+    tft.print("+----+------+------+");
     
 }
 
 void UTB2026::draw_motors()
 {
-    int LINE = 10;
-    constexpr int START_CHAR = 0 * UTB2026Consts::char_width;
-    tft.setTextColor(TFT_WHITE, TFT_RED);
+
+    int LINE = UTB2026Consts::table_motor_line;
+    constexpr int START_CHAR = UTB2026Consts::table_motor_column ;
+
+    set_colors_for_module_status(servo_service);
     tft.setTextDatum(TL_DATUM);
 
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
@@ -383,12 +442,12 @@ void UTB2026::draw_motors()
     tft.print("+----+------+");
 }
 
-void UTB2026::draw_network_info()
+void UTB2026::draw_amakerbot_info()
 {
-    tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    set_colors_for_module_status(amakerbot_service);
     tft.setTextDatum(TL_DATUM);
-    int LINE = 0;
-    constexpr int START_CHAR = 0 * UTB2026Consts::char_width;
+    int LINE = UTB2026Consts::table_amakerbot_line;
+    constexpr int START_CHAR = UTB2026Consts::table_amakerbot_column;
     char linebuf[41];
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
     tft.print("+--------------------------------------+");
@@ -412,10 +471,10 @@ void UTB2026::draw_network_info()
     tft.print(linebuf);
     if (amakerbot_service.getMasterIP().empty())
     {
-        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "No master yet", " ");
+        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master IP", ("REGISTER WITH " + amakerbot_service.getServerToken()).c_str());
         tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
         tft.print(linebuf);
-        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Use Token", amakerbot_service.getServerToken().c_str());
+        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master UDP link","N/A" );
         tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
         tft.print(linebuf);
     }
@@ -424,7 +483,7 @@ void UTB2026::draw_network_info()
         snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master IP", amakerbot_service.getMasterIP().c_str());
         tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
         tft.print(linebuf);
-        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master UDP link", get_info(KEY_UDP_STATE, "none").c_str());
+        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master UDP link", get_info(KEY_UDP_STATE, "None").c_str());
         tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
         tft.print(linebuf);
     }
@@ -548,7 +607,7 @@ void UTB2026::draw_all()
         {
             tft.fillRect(0, 0, 240, 320, TFT_BLACK);
         }
-        draw_network_info();
+        draw_amakerbot_info();
         draw_motors();
         draw_servos();
         draw_udp_handlers();

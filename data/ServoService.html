@@ -22,7 +22,7 @@
     <div class="global-button-group">
     <button onclick="refreshAllStatus()" class="btn">🔄 Refresh Status</button>
    <button onclick="stopAllServos()" class="btn">⏹️ Stop All Servos</button>
-      <button onclick="setAllToMiddle()" class="btn">↔️ All Servos to Middle (90°)</button>
+      <button onclick="setAllToMiddle()" class="btn">↔️ All Servos to Middle (0°)</button>
       <button onclick="stopAllMotors()" class="btn btn-danger">⏹️ Stop All Motors</button>
     </div>
   </div>
@@ -52,7 +52,7 @@
         <div class="slider-container">
           <input type="range" id="all-motors-speed" min="-100" max="100" value="0"
                  oninput="setAllMotorsSpeedLive(this.value)">
-          s
+          <span class="slider-value" id="all-motors-speed-value">0</span>
         </div>
       </div>
       <div class="motor-grid" id="motorGrid">

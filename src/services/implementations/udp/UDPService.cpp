@@ -105,7 +105,9 @@ void handleUDPPacket(AsyncUDPPacket packet)
   {
     if (xSemaphoreTake(udp_service_instance->handler_mutex, 10 / portTICK_PERIOD_MS))
     {
-      std::string msg(buffer);
+      // Use length-aware constructor: binary payloads may contain null bytes
+      // (e.g. little-endian u32 ping IDs) that would truncate a C-string copy.
+      std::string msg(buffer, len);
       IPAddress remoteIP = packet.remoteIP();
       uint16_t remotePort = packet.remotePort();
       

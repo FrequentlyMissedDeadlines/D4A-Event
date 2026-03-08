@@ -2,7 +2,7 @@
 
 > **Target audience**: AI agents and code-generation tools.  
 > **Purpose**: Authoritative, machine-friendly reference for all UDP messages accepted by the K10 Bot firmware.  
-> **Source of truth**: Generated from firmware source as of 2026-03-02.  
+> **Source of truth**: Generated from firmware source as of 2026-03-08.  
 > Binary values are exact — do not interpret them as text.
 
 ---
@@ -46,6 +46,7 @@ RESPONSE : [action:1B][resp_code:1B][...optional payload bytes]
 | `0x1` | BoardInfoService | `0x11`–`0x14` |
 | `0x2` | ServoService | `0x21`–`0x29` |
 | `0x3` | DFR1216Service | `0x31`–`0x34` |
+| `0x4` | AmakerBotService | `0x41`–`0x44` |
 
 > ⚠️ **Known bug — K10SensorsService**: The `K10SensorsService` has `service_id = 0x02` hardcoded in the current firmware (should be `0x01`), making its `udp_action_get_sensors = 0x21`. Since `ServoService` is registered first and also claims `0x21`, **K10SensorsService's UDP handler is permanently shadowed and unreachable**. Do not generate code that sends `0x21` expecting sensor data. The GET_SENSORS command is not usable via UDP in the current firmware.
 
@@ -107,7 +108,7 @@ Common `<reason>` strings:
 | 3 | BoardInfoService | Binary | `action` byte `0x11`–`0x14` |
 | 4 | MusicService | Text | message starts with `"Music:"` |
 | 5 | DFR1216Service | Binary | `action` byte `0x31`–`0x34` |
-| 6 | AmakerBotService | Binary + Text | binary `action` byte `0x41`–`0x43`; text `"AMAKERBOT:"` is coincidentally routed via byte `0x41` (`'A'`) |
+| 6 | AmakerBotService | Binary + Text | binary `action` byte `0x41`–`0x44`; text `"AMAKERBOT:"` is coincidentally routed via byte `0x41` (`'A'`) |
 
 ---
 
@@ -699,6 +700,24 @@ Field names: `id` (index), `red`, `green`, `blue`. *(Key is `"id"`, not `"led"` 
 **Authentication**: Token-based. The 5-character hex token is generated at boot and displayed on the TFT screen in `MODE_APP_LOG`.  
 **Master enforcement**: ServoService and DFR1216Service check the registered master IP; commands from non-master IPs return `udp_resp_not_master` (`0x06`).
 
+#### AmakerBot reply format
+
+AmakerBot commands do **not** use the standard binary response codes (`0x00`–`0x06`). Instead, every reply is formatted as:
+
+```
+RESPONSE : [echo of full request bytes][UDPResponseStatus:1B]
+```
+
+`UDPResponseStatus` values:
+
+| Value | Name | Meaning |
+|---|---|---|
+| `0x01` | `SUCCESS` | Command executed successfully |
+| `0x02` | `IGNORED` | Valid command, no action taken (e.g. already in desired state, no master registered) |
+| `0x03` | `DENIED` | Request refused (wrong token, sender is not the registered master) |
+| `0x04` | `ERROR` | Internal failure |
+
+> ℹ️ The `0x44` PING command is an exception: its reply is a raw 5-byte echo with **no** `UDPResponseStatus` byte appended.
 
 ---
 
@@ -707,8 +726,8 @@ Field names: `id` (index), `red`, `green`, `blue`. *(Key is `"id"`, not `"led"` 
 Register the **sender's IP** as the master controller.
 
 ```
-REQUEST  : [0x41][token_bytes…]   1 + N bytes  (N = token length, typically 5)
-RESPONSE : none
+REQUEST  : [0x41][token_bytes…]           1 + N bytes  (N = token length, typically 5)
+RESPONSE : [0x41][token_bytes…][status]   echo of full request + UDPResponseStatus byte
 ```
 
 | Bytes | Field | Type | Notes |
@@ -717,11 +736,12 @@ RESPONSE : none
 | 1… | token | ASCII bytes | 5-character hex token shown on device screen at boot |
 
 **Behaviour**:
-- If `token` matches the server-generated token, the sender IP is registered as master and the heartbeat watchdog is reset.
-- If `token` is empty or does not match, the message is silently ignored.
-- Replaces any previously registered master.
+- If `token` is empty → reply `IGNORED` (`0x02`).
+- If `token` does not match the server token → reply `DENIED` (`0x03`).
+- If a master is already registered (same or different IP) → reply `IGNORED` (`0x02`).
+- On success: sender IP is registered as master, heartbeat watchdog is reset → reply `SUCCESS` (`0x01`).
 
-**No reply** is sent. Registration success is visible on the device screen (`[MASTER] registered from <ip>`).
+Registration success is also visible on the device screen (`[MASTER] registered from <ip>`).
 
 
 ### `0x42` MASTER_UNREGISTER
@@ -729,13 +749,14 @@ RESPONSE : none
 Clear the current master registration. Only the currently registered master IP can call this.
 
 ```
-REQUEST  : [0x42]   1 byte
-RESPONSE : none
+REQUEST  : [0x42]           1 byte
+RESPONSE : [0x42][status]   UDPResponseStatus byte
 ```
 
 **Behaviour**:
-- If the sender IP matches the current master, the registration is cleared and the heartbeat watchdog is reset.
-- If the sender is not the current master, the message is silently ignored.
+- If the sender IP is not the current master → reply `DENIED` (`0x03`).
+- On success: master registration cleared → reply `SUCCESS` (`0x01`).
+- On internal failure → reply `ERROR` (`0x04`).
 
 **Text-equivalent** (also accepted):
 ```
@@ -749,19 +770,38 @@ AMAKERBOT:unregister
 Keep-alive packet that the registered master **must** send at least once every **50 ms**. If no heartbeat is received for more than 50 ms, the firmware performs an emergency motor stop and logs `[AMAKERBOT] Heartbeat timeout - stopping motors`.
 
 ```
-REQUEST  : [0x43]   1 byte
-RESPONSE : none
+REQUEST  : [0x43]           1 byte
+RESPONSE : [0x43][status]   only when DENIED; no reply on acceptance
 ```
 
 **Behaviour**:
-- Accepted only from the currently registered master IP. Packets from other IPs are ignored.
-- On receipt, updates the internal timestamp; clears the timed-out state if a previous timeout had fired.
+- If the sender IP is not the current master → reply `DENIED` (`0x03`); no further effect.
+- If accepted: updates the internal timestamp; clears the timed-out state if a previous timeout had fired. **No reply is sent.**
 - On timeout (> 50 ms without a heartbeat): calls `setAllMotorsSpeed(0)` and `setAllServoSpeed(0)` **once** (edge-triggered — no repeated calls until the next timeout event).
 - The watchdog is active only while a master is registered **and** at least one heartbeat has been received in the current session.
 
 > ⚠️ **Critical for robot operation**: start sending heartbeats immediately after successful registration. The 50 ms deadline is wall-clock time (checked every ~10 ms from the Core 0 UDP task).
 
-**No reply** is sent.
+---
+
+### `0x44` PING
+
+Latency probe. The device echoes back the first 5 bytes of the request verbatim so the client can match by ID and measure round-trip time.
+
+```
+REQUEST  : [0x44][id:4B]   5 bytes
+RESPONSE : [0x44][id:4B]   5 bytes (raw echo — no UDPResponseStatus byte)
+```
+
+| Bytes | Field | Type | Notes |
+|---|---|---|---|
+| 0 | action | uint8 | `0x44` |
+| 1–4 | id | uint32 LE | Arbitrary client-chosen ID (e.g. sequence counter or timestamp) |
+
+**Behaviour**:
+- Accepted only from the currently registered master IP. Packets from other IPs are silently ignored (`return false`).
+- Payload must be ≥ 5 bytes; shorter messages are silently ignored.
+- The reply is the raw 5-byte echo — **no** `UDPResponseStatus` byte is appended.
 
 ---
 
@@ -788,9 +828,10 @@ RESPONSE : none
 | `0x32` | DFR1216 | TURN_OFF_LED | 2 | `[led:0-2]` | — |
 | `0x33` | DFR1216 | TURN_OFF_ALL_LEDS | 1 | _(none)_ | — |
 | `0x34` | DFR1216 | GET_LED_STATUS | 1 | _(none)_ | JSON `{leds:[{id,red,green,blue}×3]}` |
-| `0x41` | AmakerBot | MASTER_REGISTER | 2 | `[token bytes…]` (ASCII, typically 5 chars) | _(none)_ — silent |
-| `0x42` | AmakerBot | MASTER_UNREGISTER | 1 | _(none)_ | _(none)_ — silent |
-| `0x43` | AmakerBot | HEARTBEAT | 1 | _(none)_ | _(none)_ — silent |
+| `0x41` | AmakerBot | MASTER_REGISTER | 2 | `[token bytes…]` (ASCII, typically 5 chars) | `[echo request][UDPResponseStatus]` SUCCESS·IGNORED·DENIED |
+| `0x42` | AmakerBot | MASTER_UNREGISTER | 1 | _(none)_ | `[0x42][UDPResponseStatus]` SUCCESS·DENIED·ERROR |
+| `0x43` | AmakerBot | HEARTBEAT | 1 | _(none)_ | `[0x43][DENIED]` only if sender is not master; silent on acceptance |
+| `0x44` | AmakerBot | PING | 5 | `[id:4B uint32 LE]` | `[0x44][id:4B]` raw echo, no status byte; master only |
 
 ### Text commands (MusicService prefix `Music`; AmakerBotService prefix `AMAKERBOT`)
 
@@ -803,7 +844,7 @@ RESPONSE : none
 | `Music:playnotes` | hex string | tempo byte + note/duration pairs | standard text |
 
 
-> Prefer the binary equivalents `0x41` / `0x42` / `0x43` for new code.
+> Prefer the binary equivalents `0x41` / `0x42` / `0x43` / `0x44` for new code.
 
 ---
 
@@ -825,15 +866,15 @@ RESPONSE : none
 9. **Register before using protected routes**: ServoService and DFR1216Service enforce master-IP checks. Send `[0x41][token]` (token visible on device screen in `MODE_APP_LOG`) from your client before issuing servo/motor/LED commands.
 10. **Master is IP-bound**: registration locks to the sender's IP address. If your client's IP changes, re-register.
 11. **Binary `0x06` response**: if you receive `[action][0x06]` from a binary command, your IP is not the registered master — register first.
-12. **AmakerBotService has no reply**: `0x41` / `0x42` / `0x43` never send a UDP reply. Confirm registration via HTTP `GET /api/amakerbot/v1/master`.
+12. **AmakerBotService replies use `UDPResponseStatus`**: `0x41`, `0x42`, and `0x43` reply with `[echo of full request][UDPResponseStatus]` — values: `0x01` SUCCESS · `0x02` IGNORED · `0x03` DENIED · `0x04` ERROR. `0x44` PING replies with a raw 5-byte echo (no status byte). Also confirm registration via HTTP `GET /api/amakerbot/v1/master`.
 13. **Heartbeat is mandatory**: after registration, send `[0x43]` at least every **50 ms** or all motors and servos will be stopped automatically. The watchdog only activates after the first heartbeat is received in a session — but start sending immediately to avoid races.
 
 ### Common rules (both protocols)
 
-13. **Port**: always send to port `24642` unless the device reports a different port via the HTTP API.
-14. **Listen for reply**: bind your socket before sending — the device replies to the **sender IP and port**.
-15. **Timeout**: always implement a receive timeout (recommended: 2 s). If the service was not yet started, the binary protocol returns `resp_not_started`; MusicService silently drops the message when not started.
-16. **Max payload**: keep requests and responses within **256 bytes**.
+14. **Port**: always send to port `24642` unless the device reports a different port via the HTTP API.
+15. **Listen for reply**: bind your socket before sending — the device replies to the **sender IP and port**.
+16. **Timeout**: always implement a receive timeout (recommended: 2 s). If the service was not yet started, the binary protocol returns `resp_not_started`; MusicService silently drops the message when not started.
+17. **Max payload**: keep requests and responses within **256 bytes**.
 
 ### Python examples
 
@@ -972,10 +1013,26 @@ send_text('Music:playnotes:783C048002')
 
 MY_TOKEN = "A3K9B"  # Replace with actual token from device screen
 
-# Register this machine as master: binary 0x41 + token bytes (no reply expected)
-send_raw(bytes([0x41]) + MY_TOKEN.encode())
+# UDPResponseStatus values (trailing byte of AmakerBot replies)
+UDP_SUCCESS = 0x01
+UDP_IGNORED = 0x02
+UDP_DENIED  = 0x03
+UDP_ERROR   = 0x04
 
-# Confirm via HTTP that registration succeeded:
+# Register this machine as master: binary 0x41 + token bytes
+# Reply: [0x41][token bytes][UDPResponseStatus]
+req = bytes([0x41]) + MY_TOKEN.encode()
+resp = send_raw(req)
+if resp and len(resp) == len(req) + 1:
+    status = resp[-1]
+    if status == UDP_SUCCESS:
+        print("Registered as master")
+    elif status == UDP_IGNORED:
+        print("Already registered or no slot available")
+    elif status == UDP_DENIED:
+        print("Invalid token")
+
+# Confirm also via HTTP:
 #   GET http://<device-ip>/api/amakerbot/v1/master
 
 # Heartbeat — must be sent at least every 50 ms while connected.
@@ -1009,6 +1066,25 @@ start_heartbeat()       # start after successful registration
 # ... drive the robot ...
 stop_heartbeat()        # stop heartbeat when done
 
-# Unregister (only works if we are the current master — no reply expected)
-send_raw(bytes([0x42]))
+# Unregister — reply: [0x42][UDPResponseStatus]
+resp = send_raw(bytes([0x42]))
+if resp and len(resp) == 2:
+    status = resp[-1]
+    print("Unregister:", {UDP_SUCCESS: "ok", UDP_DENIED: "not master", UDP_ERROR: "failed"}.get(status, "unknown"))
+
+# Ping — latency probe, reply is raw 5-byte echo (no status byte)
+import struct, time as _time
+
+def ping(seq: int = 1) -> float | None:
+    """Send a PING and return RTT in ms, or None on timeout."""
+    payload = bytes([0x44]) + struct.pack('<I', seq & 0xFFFFFFFF)
+    t0 = _time.monotonic()
+    resp = send_raw(payload)
+    if resp and len(resp) == 5 and resp[0] == 0x44 and resp[1:] == payload[1:]:
+        return (_time.monotonic() - t0) * 1000
+    return None
+
+rtt = ping(seq=42)
+if rtt is not None:
+    print(f"Ping RTT: {rtt:.1f} ms")
 ```

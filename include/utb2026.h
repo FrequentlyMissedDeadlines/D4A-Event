@@ -113,7 +113,7 @@ public:
      * @brief Render network information display
      * @details Shows WiFi status, IP address, UDP/HTTP server info
      */
-    void draw_network_info();
+    void draw_amakerbot_info();
 
     /**
      * @brief Render all registered logger views
@@ -179,8 +179,8 @@ private:
         uint16_t bg_color;
     };
     std::vector<logger_view> logger_views;
-    DisplayMode current_display_mode_ = MODE_APP_LOG;
-    DisplayMode previous_display_mode_ = MODE_APP_LOG;
+    DisplayMode current_display_mode_ = MODE_APP_UI;
+    DisplayMode previous_display_mode_ = MODE_APP_UI;
     RollingLogger* debug_logger_ = nullptr;
     RollingLogger* app_logger_ = nullptr;
     RollingLogger* esp_logger_ = nullptr;

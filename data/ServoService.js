@@ -262,8 +262,10 @@ async function stopAllMotors() {
     showStatus(`❌ Failed to stop all motors - HTTP ${result.status || 'n/a'}`, true);
   }
 }
-async function setAllMotorsSpeedLive(value) {
+let _allMotorsDebounceTimer = null;
+function setAllMotorsSpeedLive(value) {
   const speed = parseInt(value);
+  // Update UI immediately
   document.getElementById('all-motors-speed-value').textContent = speed;
   motors.forEach(m => {
     m.speed = speed;
@@ -274,8 +276,12 @@ async function setAllMotorsSpeedLive(value) {
     if (display) display.textContent = speed;
     if (badge)   badge.textContent   = speed;
   });
-  const result = await apiCall('/api/servos/v1/setAllMotorsSpeed', 'POST', { speed });
-  if (!result.ok) showStatus(`❌ Failed to set all motors speed - HTTP ${result.status || 'n/a'}`, true);
+  // Debounce the HTTP call — only send after 300 ms of inactivity
+  clearTimeout(_allMotorsDebounceTimer);
+  _allMotorsDebounceTimer = setTimeout(async () => {
+    const result = await apiCall('/api/servos/v1/setAllMotorsSpeed', 'POST', { speed });
+    if (!result.ok) showStatus(`❌ Failed to set all motors speed - HTTP ${result.status || 'n/a'}`, true);
+  }, 300);
 }
 document.addEventListener('DOMContentLoaded', () => {
   renderServos();

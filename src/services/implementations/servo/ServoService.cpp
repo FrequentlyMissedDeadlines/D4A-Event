@@ -1493,7 +1493,7 @@ bool ServoService::messageHandler(const std::string &message,
         snprintf(buf, sizeof(buf), "%02X ", d[i]);
         hex_dump += buf;
     }
-    logger->debug("UDP rx " + std::to_string(len) + "B: " + hex_dump);
+    logger->debug("UDP rx " + std::to_string(len) + "Bytes: " + hex_dump);
 #endif
     static std::string resp;
     resp.clear();

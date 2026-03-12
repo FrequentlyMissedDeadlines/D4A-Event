@@ -150,6 +150,16 @@ constexpr uint16_t SERVO360_STOP_US         = 1500; ///< Neutral / stop pulse wi
 constexpr uint16_t SERVO360_FORWARD_MIN_US  = 520; ///< Full-speed forward pulse width
 constexpr uint16_t SERVO360_BACKWARD_MAX_US = 2480; ///< Full-speed backward pulse width
 
+/// Standard 180° Servo calibration (microseconds)
+constexpr uint16_t SERVO180_MIN_US    = 500;
+constexpr uint16_t SERVO180_MIDDLE_US = 1490;
+constexpr uint16_t SERVO180_MAX_US    = 2480;
+
+/// Wide 270° Servo calibration (microseconds)
+constexpr uint16_t SERVO270_MIN_US    = 500;
+constexpr uint16_t SERVO270_MIDDLE_US = 1985;
+constexpr uint16_t SERVO270_MAX_US    = 3470;
+
 class DFR1216
 {
 public:
@@ -227,7 +237,7 @@ public:
   uint16_t getADCValue(eIONumber_t number);
 
   /**
-   * @fn: getDHTValue
+   * @fn: getDHTValuecan you
    * @brief: Get the DHT value
    * @param number: io number
    * @return: sDhtData_t dhtData
@@ -266,10 +276,12 @@ public:
    * @fn: setServoAngle
    * @brief: Set the servo angle
    * @param number: servo number
-   * @param angle: servo angle (0-180)
+   * @param angle: servo angle
+   * @param maxAngle: servo max angle (180 or 270)
    * @return: NULL
    */
-  void setServoAngle(eServoNumber_t number, uint8_t angle);
+  void setServoAngle(eServoNumber_t number, uint16_t angle);
+  void setServoAngle(eServoNumber_t number, uint16_t angle, uint16_t maxAngle);
 
   /**
    * @fn: setServo360

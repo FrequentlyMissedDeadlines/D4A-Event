@@ -78,8 +78,8 @@ namespace ServoConsts
 
     // Error messages for exceptions
     constexpr const char err_channel_range[] PROGMEM = "Channel out of range";
-    constexpr const char err_angle_range_180[] PROGMEM = "Angle out of range for 180° servo";
-    constexpr const char err_angle_range_270[] PROGMEM = "Angle out of range for 270° servo";
+    constexpr const char err_angle_range_180[] PROGMEM = "Angle out of range for 180° servo (-90 to 90)";
+    constexpr const char err_angle_range_270[] PROGMEM = "Angle out of range for 270° servo (-135 to 135)";
     constexpr const char err_servo_not_attached[] PROGMEM = "Servo not attached on channel";
     constexpr const char err_servo_not_continuous[] PROGMEM = "Servo not continuous on channel";
     constexpr const char err_speed_range[] PROGMEM = "Speed out of range";
@@ -97,8 +97,8 @@ namespace ServoConsts
     // OpenAPI tags and descriptions
     constexpr const char tag_servos[] PROGMEM = "Servos";
     constexpr const char desc_servo_channel[] PROGMEM = "Servo channel (0-7)";
-    constexpr const char desc_angle_degrees[] PROGMEM = "Angle in degrees (0-180 for 180° servos, 0-270 for 270° servos)";
-    constexpr const char desc_angle_degrees_360[] PROGMEM = "Angle in degrees (0-360)";
+    constexpr const char desc_angle_degrees[] PROGMEM = "Angle in degrees (-90 to 90 for 180° servos, -135 to 135 for 270° servos)";
+    constexpr const char desc_angle_degrees_360[] PROGMEM = "Angle in degrees (-180 to 180 or 0-360)";
     constexpr const char desc_speed_percent[] PROGMEM = "Speed percentage (-100 to +100, negative is reverse)";
 
     constexpr const char desc_connection_type[] PROGMEM = "Servo connection type (0=None, 1=continuous, 2=angular 180 degree, 3=angular 270 degrees)";
@@ -128,13 +128,13 @@ namespace ServoConsts
     // OpenAPI schemas
     constexpr const char schema_channel_status[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\"},\"status\":{\"type\":\"string\"}}}";
     constexpr const char schema_all_servos[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
-    constexpr const char req_channel_angle_07[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"channel\",\"angle\"]}";
+    constexpr const char req_channel_angle_07[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"angle\":{\"type\":\"integer\",\"minimum\":-180,\"maximum\":180}},\"required\":[\"channel\",\"angle\"]}";
     constexpr const char req_channel_speed[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100},\"duration_ms\":{\"type\":\"integer\",\"minimum\":1,\"description\":\"Auto-stop delay in ms (optional)\"}},\"required\":[\"channel\",\"speed\"]}";
-    constexpr const char req_angle[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"angle\"]}";
+    constexpr const char req_angle[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"angle\":{\"type\":\"integer\",\"minimum\":-180,\"maximum\":180}},\"required\":[\"angle\"]}";
     constexpr const char req_speed[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100},\"duration_ms\":{\"type\":\"integer\",\"minimum\":1,\"description\":\"Auto-stop delay in ms (optional)\"}},\"required\":[\"speed\"]}";
     constexpr const char req_channel_connection[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"connection\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3,\"description\":\"0=None, 1=continuous, 2=angular 180 degree, 3=angular 270 degrees\"}},\"required\":[\"channel\",\"connection\"]}";
     constexpr const char req_servos_speed_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100},\"duration_ms\":{\"type\":\"integer\",\"minimum\":1}},\"required\":[\"channel\",\"speed\"]}}},\"required\":[\"servos\"]}";
-    constexpr const char req_servos_angle_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":360}},\"required\":[\"channel\",\"angle\"]}}},\"required\":[\"servos\"]}";
+    constexpr const char req_servos_angle_multiple[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"servos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":7},\"angle\":{\"type\":\"integer\",\"minimum\":-180,\"maximum\":180}},\"required\":[\"channel\",\"angle\"]}}},\"required\":[\"servos\"]}";
 
     // Example values
     constexpr const char ex_channel_angle[] PROGMEM = "{\"channel\":0,\"angle\":90}";
@@ -159,7 +159,7 @@ namespace ServoConsts
     //   Motor mask   : bit N = motor N+1        (N = 0-3, bits 4-7 ignored)
     // Response shape : [action:1B][resp_code:1B][optional_payload]
     // ────────────────────────────────────────────────────────────────────────
-    constexpr uint8_t udp_service_id = 0x02; ///<` Unique ID for this service (high nibble of action byte)
+    constexpr uint8_t udp_service_id = 0x05; ///<` Unique ID for this service (high nibble of action byte)
 
     // Action codes (byte 0 of both request and response)
     constexpr uint8_t udp_action_set_servo_angle = (udp_service_id << 4) | 0x01;  ///< [ch0:int16_LE]...[chN:int16_LE]  bit0=0→skip, bit0=1→angle=raw>>1 (centre-zero °)
@@ -297,7 +297,7 @@ bool ServoService::attachServo(uint8_t channel, ServoConnection connection)
     }
 }
 // Set servo angle (wrapper for easier integration)
-bool ServoService::setServoAngle(uint8_t channel, uint16_t angle)
+bool ServoService::setServoAngle(uint8_t channel, int16_t angle)
 {
     if (!isServiceStarted())
     {
@@ -314,22 +314,24 @@ bool ServoService::setServoAngle(uint8_t channel, uint16_t angle)
         }
         if (attached_servos[channel] == ServoConnection::ANGULAR_180)
         {
-            if (angle > 180)
+            if (angle < -90 || angle > 90)
             {
                 throw std::out_of_range(reinterpret_cast<const char *>(FPSTR(ServoConsts::err_angle_range_180)));
             }
-            servoController.setServoAngle(eServoNumber_t(channel), angle);
-            servo_angles[channel] = static_cast<int16_t>(angle);
+            uint16_t absolute_angle = static_cast<uint16_t>(angle + 90);
+            servoController.setServoAngle(eServoNumber_t(channel), absolute_angle, 180);
+            servo_angles[channel] = angle;
             return true;
         }
         else if (attached_servos[channel] == ServoConnection::ANGULAR_270)
         {
-            if (angle > 270)
+            if (angle < -135 || angle > 135)
             {
                 throw std::out_of_range(reinterpret_cast<const char *>(FPSTR(ServoConsts::err_angle_range_270)));
             }
-            servoController.setServoAngle(eServoNumber_t(channel), angle);
-            servo_angles[channel] = static_cast<int16_t>(angle);
+            uint16_t absolute_angle = static_cast<uint16_t>(angle + 135);
+            servoController.setServoAngle(eServoNumber_t(channel), absolute_angle, 270);
+            servo_angles[channel] = angle;
             return true;
         }
         else
@@ -406,7 +408,7 @@ bool ServoService::setAllServoSpeed(int8_t speed, uint32_t duration_ms)
     return allSuccess;
 }
 
-bool ServoService::setAllServoAngle(u_int16_t angle)
+bool ServoService::setAllServoAngle(int16_t angle)
 {
 #ifdef SERVO_VERBOSE_DEBUG
     logger->debug("setAllServoAngle " + std::to_string(angle));

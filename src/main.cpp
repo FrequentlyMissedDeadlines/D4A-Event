@@ -14,9 +14,6 @@
 #include <TFT_eSPI.h>
 #include <esp_log.h>
 #include <AsyncUDP.h>
-#include <LittleFS.h>
-#include <SPIFFS.h>
-#include <FFat.h>
 #include <unihiker_k10.h>
 #include <esp_camera.h>
 #include <img_converters.h>
@@ -171,11 +168,11 @@ void task_DISPLAY(void *pvParameters)
  * @note AsyncWebServer handles requests automatically, so this task is minimal
  */
 void task_HTTP_SVR(void *pvParameters)
-{
+{ return;
   debug_logger.info(progmem_to_string(MainConsts::msg_http_task_started));
   
-  constexpr unsigned long watchdog_timeout_ms = 3; // 3 seconds without any request = stalled
-  constexpr TickType_t check_interval = pdMS_TO_TICKS(50); // check every 5 seconds
+  constexpr unsigned long watchdog_timeout_ms = 30000; // 30 seconds without any request = stalled
+  constexpr TickType_t check_interval = pdMS_TO_TICKS(5000); // check every 5 seconds
 
   for (;;)
   {
@@ -274,6 +271,11 @@ namespace
  */
 void setup()
 {
+  // Initialize Serial FIRST for debugging
+  Serial.begin(serial_baud);
+  delay(100);
+  Serial.println("\n\n=== K10-Bot Starting ===");
+  
   // Small delay to ensure system stabilizes
   delay(500);
   
@@ -287,9 +289,12 @@ void setup()
   debug_logger.set_log_level(RollingLogger::DEBUG);
   esp_logger.set_max_rows(32);
   esp_logger.set_log_level(RollingLogger::DEBUG);
+  
+  Serial.println("Loggers initialized");
 
   // Redirect ESP-IDF logs BEFORE any other initialization
   esp_log_to_rolling_init(&esp_logger);
+  Serial.println("ESP-IDF logging redirected");
   
   // Test ESP logging immediately after redirect
   ESP_LOGI("Main", "TEST 1: ESP-IDF logging initialized");
@@ -298,7 +303,9 @@ void setup()
   ESP_LOGE("Main", "TEST 4: Error level message");
   
   // Now initialize hardware
+  Serial.println("Initializing UniHiker hardware...");
   unihiker.begin();
+  Serial.println("Initializing display...");
   unihiker.initScreen(2, 30);
   unihiker.creatCanvas();
   unihiker.setScreenBackground(TFT_BLACK);
@@ -315,9 +322,11 @@ void setup()
   ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_DARKGREY,TFT_DARKGREY);
   xTaskCreatePinnedToCore(task_DISPLAY, "Display_Task", 4096, nullptr, 1, nullptr, 1);
 
+  Serial.println("Starting services...");
   debug_logger.info(progmem_to_string(MainConsts::msg_starting_services));
   if (!start_service(wifi_service))
   {
+    Serial.println("FATAL: WiFi service failed to start");
     app_info_logger.error(progmem_to_string(MainConsts::msg_fatal_wifi_failed));
 
     return;
@@ -359,7 +368,7 @@ void setup()
 #endif
       }
     }
-    xTaskCreatePinnedToCore(xtask_UDP_SVR, "UDPServer_Task", 2048, nullptr, 3, nullptr, 0);
+    xTaskCreatePinnedToCore(xtask_UDP_SVR, "UDPServer_Task", 4096, nullptr, 10, nullptr, 0);
   }
   else
   {
@@ -370,10 +379,21 @@ void setup()
 
   if (start_service(http_service))
   {
-    xTaskCreatePinnedToCore(task_HTTP_SVR, "WebServer_Task", 8192, nullptr, 2, nullptr, 1);
+    Serial.println("HTTP service initialized, starting web server...");
+    // Start the web server AFTER all routes have been registered
+    if (!http_service.startWebServer())
+    {
+      Serial.println("ERROR: Failed to start web server");
+      app_info_logger.error("Failed to start web server");
+    }
+    else
+    {
+      Serial.println("Web server started successfully on port 80");
+    }
   }
   else
   {
+    Serial.println("ERROR: HTTP service failed to initialize");
     app_info_logger.error(progmem_to_string(MainConsts::msg_failed_webserver));
   }
 
@@ -402,55 +422,3 @@ void loop()
 
 
 
-/*
-//debugging function to list files in a filesystem (e.g., LittleFS, SPIFFS, FFat)
-void listFilesInFS(fs::FS &fs, const char* fsName)
-{
-  debugLogger.info(std::string("=== ") + fsName + " File List ===");
-  File root = fs.open("/");
-  if (!root)
-  {
-    debugLogger.error("Failed to open root directory");
-    return;
-  }
-  if (!root.isDirectory())
-  {
-    debugLogger.error("Root is not a directory");
-    return;
-  }
-  int fileCount = 0;
-  File file = root.openNextFile();
-  while (file)
-  {
-    fileCount++;
-    String filename = file.name();
-    size_t filesize = file.size();
-    debugLogger.info(std::string(filename.c_str()) + " (" + std::to_string(filesize) + " bytes)");
-    file = root.openNextFile();
-  }
-  debugLogger.info("Total: " + std::to_string(fileCount) + " files");
-}
-// debug function to check all partitions for LittleFS and list files (used for debugging storage issues)
-void testAllPartFitions()
-{
-  const char* partitions[] = { "voice_data"};
-  constexpr size_t num_partitions = 1;
-  for (size_t i = 0; i < num_partitions; i++)
-  {
-    const char* partitionLabel = partitions[i];
-    debugLogger.info(std::string("Checking FS '") + partitionLabel + "'");
-    // Try LittleFS on partition
-    if (LittleFS.begin(false, "/littlefs", 10, "voice_data"))
-    {
-      appInfoLogger.info("SUCCESS: LittleFS " + std::string(partitionLabel) + " mounted");
-      listFilesInFS(LittleFS, (std::string("LittleFS_") + partitionLabel).c_str());
-      LittleFS.end();
-    }
-    else
-    {
-      debugLogger.error(std::string("FAILED: LittleFS '") + partitionLabel + "'");
-    }
-    delay(500);
-  }
-}
-  */

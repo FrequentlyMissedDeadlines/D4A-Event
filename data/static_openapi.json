@@ -959,7 +959,7 @@
           {
             "name": "angle",
             "in": "query",
-            "description": "Angle in degrees (0-180 for 180° servos, 0-270 for 270° servos)",
+            "description": "Angle in degrees (-90 to 90 for 180° servos, -135 to 135 for 270° servos)",
             "required": true,
             "schema": {
               "type": "integer"

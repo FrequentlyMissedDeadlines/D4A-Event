@@ -10,15 +10,13 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 #include <esp_system.h>
 #include <esp_camera.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <unihiker_k10.h>
 #include <pgmspace.h>
-#include <FS.h>
-#include <LittleFS.h>
-#include <esp_partition.h>
 #include <sstream>
 #include <algorithm>
 #include "RollingLogger.h"
@@ -27,6 +25,7 @@
 #include "FlashStringHelper.h"
 
 // Forward declarations for external variables from main.cpp
+extern AsyncWebServer webserver;
 std::string master_IP;
 std::string master_TOKEN;
 
@@ -38,24 +37,16 @@ bool HTTPService::startService()
   if (logger)
     logger->info("Starting HTTP service...");
 
-  // Initialize LittleFS on partition 'voice_data'
-  bool mounted = LittleFS.begin(false, "/littlefs", 10, "voice_data");
-
-  if (!mounted)
+  // Initialize LittleFS filesystem BEFORE serving static files
+      if (! LittleFS.begin(false, "/littlefs", 10, "voice_data"))
   {
     if (logger)
-      logger->error("Failed to mount LittleFS 'voice_data'");
+      logger->error("LittleFS mount failed - run 'pio run --target uploadfs'");
     setServiceStatus(START_FAILED);
     return false;
   }
-
   if (logger)
-  {
-    logger->info("LittleFS mounted successfully");
-#ifdef VERBOSE_DEBUG
-    listFilesInFS(LittleFS, "/");
-#endif
-  }
+    logger->info("LittleFS mounted");
 
   // Force connection close after every response to prevent lwIP PCB table exhaustion.
   // With only 16 PCB slots and TIME_WAIT lasting 2×MSL=120s, keep-alive connections
@@ -63,28 +54,53 @@ bool HTTPService::startService()
   // is freed promptly after the response is sent.
   DefaultHeaders::Instance().addHeader("Connection", "close");
 
-  // AsyncWebServer starts automatically when routes are registered
-  try
-  {
-    webserver.begin();
-  }
-  catch (const std::exception &e)
-  {
-    setServiceStatus(START_FAILED);
-    if (logger)
-      logger->error(std::string("Failed webserver.begin: ") + e.what());
-    return false;
-  }
+  // Serve all static files from LittleFS root
+  webserver.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  
+  if (logger)
+    logger->info("Static files configured from LittleFS");
 
   setServiceStatus(STARTED);
-
   if (logger)
-    logger->info("AsyncWebServer started");
+    logger->info("HTTPService started (routes configured, server will begin after all services register)");
 
 #ifdef VERBOSE_DEBUG
   logger->debug(getServiceName() + " " + getStatusString());
 #endif
   return true;
+}
+
+bool HTTPService::startWebServer()
+{
+  if (!isServiceStarted())
+  {
+    if (logger)
+      logger->error("Cannot start web server - HTTPService not initialized");
+    return false;
+  }
+
+  try
+  {
+    // Simple test route to verify server is working
+    webserver.on("/test", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send(200, "text/plain", "Server is alive!");
+    });
+    
+    webserver.begin();
+    if (logger)
+      logger->info("AsyncWebServer listening on port 80");
+    
+    // Give server time to initialize
+    delay(100);
+    return true;
+  }
+  catch (const std::exception &e)
+  {
+    if (logger)
+      logger->error(std::string("Failed to start web server: ") + e.what());
+    setServiceStatus(START_FAILED);
+    return false;
+  }
 }
 
 bool HTTPService::stopService()
@@ -96,7 +112,7 @@ bool HTTPService::stopService()
       webserver.end();
       setServiceStatus(STOPPED);
     }
-    LittleFS.end();
+    
     setServiceStatus(STOPPED);
 
 #ifdef VERBOSE_DEBUG
@@ -164,48 +180,6 @@ void HTTPService::handleHomeClient(AsyncWebServerRequest *request)
   logRequest(request);
   // Redirect root to index.html
   request->redirect("/index.html");
-}
-
-/**
- * @brief Read file content from LittleFS into a string
- */
-std::string HTTPService::readFileToString(const char *path)
-{
-  if (!LittleFS.exists(path))
-  {
-    if (logger)
-    {
-      logger->warning(std::string("Template not found: ") + path);
-    }
-    return "";
-  }
-
-  File file = LittleFS.open(path, "r");
-  if (!file || file.isDirectory())
-  {
-    if (logger)
-    {
-      logger->warning(std::string("Cannot read template: ") + path);
-    }
-    if (file)
-      file.close();
-    return "";
-  }
-
-  size_t file_size = file.size();
-  std::string content;
-  content.reserve(file_size);
-
-  constexpr size_t kBufferSize = 512;
-  char buffer[kBufferSize];
-  while (file.available())
-  {
-    size_t bytes_read = file.readBytes(buffer, kBufferSize);
-    content.append(buffer, bytes_read);
-  }
-
-  file.close();
-  return content;
 }
 
 /**
@@ -406,10 +380,6 @@ void HTTPService::handleNotFoundClient(AsyncWebServerRequest *request)
 
   String path = request->url();
 
-  if (tryServeLittleFS(request))
-  {
-    return;
-  }
 
   if (logger)
     logger->warning(std::string(path.c_str()) + " 404");
@@ -492,13 +462,7 @@ bool HTTPService::registerRoutes()
                  last_request_time_.store(millis());
                  request->send(200, RoutesConsts::mime_plain_text, "pong"); });
 
-  // Test interface endpoint
-  // webserver.on("/api/docs", HTTP_GET, [this](AsyncWebServerRequest *request)
-  //              {
-  //                if (!checkServiceStarted(request)) return;
-  //                this->handleTestClient(request);
-  //              });
-
+  
   // OpenAPI specification endpoint
   webserver.on(path.c_str(), HTTP_GET, [this](AsyncWebServerRequest *request)
                { 
@@ -514,156 +478,6 @@ bool HTTPService::registerRoutes()
   return true;
 }
 
-/**
- * @brief Attempt to serve a file from LittleFS
- */
-bool HTTPService::tryServeLittleFS(AsyncWebServerRequest *request)
-{
-  if (!request)
-  {
-    return false;
-  }
-
-  String path = request->url();
-
-#ifdef VERBOSE_DEBUG
-  if (logger)
-    logger->debug(std::string("Serving: ") + path.c_str());
-#endif
-
-  // Strip query parameters
-  const int queryIndex = path.indexOf('?');
-  if (queryIndex >= 0)
-  {
-    path = path.substring(0, queryIndex);
-  }
-
-  // Handle directory requests
-  if (path.endsWith("/"))
-  {
-    path += "index.html";
-  }
-
-  // Ensure path starts with /
-  if (!path.startsWith("/"))
-  {
-    path = "/" + path;
-  }
-
-  // Security: block path traversal
-  if (path.indexOf("..") >= 0)
-  {
-    if (logger)
-      logger->warning("Path traversal blocked!");
-    return false;
-  }
-
-  // Prefer the gzip-compressed variant when the client accepts it and the
-  // file exists on LittleFS.  The compress_data.py pre-build script produces
-  // a <file>.gz sibling for every HTML/CSS/JS/JSON asset, so for most static
-  // assets this branch will be taken, saving flash-read bandwidth and RAM.
-  bool useGzip = false;
-  String filePath = path;
-  if (request->hasHeader("Accept-Encoding"))
-  {
-    String acceptEncoding = request->getHeader("Accept-Encoding")->value();
-    if (acceptEncoding.indexOf("gzip") >= 0)
-    {
-      String gzPath = path + ".gz";
-      if (LittleFS.exists(gzPath))
-      {
-        filePath = gzPath;
-        useGzip  = true;
-      }
-    }
-  }
-
-  // Read file fully into memory, then close the LittleFS handle immediately.
-  // This prevents holding SPI flash file descriptors open during the entire
-  // TCP transmission, which blocks the async event loop and causes hangs
-  // when concurrent HTTP requests arrive.
-  File file = LittleFS.open(filePath, "r");
-  if (!file || file.isDirectory())
-  {
-    if (file)
-      file.close();
-    // If the .gz open failed, fall back to the plain file
-    if (useGzip)
-    {
-      useGzip  = false;
-      filePath = path;
-      file     = LittleFS.open(filePath, "r");
-      if (!file || file.isDirectory())
-      {
-        if (file)
-          file.close();
-        return false;
-      }
-    }
-    else
-    {
-      return false;
-    }
-  }
-
-  size_t fileSize = file.size();
-  if (fileSize == 0)
-  {
-    file.close();
-    return false;
-  }
-
-  // Read entire file into a heap buffer, then close the flash handle.
-  // We use beginResponse(code, type, uint8_t*, len) which creates an
-  // AsyncProgmemResponse — this uses AsyncAbstractResponse::write_send_buffs()
-  // with chunk-inflight flow control, properly sharing TCP window space across
-  // concurrent connections. AsyncBasicResponse bypasses this flow control and
-  // can deadlock when multiple responses compete for TCP buffer space.
-  uint8_t *buf = static_cast<uint8_t *>(malloc(fileSize));
-  if (!buf)
-  {
-    file.close();
-    if (logger)
-      logger->error("OOM serving " + std::string(filePath.c_str()) + " (" + std::to_string(fileSize) + "B)");
-    request->send(503, RoutesConsts::mime_plain_text, "Out of memory");
-    return true; // handled (with error), don't fall through to 404
-  }
-
-  size_t totalRead = file.read(buf, fileSize);
-  file.close(); // LittleFS handle released — SPI flash is free for other requests
-
-  if (totalRead != fileSize)
-  {
-    free(buf);
-    if (logger)
-      logger->error("Short read on " + std::string(filePath.c_str()));
-    return false;
-  }
-
-  // AsyncProgmemResponse reads from buf pointer during TCP send via _fillBuffer(),
-  // so buf must stay alive until the response is fully sent. Free on disconnect.
-  // Use the original (non-.gz) path to derive the correct Content-Type.
-  const String contentType = getContentTypeForPath(path);
-  AsyncWebServerResponse *response = request->beginResponse(200, contentType, buf, fileSize);
-  response->addHeader("Cache-Control", "max-age=600");
-  if (useGzip)
-  {
-    response->addHeader("Content-Encoding", "gzip");
-  }
-
-  // Release heap buffer when connection closes (response fully sent or aborted)
-  uint8_t *captured_buf = buf;
-  request->onDisconnect([captured_buf]()
-                        { free(captured_buf); });
-  request->send(response);
-
-#ifdef VERBOSE_DEBUG
-  if (logger)
-    logger->debug(std::string(filePath.c_str()) + " sent (" + std::to_string(totalRead) + "B from RAM" + (useGzip ? ", gzip" : "") + ")");
-#endif
-
-  return true;
-}
 
 /**
  * @brief Resolve MIME type based on file extension
@@ -714,44 +528,4 @@ std::string HTTPService::getServiceName()
 std::string HTTPService::getServiceSubPath()
 {
   return "http/v1";
-}
-
-/**
- * @brief List all files in LittleFS recursively (for debugging)
- */
-void HTTPService::listFilesInFS(fs::FS &fs, const char *dirname, uint8_t levels, uint8_t currentLevel)
-{
-  if (!logger)
-    return;
-  if (currentLevel > levels)
-    return;
-
-  File root = fs.open(dirname);
-  if (!root || !root.isDirectory())
-  {
-    logger->warning("Failed to open directory: " + std::string(dirname));
-    return;
-  }
-
-  File file = root.openNextFile();
-  while (file)
-  {
-    std::string indent = "";
-    for (uint8_t i = 0; i < currentLevel; i++)
-      indent += "  ";
-
-    if (file.isDirectory())
-    {
-      logger->info(indent + std::string(file.name()) + "/");
-      if (levels > 0)
-      {
-        listFilesInFS(fs, file.path(), levels, currentLevel + 1);
-      }
-    }
-    else
-    {
-      logger->info(indent + std::string(file.name()) + " (" + std::to_string(file.size()) + "B)");
-    }
-    file = root.openNextFile();
-  }
 }

@@ -148,7 +148,7 @@ namespace WebcamConsts
     constexpr size_t audio_i2s_chunk = 1280; ///< 20 ms of stereo 16-bit at 16 kHz
     constexpr size_t audio_task_stack = 4096;
     constexpr uint8_t audio_task_priority = 3;
-    constexpr uint8_t audio_task_core = 0; ///< Core 0 — real-time
+    constexpr uint8_t audio_task_core = 1; ///< Core 0 — real-time
     constexpr uint8_t wav_header_size = 44;
 }
 
@@ -777,7 +777,8 @@ void WebcamService::audioCaptureLoop()
  * @return true on success
  */
 bool WebcamService::startAudioCapture()
-{
+{ return false;
+    //crap code
     if (audio_capturing_)
         return true; // already running
 
@@ -820,7 +821,8 @@ bool WebcamService::startAudioCapture()
  * @brief Signal the capture task to stop, wait for it, and free resources
  */
 void WebcamService::stopAudioCapture()
-{
+{  return ;
+    //crap code
     if (!audio_capturing_)
         return;
 
@@ -891,7 +893,8 @@ static void buildWavHeader(uint8_t *header, uint32_t rate, uint16_t bits, uint16
  * @note    Do NOT use simultaneously with MusicService playback — they share I2S_NUM_0.
  */
 void WebcamService::handleAudioStream(AsyncWebServerRequest *request)
-{
+{   return;
+    //crap code
     logger->info("Start audio streaming " + getServiceName() + "...");
 
     if (!initialized_)

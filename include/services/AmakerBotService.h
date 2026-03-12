@@ -24,11 +24,15 @@
  *   GET  /api/amakerbot/v1/display                 — get current TFT display mode
  *   POST /api/amakerbot/v1/display/next            — cycle to next display mode (same as button A)
  *   POST /api/amakerbot/v1/display?mode=<mode>     — set display mode (APP_UI|APP_LOG|DEBUG_LOG|ESP_LOG)
+ *   GET  /api/amakerbot/v1/name                    — get current bot name
+ *   POST /api/amakerbot/v1/name?name=<name>        — set bot name (max 32 chars)
  *
  * UDP protocol (service_id 0x4):
- *   [0x41]<token>  — register UDP sender IP as master (if token matches); 
- *   [0x42]         — clear master (master IP only);                       
+ *   [0x41]<token>  — register UDP sender IP as master (if token matches);
+ *   [0x42]         — clear master (master IP only);
  *   [0x43]         — heartbeat keep-alive; must be sent every ≤50 ms or all motors are stopped
+ *   [0x45]         — get bot name; server replies with [0x45][name bytes];
+ *   [0x46]<name>   — set bot name (master only); server replies with [0x46][status];
  */
 class AmakerBotService : public IsOpenAPIInterface,
                          public IsUDPMessageHandlerInterface
@@ -58,6 +62,18 @@ public:
      * @return The 5-character alphanumeric token generated on init.
      */
     std::string getServerToken() const;
+
+    /**
+     * @brief Return the current bot name.
+     * @return Bot name string (default: "K10-Bot").
+     */
+    std::string getBotName() const;
+
+    /**
+     * @brief Set the bot name (thread-safe).
+     * @param name New name (1–32 characters); ignored if empty or > 32 chars.
+     */
+    void setBotName(const std::string &name);
 
     /**
      * @brief Handle incoming UDP messages for master registration.
@@ -121,6 +137,7 @@ private:
 
     std::string server_token_;    // Generated once on init, never changes
     std::string master_ip_;       // Current master's IP, empty if none
+    std::string bot_name_;        // Bot name (default: "K10-Bot", protected by master_mutex_)
     SemaphoreHandle_t master_mutex_ = nullptr;
 
     // Heartbeat watchdog state

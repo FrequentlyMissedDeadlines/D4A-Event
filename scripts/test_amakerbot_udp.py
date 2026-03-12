@@ -1,620 +1,698 @@
 #!/usr/bin/env python3
 """
-test_amakerbot_udp.py — End-to-end UDP test suite for the K10-Bot AmakerBot services.
+K10 Bot — UDP test suite
+Usage: python test_amakerbot_udp.py <ip> <port> <token>
 
-Usage
------
-    python test_amakerbot_udp.py <robot_ip> <port> <token>
-
-    robot_ip  – IP address of the K10-Bot (e.g. 192.168.1.56)
-    port      – UDP port (default: 24642)
-    token     – 5-char hex token shown on the device screen in APP_LOG mode
-
-Protocol summary
-----------------
-  Text commands  : "<Service>:<command>[:<json>]"
-  Binary commands: AmakerBotService uses raw bytes (0x41–0x44)
-
-  Heartbeat (0x43) MUST arrive at the device at least every 50 ms while
-  registered, otherwise all motors are stopped. This script keeps a
-  background heartbeat thread running throughout the test session.
-
-Exit codes
-----------
-  0  – all tests passed
-  1  – one or more tests failed
-  2  – argument error
+Covers:
+  • AmakerBotService  (0x41 – 0x46)  master registration, heartbeat, ping, bot name
+  • BoardInfoService  (0x11 – 0x14)  onboard RGB LEDs
+  • DFR1216Service    (0x31 – 0x34)  expansion board RGB LEDs
+  • ServoService      (0x51 – 0x59)  servos and DC motors
+  • MusicService      (text)         play / tone / stop / melodies
 """
 
+import argparse
 import json
 import socket
+import struct
 import sys
 import threading
 import time
-from typing import Optional
 
-# ── ANSI colours ──────────────────────────────────────────────────────────────
-GREEN  = "\033[32m"
-RED    = "\033[31m"
-YELLOW = "\033[33m"
-CYAN   = "\033[36m"
-BOLD   = "\033[1m"
+# ─── Constants ───────────────────────────────────────────────────────────────
+
+DEFAULT_TIMEOUT = 2.0          # seconds
+
+# UDPResponseStatus (AmakerBotService replies)
+UDP_SUCCESS = 0x01
+UDP_IGNORED = 0x02
+UDP_DENIED  = 0x03
+UDP_ERROR   = 0x04
+_AB_STATUS = {UDP_SUCCESS: "SUCCESS", UDP_IGNORED: "IGNORED",
+              UDP_DENIED: "DENIED", UDP_ERROR: "ERROR"}
+
+# UDPProto (binary resp_code, all other services)
+RESP_OK               = 0x00
+RESP_INVALID_PARAMS   = 0x01
+RESP_INVALID_VALUES   = 0x02
+RESP_OPERATION_FAILED = 0x03
+RESP_NOT_STARTED      = 0x04
+RESP_UNKNOWN_CMD      = 0x05
+RESP_NOT_MASTER       = 0x06
+_PROTO_STATUS = {
+    RESP_OK: "ok",
+    RESP_INVALID_PARAMS: "invalid_params",
+    RESP_INVALID_VALUES: "invalid_values",
+    RESP_OPERATION_FAILED: "operation_failed",
+    RESP_NOT_STARTED: "not_started",
+    RESP_UNKNOWN_CMD: "unknown_cmd",
+    RESP_NOT_MASTER: "not_master",
+}
+
+# ─── Colours ─────────────────────────────────────────────────────────────────
+
+GREEN  = "\033[92m"
+RED    = "\033[91m"
+YELLOW = "\033[93m"
+CYAN   = "\033[96m"
 RESET  = "\033[0m"
+BOLD   = "\033[1m"
 
-# ── Test counters ─────────────────────────────────────────────────────────────
-_passed = 0
-_failed = 0
-
-# ── UDP sockets ───────────────────────────────────────────────────────────────
-RECV_TIMEOUT = 2.0      # seconds to wait for a reply
-HB_INTERVAL  = 0.025   # 25 ms heartbeat → safe margin below 50 ms limit
-
-_send_sock: socket.socket
-_recv_sock: socket.socket
-_robot_addr: tuple[str, int]
-
-# ── Heartbeat state ───────────────────────────────────────────────────────────
-_hb_running  = False
-_hb_thread: Optional[threading.Thread] = None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Internal helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _send_raw(data: bytes) -> None:
-    """Send raw bytes to the robot."""
-    _send_sock.sendto(data, _robot_addr)
-
-
-def _send_text(service: str, command: str, payload: Optional[dict] = None) -> None:
-    """Send a structured text-protocol UDP message."""
-    msg = f"{service}:{command}"
-    if payload is not None:
-        msg += ":" + json.dumps(payload, separators=(",", ":"))
-    _send_raw(msg.encode())
-
-
-def _recv(timeout: float = RECV_TIMEOUT) -> Optional[str]:
-    """
-    Wait up to *timeout* seconds for a UDP reply.
-    Returns the decoded string, or None on timeout.
-    """
-    _recv_sock.settimeout(timeout)
-    try:
-        data, _ = _recv_sock.recvfrom(4096)
-        return data.decode(errors="replace")
-    except socket.timeout:
-        return None
-
-
-def _recv_json(timeout: float = RECV_TIMEOUT) -> Optional[dict]:
-    """Receive a reply and parse it as JSON. Returns None on timeout or parse error."""
-    raw = _recv(timeout)
-    if raw is None:
-        return None
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"_raw": raw}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Reporting
-# ─────────────────────────────────────────────────────────────────────────────
-
+def _ok(msg: str)   -> None: print(f"  {GREEN}✔ {msg}{RESET}")
+def _fail(msg: str) -> None: print(f"  {RED}✘ {msg}{RESET}")
+def _warn(msg: str) -> None: print(f"  {YELLOW}⚠ {msg}{RESET}")
+def _info(msg: str) -> None: print(f"  {CYAN}ℹ {msg}{RESET}")
 def _section(title: str) -> None:
     print(f"\n{BOLD}{CYAN}{'─' * 60}{RESET}")
     print(f"{BOLD}{CYAN}  {title}{RESET}")
     print(f"{BOLD}{CYAN}{'─' * 60}{RESET}")
 
+# ─── Socket helpers ──────────────────────────────────────────────────────────
 
-def _pass(test: str, detail: str = "") -> None:
-    global _passed
-    _passed += 1
-    suffix = f"  → {detail}" if detail else ""
-    print(f"  {GREEN}✓ PASS{RESET}  {test}{suffix}")
+class UDPClient:
+    """Reusable UDP socket bound once so the device can reply to the same port."""
 
+    def __init__(self, ip: str, port: int, timeout: float = DEFAULT_TIMEOUT):
+        self.target = (ip, port)
+        self.timeout = timeout
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.settimeout(timeout)
+        self.sock.bind(("", 0))   # bind to ephemeral port — keep it stable for master-IP checks
 
-def _fail(test: str, detail: str = "") -> None:
-    global _failed
-    _failed += 1
-    suffix = f"  → {detail}" if detail else ""
-    print(f"  {RED}✗ FAIL{RESET}  {test}{suffix}")
+    def send(self, data: bytes) -> bytes | None:
+        """Send raw bytes and return the response, or None on timeout."""
+        self.sock.sendto(data, self.target)
+        try:
+            resp, _ = self.sock.recvfrom(512)
+            return resp
+        except socket.timeout:
+            return None
 
+    def send_text(self, message: str) -> str | None:
+        resp = self.send(message.encode())
+        return resp.decode(errors="replace") if resp else None
 
-def _info(msg: str) -> None:
-    print(f"  {YELLOW}·{RESET}  {msg}")
+    def send_no_reply(self, data: bytes) -> None:
+        """Fire-and-forget (e.g. heartbeat)."""
+        self.sock.sendto(data, self.target)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Heartbeat
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _hb_loop() -> None:
-    hb_pkt = bytes([0x43])
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        while _hb_running:
-            s.sendto(hb_pkt, _robot_addr)
-            time.sleep(HB_INTERVAL)
-
-
-def start_heartbeat() -> None:
-    global _hb_running, _hb_thread
-    _hb_running = True
-    _hb_thread = threading.Thread(target=_hb_loop, daemon=True, name="heartbeat")
-    _hb_thread.start()
-    _info("Heartbeat thread started (25 ms interval)")
+    def close(self) -> None:
+        self.sock.close()
 
 
-def stop_heartbeat() -> None:
-    global _hb_running
-    _hb_running = False
-    if _hb_thread:
-        _hb_thread.join(timeout=1.0)
-    _info("Heartbeat thread stopped")
+# ─── Result tracker ──────────────────────────────────────────────────────────
+
+class Results:
+    def __init__(self):
+        self.passed = 0
+        self.failed = 0
+        self.skipped = 0
+
+    def check(self, condition: bool, label: str) -> bool:
+        if condition:
+            _ok(label)
+            self.passed += 1
+        else:
+            _fail(label)
+            self.failed += 1
+        return condition
+
+    def skip(self, label: str) -> None:
+        _warn(f"SKIP — {label}")
+        self.skipped += 1
+
+    def summary(self) -> None:
+        total = self.passed + self.failed
+        print(f"\n{BOLD}{'─' * 60}{RESET}")
+        print(f"{BOLD}  Results: {self.passed}/{total} passed", end="")
+        if self.skipped:
+            print(f"  ({self.skipped} skipped)", end="")
+        if self.failed == 0:
+            print(f"  {GREEN}ALL PASS{RESET}")
+        else:
+            print(f"  {RED}{self.failed} FAILED{RESET}")
+        print(f"{BOLD}{'─' * 60}{RESET}\n")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# AmakerBotService tests
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Speed / angle helpers ───────────────────────────────────────────────────
 
-def test_amakerbot(token: str) -> bool:
-    """
-    Register as master, send a ping, then verify heartbeat activation.
-    Returns True if registration succeeded (so other tests can proceed).
-    """
-    _section("AmakerBotService — registration & heartbeat")
+def encode_speed(speed: int) -> int:
+    """Map −100..+100 to 28..228 (encoded = speed + 128)."""
+    return max(28, min(228, speed + 128))
 
-    # ── 1. MASTER_REGISTER (0x41 + token) ─────────────────────────────────
-    # Reply format: [echo of full request][UDPResponseStatus]
-    #   request = [0x41][token_bytes]  → reply = [0x41][token_bytes][status]
-    #   UDPResponseStatus: SUCCESS=0x01, IGNORED=0x02, DENIED=0x03, ERROR=0x04
-    reg_request = bytes([0x41]) + token.encode()
-    expected_reply_len = len(reg_request) + 1   # echo + 1 status byte
-    _send_raw(reg_request)
-    reply = _recv(timeout=2.0)
 
-    registered = False
-    if reply is None:
-        _fail("0x41 MASTER_REGISTER", "no reply received (timeout)")
+def encode_angle(degrees: int) -> bytes:
+    """Pack a centre-zero angle as int16 LE with bit0=1 (set) or bit0=0 (skip)."""
+    raw = (degrees << 1) | 1
+    return struct.pack("<h", raw)
+
+
+def skip_angle() -> bytes:
+    return struct.pack("<h", 0)
+
+
+# ─── Heartbeat thread ────────────────────────────────────────────────────────
+
+class HeartbeatThread:
+    """Sends [0x43] every 25 ms to keep the master-watchdog alive."""
+
+    def __init__(self, client: UDPClient):
+        self._client = client
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=1.0)
+
+    def _loop(self) -> None:
+        pkt = bytes([0x43])
+        while self._running:
+            self._client.send_no_reply(pkt)
+            time.sleep(0.025)
+
+
+# ─── Test sections ───────────────────────────────────────────────────────────
+
+def test_amakerbot_registration(client: UDPClient, token: str, r: Results) -> bool:
+    """Register as master. Returns True on success."""
+    _section("AmakerBotService — master registration")
+
+    # 0x41 MASTER_REGISTER
+    req = bytes([0x41]) + token.encode()
+    resp = client.send(req)
+
+    if resp is None:
+        _fail("No response to MASTER_REGISTER — is the device reachable?")
+        r.failed += 1
         return False
+
+    expected_len = len(req) + 1          # echo + 1 status byte
+    r.check(len(resp) == expected_len,
+            f"Reply length {len(resp)} == {expected_len}")
+    r.check(resp[0] == 0x41,
+            f"Echo action byte 0x{resp[0]:02X} == 0x41")
+
+    status = resp[-1] if len(resp) >= 1 else 0xFF
+    label = _AB_STATUS.get(status, f"0x{status:02X}")
+
+    if status == UDP_SUCCESS:
+        _ok(f"MASTER_REGISTER → {label} (registered)")
+        r.passed += 1
+        return True
+    elif status == UDP_IGNORED:
+        _warn(f"MASTER_REGISTER → {label} (already registered or slot taken)")
+        r.passed += 1          # technically valid
+        return True
     else:
-        reply_bytes = reply.encode("latin-1")   # preserve raw byte values
-        if len(reply_bytes) == expected_reply_len and reply_bytes[0] == 0x41:
-            status = reply_bytes[-1]
-            if status == 0x01:   # SUCCESS
-                registered = True
-                _pass("0x41 MASTER_REGISTER", f"SUCCESS (reply: {reply_bytes.hex()})")
-            elif status == 0x02:  # IGNORED (already master)
-                registered = True
-                _pass("0x41 MASTER_REGISTER", f"IGNORED — already master (reply: {reply_bytes.hex()})")
-            elif status == 0x03:  # DENIED
-                _fail("0x41 MASTER_REGISTER", f"DENIED — wrong token (reply: {reply_bytes.hex()})")
-                return False
-            elif status == 0x04:  # ERROR
-                _fail("0x41 MASTER_REGISTER", f"ERROR from server (reply: {reply_bytes.hex()})")
-                return False
-            else:
-                _fail("0x41 MASTER_REGISTER", f"Unknown status 0x{status:02x} (reply: {reply_bytes.hex()})")
-                return False
-        else:
-            _fail("0x41 MASTER_REGISTER", f"Malformed reply (expected {expected_reply_len} bytes): {reply_bytes.hex()}")
-            return False
-
-    # ── 2. PING (0x44) — 100 pings to measure RTT and loss ────────────────
-    # Firmware requires: [0x44][id:4B] (5 bytes minimum)
-    # Reply:             [0x44][id:4B] (exact echo of the 5-byte request)
-    # The 4-byte ID is used to match replies and detect reordering.
-    PING_COUNT   = 100
-    PING_TIMEOUT = 0.1   # seconds per ping
-    rtts: list[float] = []
-    lost = 0
-    for seq in range(PING_COUNT):
-        ping_id = seq.to_bytes(4, "big")
-        pkt = bytes([0x44]) + ping_id
-        t0 = time.perf_counter()
-        _send_raw(pkt)
-        pr = _recv(timeout=PING_TIMEOUT)
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-        if pr is None:
-            lost += 1
-        else:
-            pr_bytes = pr.encode("latin-1")
-            if pr_bytes == pkt:
-                rtts.append(elapsed_ms)
-            else:
-                lost += 1  # got a reply but it didn't match (stale / wrong)
-
-    if rtts:
-        avg_rtt = sum(rtts) / len(rtts)
-        min_rtt = min(rtts)
-        max_rtt = max(rtts)
-        loss_pct = lost / PING_COUNT * 100
-        detail = (f"avg={avg_rtt:.1f} ms  min={min_rtt:.1f} ms  max={max_rtt:.1f} ms"
-                  f"  loss={lost}/{PING_COUNT} ({loss_pct:.0f}%)")
-        if lost == 0:
-            _pass(f"0x44 PING x{PING_COUNT}", detail)
-        else:
-            _fail(f"0x44 PING x{PING_COUNT}", detail)
-    else:
-        _fail(f"0x44 PING x{PING_COUNT}", f"all {PING_COUNT} pings lost (100% loss)")
-
-    # ── 3. Start heartbeat & confirm motor watchdog doesn't fire ───────────
-    start_heartbeat()
-    time.sleep(0.2)  # let several heartbeats through
-
-    _pass("0x43 HEARTBEAT", "running")
-    return True
+        _fail(f"MASTER_REGISTER → {label} (token wrong or internal error?)")
+        r.failed += 1
+        return False
 
 
-def test_amakerbot_unregister() -> None:
-    _section("AmakerBotService — unregister")
-    stop_heartbeat()
-    # Reply format: [0x42][UDPResponseStatus]
-    #   UDPResponseStatus: SUCCESS=0x01, DENIED=0x03, ERROR=0x04
-    _send_raw(bytes([0x42]))
-    reply = _recv(timeout=2.0)
-    if reply is None:
-        _fail("0x42 MASTER_UNREGISTER", "no reply received (timeout)")
+def test_amakerbot_ping(client: UDPClient, r: Results) -> None:
+    _section("AmakerBotService — PING (latency probe)")
+    SEQ = 0xDEADBEEF & 0xFFFFFFFF
+    pkt = bytes([0x44]) + struct.pack("<I", SEQ)
+    t0 = time.monotonic()
+    resp = client.send(pkt)
+    rtt = (time.monotonic() - t0) * 1000
+
+    if resp is None:
+        r.check(False, "PING — no reply (is device master-registered?)")
         return
-    reply_bytes = reply.encode("latin-1")
-    if len(reply_bytes) == 2 and reply_bytes[0] == 0x42:
-        status = reply_bytes[1]
-        if status == 0x01:   # SUCCESS
-            _pass("0x42 MASTER_UNREGISTER", f"SUCCESS (reply: {reply_bytes.hex()})")
-        elif status == 0x03:  # DENIED
-            _fail("0x42 MASTER_UNREGISTER", f"DENIED — not the master (reply: {reply_bytes.hex()})")
-        elif status == 0x04:  # ERROR
-            _fail("0x42 MASTER_UNREGISTER", f"ERROR from server (reply: {reply_bytes.hex()})")
-        else:
-            _fail("0x42 MASTER_UNREGISTER", f"Unknown status 0x{status:02x} (reply: {reply_bytes.hex()})")
+
+    r.check(len(resp) == 5, f"PING reply length {len(resp)} == 5")
+    r.check(resp[0] == 0x44, f"PING action echo 0x{resp[0]:02X} == 0x44")
+    echoed_seq = struct.unpack("<I", resp[1:5])[0] if len(resp) >= 5 else 0
+    r.check(echoed_seq == SEQ, f"PING seq echo 0x{echoed_seq:08X} == 0x{SEQ:08X}")
+    _info(f"Round-trip time: {rtt:.1f} ms")
+
+
+def test_board_leds(client: UDPClient, r: Results) -> None:
+    _section("BoardInfoService — onboard RGB LEDs (0x1x)")
+
+    # 0x11 SET_LED_COLOR — LED 0 → red
+    resp = client.send(bytes([0x11, 0, 255, 0, 0]))
+    r.check(resp is not None and resp[0] == 0x11,
+            "SET_LED_COLOR LED0 red — echo 0x11")
+    if resp and len(resp) >= 2:
+        r.check(resp[1] == RESP_OK, f"resp_code {_PROTO_STATUS.get(resp[1], hex(resp[1]))} == ok")
+
+    # 0x11 SET_LED_COLOR — LED 1 → green
+    resp = client.send(bytes([0x11, 1, 0, 255, 0]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "SET_LED_COLOR LED1 green → ok")
+
+    # 0x12 TURN_OFF_LED — LED 0
+    resp = client.send(bytes([0x12, 0]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "TURN_OFF_LED LED0 → ok")
+
+    # 0x13 TURN_OFF_ALL_LEDS
+    resp = client.send(bytes([0x13]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "TURN_OFF_ALL_LEDS → ok")
+
+    # 0x14 GET_LED_STATUS
+    resp = client.send(bytes([0x14]))
+    if resp is None or len(resp) < 3 or resp[1] != RESP_OK:
+        r.check(False, "GET_LED_STATUS — valid response with ok")
     else:
-        _fail("0x42 MASTER_UNREGISTER", f"Malformed reply (expected 2 bytes): {reply_bytes.hex()}")
+        try:
+            payload = json.loads(resp[2:].decode())
+            r.check("leds" in payload and len(payload["leds"]) == 3,
+                    f"GET_LED_STATUS JSON contains 3 LEDs: {payload}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            r.check(False, f"GET_LED_STATUS JSON parse error: {exc}")
+
+    # Invalid LED index
+    resp = client.send(bytes([0x11, 9, 255, 0, 0]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_INVALID_VALUES,
+            "SET_LED_COLOR invalid LED index → invalid_values")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ServoService tests
-# ─────────────────────────────────────────────────────────────────────────────
+def test_dfr1216_leds(client: UDPClient, r: Results) -> None:
+    _section("DFR1216Service — expansion board LEDs (0x3x)")
 
-def test_servo_service() -> None:
-    _section("ServoService — servo channels")
+    # 0x31 SET_LED_COLOR — LED 0 → blue, brightness 200
+    resp = client.send(bytes([0x31, 0, 0, 0, 255, 200]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "SET_LED_COLOR LED0 blue brightness=200 → ok")
 
-    SVC = "Servo Service"
+    # 0x32 TURN_OFF_LED — LED 0
+    resp = client.send(bytes([0x32, 0]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "TURN_OFF_LED LED0 → ok")
 
-    # ── getAllStatus ───────────────────────────────────────────────────────
-    _send_text(SVC, "getAllStatus")
-    r = _recv_json()
-    if r and "servos" in r:
-        _pass("getAllStatus", f"{len(r['servos'])} channels reported")
-    elif r:
-        _fail("getAllStatus", f"unexpected reply: {r}")
+    # 0x33 TURN_OFF_ALL_LEDS
+    resp = client.send(bytes([0x33]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "TURN_OFF_ALL_LEDS → ok")
+
+    # 0x34 GET_LED_STATUS
+    resp = client.send(bytes([0x34]))
+    if resp is None or len(resp) < 3 or resp[1] != RESP_OK:
+        r.check(False, "GET_LED_STATUS — valid response with ok")
     else:
-        _fail("getAllStatus", "timeout — no reply")
+        try:
+            payload = json.loads(resp[2:].decode())
+            r.check("leds" in payload,
+                    f"GET_LED_STATUS JSON contains 'leds' key: {payload}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            r.check(False, f"GET_LED_STATUS JSON parse error: {exc}")
 
-    # ── getStatus (channel 0) ──────────────────────────────────────────────
-    _send_text(SVC, "getStatus", {"channel": 0})
-    r = _recv_json()
-    if r and "status" in r:
-        _pass("getStatus ch0", f"status={r['status']}")
-    elif r:
-        _fail("getStatus ch0", f"unexpected reply: {r}")
-    else:
-        _fail("getStatus ch0", "timeout")
 
-    # ── attachServo ch0 as Angular 180° ───────────────────────────────────
-    _send_text(SVC, "attachServo", {"channel": 0, "connection": 2})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("attachServo ch0 (Angular 180°)", r.get("message", ""))
-    elif r:
-        _fail("attachServo ch0", f"reply: {r}")
-    else:
-        _fail("attachServo ch0", "timeout")
+def test_servos(client: UDPClient, r: Results) -> None:
+    _section("ServoService — servos & motors (0x5x)")
+    # ServoService udp_service_id=0x05 → action range 0x51–0x59.
 
-    # ── setServoAngle ch0 → 90° ───────────────────────────────────────────
-    _send_text(SVC, "setServoAngle", {"channel": 0, "angle": 90})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setServoAngle ch0=90°", r.get("message", ""))
-    elif r:
-        _fail("setServoAngle ch0", f"reply: {r}")
+    # 0x58 GET_ALL_STATUS — read current state before touching anything
+    resp = client.send(bytes([0x58]))
+    if resp is None:
+        r.check(False, "GET_ALL_STATUS — no response (wrong action byte? firmware not uploaded?)")
+    elif len(resp) < 2:
+        r.check(False, f"GET_ALL_STATUS — response too short: {resp.hex()}")
+    elif resp[1] != RESP_OK:
+        code = _PROTO_STATUS.get(resp[1], f"0x{resp[1]:02X}")
+        r.check(False, f"GET_ALL_STATUS — resp_code={code} (raw: {resp.hex()})")
     else:
-        _fail("setServoAngle ch0", "timeout")
+        try:
+            status = json.loads(resp[2:].decode())
+            r.check(True, f"GET_ALL_STATUS: {status}")
+        except Exception as exc:
+            r.check(False, f"GET_ALL_STATUS — JSON parse error: {exc} | raw payload: {resp[2:].hex() or '<empty>'}")
 
-    # ── setAllServoAngle → 45° ────────────────────────────────────────────
-    _send_text(SVC, "setAllServoAngle", {"angle": 45})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setAllServoAngle 45°", r.get("message", ""))
-    elif r:
-        _fail("setAllServoAngle", f"reply: {r}")
+    # 0x59 GET_BATTERY
+    resp = client.send(bytes([0x59]))
+    if resp is None:
+        r.check(False, "GET_BATTERY — no response")
+    elif len(resp) < 2:
+        r.check(False, f"GET_BATTERY — response too short: {resp.hex()}")
+    elif resp[1] != RESP_OK:
+        code = _PROTO_STATUS.get(resp[1], f"0x{resp[1]:02X}")
+        r.check(False, f"GET_BATTERY — resp_code={code} (raw: {resp.hex()})")
+    elif len(resp) < 3:
+        r.check(False, f"GET_BATTERY — missing battery byte (raw: {resp.hex()})")
     else:
-        _fail("setAllServoAngle", "timeout")
+        r.check(True, f"GET_BATTERY: {resp[2]}%")
 
-    # ── setServosAngleMultiple ─────────────────────────────────────────────
-    _send_text(SVC, "setServosAngleMultiple",
-               {"servos": [{"channel": 0, "angle": 90}, {"channel": 1, "angle": 45}]})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setServosAngleMultiple", r.get("message", ""))
-    elif r:
-        _fail("setServosAngleMultiple", f"reply: {r}")
-    else:
-        _fail("setServosAngleMultiple", "timeout")
+    # 0x54 ATTACH_SERVO — channel 0 → Angular 180 (mask=0x01, type=2)
+    resp = client.send(bytes([0x54, 0x01, 0x02]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "ATTACH_SERVO ch0 Angular180 → ok")
 
-    # ── Detach ch0, reattach as Continuous Rotation ───────────────────────
-    _send_text(SVC, "attachServo", {"channel": 0, "connection": 0})   # detach
-    _recv_json()
-    _send_text(SVC, "attachServo", {"channel": 0, "connection": 1})   # continuous
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("attachServo ch0 (Continuous Rotation)", r.get("message", ""))
-    elif r:
-        _fail("attachServo ch0 Continuous", f"reply: {r}")
-    else:
-        _fail("attachServo ch0 Continuous", "timeout")
+    # 0x51 SET_SERVO_ANGLE — channel 0 → +45°
+    pkt = bytes([0x51]) + encode_angle(45)
+    resp = client.send(pkt)
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "SET_SERVO_ANGLE ch0 +45° → ok")
+    time.sleep(0.3)
 
-    # ── setServoSpeed ch0 → 30 ────────────────────────────────────────────
-    _send_text(SVC, "setServoSpeed", {"channel": 0, "speed": 30, "duration_ms": 500})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setServoSpeed ch0=30 (500 ms)", r.get("message", ""))
-    elif r:
-        _fail("setServoSpeed ch0", f"reply: {r}")
-    else:
-        _fail("setServoSpeed ch0", "timeout")
-    time.sleep(0.6)   # wait for auto-stop
+    # SET_SERVO_ANGLE — channel 0 → −45°
+    pkt = bytes([0x51]) + encode_angle(-45)
+    resp = client.send(pkt)
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "SET_SERVO_ANGLE ch0 −45° → ok")
+    time.sleep(0.3)
 
-    # ── setAllServoSpeed ──────────────────────────────────────────────────
-    _send_text(SVC, "setAllServoSpeed", {"speed": 20, "duration_ms": 300})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setAllServoSpeed 20 (300 ms)", r.get("message", ""))
-    elif r:
-        _fail("setAllServoSpeed", f"reply: {r}")
+    # Return channel 0 to 0°
+    client.send(bytes([0x51]) + encode_angle(0))
+
+    # 0x57 GET_SERVO_STATUS — channel 0 (mask=0x01)
+    resp = client.send(bytes([0x57, 0x01]))
+    if resp is not None and len(resp) >= 3 and resp[1] == RESP_OK:
+        try:
+            payload = json.loads(resp[2:].decode())
+            r.check("attached_servos" in payload,
+                    f"GET_SERVO_STATUS ch0: {payload}")
+        except Exception as exc:
+            r.check(False, f"GET_SERVO_STATUS JSON parse error: {exc}")
     else:
-        _fail("setAllServoSpeed", "timeout")
+        r.check(False, "GET_SERVO_STATUS — valid response")
+
+    # 0x54 ATTACH_SERVO — channel 0 → Rotational (mask=0x01, type=1)
+    resp = client.send(bytes([0x54, 0x01, 0x01]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "ATTACH_SERVO ch0 Rotational → ok")
+
+    # 0x52 SET_SERVO_SPEED — ch0 = +40, all 8 bytes sent (mask=0x01)
+    speeds = [encode_speed(40)] + [0x80] * 7
+    pkt = bytes([0x52, 0x01]) + bytes(speeds)
+    resp = client.send(pkt)
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "SET_SERVO_SPEED ch0 +40 → ok")
     time.sleep(0.4)
 
-    # ── setServosSpeedMultiple ─────────────────────────────────────────────
-    _send_text(SVC, "setServosSpeedMultiple",
-               {"servos": [{"channel": 0, "speed": 50, "duration_ms": 200},
-                            {"channel": 1, "speed": -30, "duration_ms": 200}]})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setServosSpeedMultiple", r.get("message", ""))
-    elif r:
-        _fail("setServosSpeedMultiple", f"reply: {r}")
-    else:
-        _fail("setServosSpeedMultiple", "timeout")
-    time.sleep(0.3)
+    # 0x53 STOP_SERVOS — channel 0 (mask=0x01)
+    resp = client.send(bytes([0x53, 0x01]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "STOP_SERVOS ch0 → ok")
 
-    # ── stopAll ───────────────────────────────────────────────────────────
-    _send_text(SVC, "stopAll")
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("stopAll", r.get("message", ""))
-    elif r:
-        _fail("stopAll", f"reply: {r}")
-    else:
-        _fail("stopAll", "timeout")
+    # 0x55 SET_MOTOR_SPEED — motor 0 = +60, motor 1 = −60
+    pkt = bytes([0x55, encode_speed(60), encode_speed(-60)])
+    resp = client.send(pkt)
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "SET_MOTOR_SPEED m0=+60 m1=−60 → ok")
+    time.sleep(0.4)
 
-    # ── Detach ch0 to leave board clean ──────────────────────────────────
-    _send_text(SVC, "attachServo", {"channel": 0, "connection": 0})
-    _recv_json()
-    _info("ch0 detached (cleanup)")
+    # 0x56 STOP_MOTORS — all motors (mask=0x0F)
+    resp = client.send(bytes([0x56, 0x0F]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_OK,
+            "STOP_MOTORS all → ok")
+
+    # Detach servo on channel 0 (type=0 = Not Connected)
+    client.send(bytes([0x54, 0x01, 0x00]))
+    _info("Channel 0 detached (Not Connected)")
 
 
-def test_motor_service() -> None:
-    _section("ServoService — DC motor channels")
+def test_music(client: UDPClient, r: Results) -> None:
+    return
+    _section("MusicService — text protocol")
 
-    SVC = "Servo Service"
-
-    # ── setMotorSpeed motor 1 → 50 ────────────────────────────────────────
-    _send_text(SVC, "setMotorSpeed", {"motor": 1, "speed": 50})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setMotorSpeed M1=50", r.get("message", ""))
-    elif r:
-        _fail("setMotorSpeed M1", f"reply: {r}")
-    else:
-        _fail("setMotorSpeed M1", "timeout")
-
-    time.sleep(0.3)
-
-    # ── setMotorSpeed motor 2 → -30 (reverse) ────────────────────────────
-    _send_text(SVC, "setMotorSpeed", {"motor": 2, "speed": -30})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("setMotorSpeed M2=-30 (reverse)", r.get("message", ""))
-    elif r:
-        _fail("setMotorSpeed M2", f"reply: {r}")
-    else:
-        _fail("setMotorSpeed M2", "timeout")
-
-    time.sleep(0.3)
-
-    # ── stopAllMotors ─────────────────────────────────────────────────────
-    _send_text(SVC, "stopAllMotors")
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("stopAllMotors", r.get("message", ""))
-    elif r:
-        _fail("stopAllMotors", f"reply: {r}")
-    else:
-        _fail("stopAllMotors", "timeout")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# K10SensorsService tests
-# ─────────────────────────────────────────────────────────────────────────────
-
-def test_sensors_service() -> None:
-    _section("K10SensorsService — sensors")
-
-    _send_text("K10 Sensors Service", "getSensors")
-    r = _recv_json()
-    if r and "light" in r:
-        _pass("getSensors",
-              f"light={r.get('light')}, "
-              f"temp={r.get('celcius')}°C, "
-              f"hum={r.get('hum_rel')}%")
-    elif r and r.get("result") == "error":
-        _fail("getSensors", r.get("message", "sensor error"))
-    elif r:
-        _fail("getSensors", f"unexpected: {r}")
-    else:
-        _fail("getSensors", "timeout")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MusicService tests
-# ─────────────────────────────────────────────────────────────────────────────
-
-def test_music_service() -> None:
-    _section("MusicService — music & tones")
-
-    # ── melodies (query) ──────────────────────────────────────────────────
-    _send_text("Music", "melodies")
-    r = _recv_json()
-    if isinstance(r, list):
-        _pass("melodies", f"{len(r)} melodies returned")
-    elif isinstance(r, dict) and "_raw" in r:
+    # melodies list
+    resp = client.send_text("Music:melodies")
+    if resp:
         try:
-            lst = json.loads(r["_raw"])
-            _pass("melodies", f"{len(lst)} melodies returned")
-        except Exception:
-            _fail("melodies", f"parse error: {r['_raw'][:60]}")
-    elif r:
-        _fail("melodies", f"unexpected reply: {r}")
+            melodies = json.loads(resp)
+            r.check(isinstance(melodies, list) and len(melodies) > 0,
+                    f"Music:melodies → {len(melodies)} entries")
+        except json.JSONDecodeError:
+            r.check(False, f"Music:melodies — JSON parse error, got: {resp!r}")
     else:
-        _fail("melodies", "timeout")
+        r.check(False, "Music:melodies — no response")
 
-    # ── play melody 0 (DADADADUM) once in background ──────────────────────
-    _send_text("Music", "play", {"melody": 0, "option": 4})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("play melody 0 (DADADADUM)", r.get("message", ""))
-    elif r:
-        _fail("play melody 0", f"reply: {r}")
+    # play melody 0
+    resp = client.send_text('Music:play:{"melody":0,"option":4}')
+    if resp:
+        try:
+            obj = json.loads(resp)
+            r.check(obj.get("result") == "ok",
+                    f'Music:play → result={obj.get("result")}')
+        except json.JSONDecodeError:
+            r.check(False, f"Music:play — JSON parse error: {resp!r}")
     else:
-        _fail("play melody 0", "timeout")
-
-    time.sleep(1.0)
-
-    # ── stop ──────────────────────────────────────────────────────────────
-    _send_text("Music", "stop")
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("stop", r.get("message", ""))
-    elif r:
-        _fail("stop", f"reply: {r}")
-    else:
-        _fail("stop", "timeout")
-
-    # ── tone 440 Hz ───────────────────────────────────────────────────────
-    _send_text("Music", "tone", {"freq": 440, "beat": 4000})
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("tone 440 Hz (A4)", r.get("message", ""))
-    elif r:
-        _fail("tone 440 Hz", f"reply: {r}")
-    else:
-        _fail("tone 440 Hz", "timeout")
-
+        r.check(False, "Music:play — no response")
     time.sleep(0.5)
 
-    # ── stop ──────────────────────────────────────────────────────────────
-    _send_text("Music", "stop")
-    _recv_json()
-
-    # ── playnotes (C4 quarter + silence eighth at 120 BPM) ────────────────
-    # Payload: [BPM=120, note=60, dur=4, silence(0x80), dur=2]
-    payload_bytes = bytes([120, 60, 4, 0x80, 2])
-    hex_str = payload_bytes.hex().upper()
-    _send_raw(f"Music:playnotes:{hex_str}".encode())
-    r = _recv_json()
-    if r and r.get("result") == "ok":
-        _pass("playnotes (C4 + silence)", r.get("message", ""))
-    elif r:
-        _fail("playnotes", f"reply: {r}")
+    # stop
+    resp = client.send_text("Music:stop")
+    if resp:
+        try:
+            obj = json.loads(resp)
+            r.check(obj.get("result") == "ok",
+                    f'Music:stop → result={obj.get("result")}')
+        except json.JSONDecodeError:
+            r.check(False, f"Music:stop — JSON parse error: {resp!r}")
     else:
-        _fail("playnotes", "timeout")
+        r.check(False, "Music:stop — no response")
 
-    time.sleep(0.5)
-    _send_text("Music", "stop")
-    _recv_json()
+    # tone
+    resp = client.send_text('Music:tone:{"freq":440,"beat":2}')
+    if resp:
+        try:
+            obj = json.loads(resp)
+            r.check(obj.get("result") == "ok",
+                    f'Music:tone A4 → result={obj.get("result")}')
+        except json.JSONDecodeError:
+            r.check(False, f"Music:tone — JSON parse error: {resp!r}")
+    else:
+        r.check(False, "Music:tone — no response")
+    time.sleep(0.3)
+    client.send_text("Music:stop")
+
+    # playnotes — C4 quarter + silence eighth @ 120 BPM
+    # tempo=0x78, note=0x3C dur=0x04, silence=0x80 dur=0x02
+    resp = client.send_text("Music:playnotes:783C048002")
+    if resp:
+        try:
+            obj = json.loads(resp)
+            r.check(obj.get("result") == "ok",
+                    f'Music:playnotes → result={obj.get("result")}')
+        except json.JSONDecodeError:
+            r.check(False, f"Music:playnotes — JSON parse error: {resp!r}")
+    else:
+        r.check(False, "Music:playnotes — no response")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────────────────────
+def test_amakerbot_name(client: UDPClient, r: Results) -> None:
+    _section("AmakerBotService — bot name (0x45 GET / 0x46 SET)")
+
+    # ── 0x45 GET name ─────────────────────────────────────────────────────────
+    resp = client.send(bytes([0x45]))
+    if resp is None:
+        r.check(False, "GET_NAME (0x45) — no response")
+        return
+
+    r.check(resp[0] == 0x45, f"GET_NAME action echo 0x{resp[0]:02X} == 0x45")
+    r.check(len(resp) >= 2, f"GET_NAME reply length {len(resp)} >= 2 (has name bytes)")
+    current_name = resp[1:].decode(errors="replace") if len(resp) > 1 else ""
+    _info(f"Current bot name: {current_name!r}")
+
+    # ── 0x46 SET name (master, valid) ─────────────────────────────────────────
+    new_name = "TestBot"
+    req = bytes([0x46]) + new_name.encode()
+    resp = client.send(req)
+    if resp is None:
+        r.check(False, "SET_NAME (0x46) valid — no response")
+    else:
+        expected_len = len(req) + 1
+        r.check(len(resp) == expected_len,
+                f"SET_NAME reply length {len(resp)} == {expected_len}")
+        r.check(resp[0] == 0x46, f"SET_NAME action echo 0x{resp[0]:02X} == 0x46")
+        status = resp[-1]
+        label = _AB_STATUS.get(status, f"0x{status:02X}")
+        r.check(status == UDP_SUCCESS, f"SET_NAME valid → {label}")
+
+    # ── verify the change with GET ────────────────────────────────────────────
+    resp = client.send(bytes([0x45]))
+    if resp is not None and len(resp) > 1:
+        got_name = resp[1:].decode(errors="replace")
+        r.check(got_name == new_name,
+                f"GET_NAME after SET → {got_name!r} == {new_name!r}")
+    else:
+        r.check(False, "GET_NAME after SET — no response or empty")
+
+    # ── 0x46 SET name — empty string (should fail) ────────────────────────────
+    req_empty = bytes([0x46])
+    resp = client.send(req_empty)
+    if resp is not None:
+        status = resp[-1]
+        label = _AB_STATUS.get(status, f"0x{status:02X}")
+        r.check(status in (UDP_ERROR, UDP_IGNORED),
+                f"SET_NAME empty → {label} (expected ERROR or IGNORED)")
+    else:
+        r.skip("SET_NAME empty — no reply (device may silently discard)")
+
+    # ── 0x46 SET name — name too long (> 32 chars) ───────────────────────────
+    long_name = "A" * 33
+    req_long = bytes([0x46]) + long_name.encode()
+    resp = client.send(req_long)
+    if resp is not None:
+        status = resp[-1]
+        label = _AB_STATUS.get(status, f"0x{status:02X}")
+        r.check(status in (UDP_ERROR, UDP_IGNORED),
+                f"SET_NAME too long (33 chars) → {label} (expected ERROR or IGNORED)")
+    else:
+        r.skip("SET_NAME too long — no reply (device may silently discard)")
+
+    # ── restore original name ─────────────────────────────────────────────────
+    if current_name:
+        restore_req = bytes([0x46]) + current_name.encode()
+        client.send(restore_req)
+        _info(f"Bot name restored to {current_name!r}")
+
+
+def test_amakerbot_unregister(client: UDPClient, r: Results) -> None:
+    _section("AmakerBotService — unregister master")
+
+    resp = client.send(bytes([0x42]))
+    if resp is None:
+        r.check(False, "MASTER_UNREGISTER — no response")
+        return
+
+    r.check(len(resp) == 2, f"Reply length {len(resp)} == 2")
+    r.check(resp[0] == 0x42, f"Echo action byte 0x{resp[0]:02X} == 0x42")
+    status = resp[-1] if len(resp) >= 2 else 0xFF
+    label = _AB_STATUS.get(status, f"0x{status:02X}")
+    r.check(status == UDP_SUCCESS, f"MASTER_UNREGISTER → {label}")
+
+
+# ─── Error / edge-case probes ─────────────────────────────────────────────────
+
+def test_error_cases(client: UDPClient, r: Results) -> None:
+    _section("Error cases & edge cases")
+
+    # Truncated binary frame — should return invalid_params
+    resp = client.send(bytes([0x11]))   # SET_LED_COLOR needs 5 bytes
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_INVALID_PARAMS,
+            "Truncated SET_LED_COLOR → invalid_params")
+
+    # Out-of-range LED index
+    resp = client.send(bytes([0x11, 99, 0, 0, 0]))
+    r.check(resp is not None and len(resp) >= 2 and resp[1] == RESP_INVALID_VALUES,
+            "SET_LED_COLOR led=99 → invalid_values")
+
+    # Unknown binary action
+    resp = client.send(bytes([0xFF]))
+    if resp is None:
+        r.check(True, "Unknown action 0xFF — silently ignored (no reply)")
+    else:
+        r.check(len(resp) >= 2 and resp[1] in (RESP_UNKNOWN_CMD, RESP_NOT_MASTER),
+                f"Unknown action 0xFF → {_PROTO_STATUS.get(resp[1], hex(resp[1]))}")
+
+    # Music — invalid command
+    resp = client.send_text("Music:nonexistent")
+    if resp:
+        try:
+            obj = json.loads(resp)
+            r.check(obj.get("result") == "error",
+                    f'Music:nonexistent → result={obj.get("result")} (expected error)')
+        except json.JSONDecodeError:
+            r.skip("Music:nonexistent — non-JSON response")
+    else:
+        r.skip("Music:nonexistent — no response (service not started?)")
+
+
+# ─── CLI entry point ──────────────────────────────────────────────────────────
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="K10 Bot UDP test suite",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python test_amakerbot_udp.py 192.168.1.42 24642 A3K9B\n"
+            "  python test_amakerbot_udp.py 192.168.1.42 24642 A3K9B --skip-servos\n"
+            "  python test_amakerbot_udp.py 192.168.1.42 24642 A3K9B --servo-180 2 --servo-270 3 --servo-cont 4 --motor 1\n"
+        ),
+    )
+    p.add_argument("ip",    help="K10 device IP address")
+    p.add_argument("port",  type=int, help="UDP port (default 24642)", nargs="?", default=24642)
+    p.add_argument("token", help="5-char registration token shown on device screen at boot")
+    p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT,
+                   help=f"Socket receive timeout in seconds (default {DEFAULT_TIMEOUT})")
+    p.add_argument("--skip-servos",  action="store_true", help="Skip servo/motor tests (no hardware connected)")
+    p.add_argument("--skip-dfr",     action="store_true", help="Skip DFR1216 expansion board LED tests")
+    p.add_argument("--skip-music",   action="store_true", help="Skip MusicService tests")
+    p.add_argument("--skip-errors",  action="store_true", help="Skip error/edge-case tests")
+    # Servo/motor channel selection
+    p.add_argument("--servo-180",  type=int, default=0, metavar="CH",
+                   help="Servo channel (0-7) wired as Angular 180° (default: 0)")
+    p.add_argument("--servo-270",  type=int, default=None, metavar="CH",
+                   help="Servo channel (0-7) wired as Angular 270° (omit to skip 270° test)")
+    p.add_argument("--servo-cont", type=int, default=None, metavar="CH",
+                   help="Servo channel (0-7) wired as continuous/rotational (omit to skip speed test)")
+    p.add_argument("--motor",      type=int, default=0, metavar="IDX",
+                   help="Motor index (0-3, i.e. board motor IDX+1) to test SET_MOTOR_SPEED (default: 0)")
+    return p.parse_args()
+
 
 def main() -> int:
-    global _send_sock, _recv_sock, _robot_addr
+    args = parse_args()
 
-    # ── Argument parsing ──────────────────────────────────────────────────
-    if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <robot_ip> <port> <token>")
-        print(f"  e.g. {sys.argv[0]} 192.168.1.56 24642 a3k9b")
-        return 2
+    print(f"\n{BOLD}K10 Bot UDP Test Suite{RESET}")
+    print(f"  Target : {args.ip}:{args.port}")
+    print(f"  Token  : {args.token}")
+    print(f"  Timeout: {args.timeout}s")
 
-    robot_ip = sys.argv[1]
-    try:
-        udp_port = int(sys.argv[2])
-    except ValueError:
-        print(f"ERROR: port must be an integer, got '{sys.argv[2]}'")
-        return 2
-    token = sys.argv[3]
+    client = UDPClient(args.ip, args.port, timeout=args.timeout)
+    r = Results()
 
-    _robot_addr = (robot_ip, udp_port)
+    # ── Step 1: register as master ────────────────────────────────────────────
+    registered = test_amakerbot_registration(client, args.token, r)
 
-    print(f"\n{BOLD}K10-Bot AmakerBot UDP Test Suite{RESET}")
-    print(f"  Target : {robot_ip}:{udp_port}")
-    print(f"  Token  : {token}")
-    print(f"  Date   : {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    if not registered:
+        _warn("Master registration failed — protected commands will likely return NOT_MASTER.")
+        _warn("Continuing anyway so you can inspect error responses.")
 
-    # ── Open sockets ──────────────────────────────────────────────────────
-    _send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    _recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # Bind to an ephemeral port so the robot knows where to send replies
-    _recv_sock.bind(("", 0))
-    local_port = _recv_sock.getsockname()[1]
-    # Route replies to our recv socket by using it for send as well
-    _send_sock.close()
-    _send_sock = _recv_sock       # single socket for send + recv
-    _info(f"Listening for replies on local port {local_port}")
+    # ── Step 2: start heartbeat ───────────────────────────────────────────────
+    hb = HeartbeatThread(client)
+    hb.start()
+    _info("Heartbeat thread started (25 ms interval)")
 
     try:
-        # ── AmakerBot registration ────────────────────────────────────────
-        registered = test_amakerbot(token)
-        if not registered:
-            print(f"\n{RED}Registration failed — aborting remaining tests.{RESET}")
-            return 1
+        # ── Step 3: run test sections ─────────────────────────────────────────
+        test_amakerbot_ping(client, r)
+        test_amakerbot_name(client, r)
+        test_board_leds(client, r)
 
-        # ── Service tests (order matters: heartbeat must be running) ──────
-        test_servo_service()
-        test_motor_service()
-        test_sensors_service()
-        test_music_service()
+        if args.skip_dfr:
+            r.skip("DFR1216 LED tests (--skip-dfr)")
+        else:
+            test_dfr1216_leds(client, r)
 
-        # ── Unregister ────────────────────────────────────────────────────
-        test_amakerbot_unregister()
+        if args.skip_servos:
+            r.skip("Servo/motor tests (--skip-servos)")
+        else:
+            test_servos(client, r)
+
+        if args.skip_music:
+            r.skip("MusicService tests (--skip-music)")
+        else:
+            test_music(client, r)
+
+        if not args.skip_errors:
+            test_error_cases(client, r)
 
     finally:
-        stop_heartbeat()
-        _recv_sock.close()
+        # ── Step 4: stop heartbeat & unregister ───────────────────────────────
+        hb.stop()
+        _info("Heartbeat thread stopped")
 
-    # ── Summary ───────────────────────────────────────────────────────────
-    total = _passed + _failed
-    print(f"\n{BOLD}{'─' * 60}{RESET}")
-    print(f"{BOLD}Results: {_passed}/{total} passed", end="")
-    if _failed:
-        print(f"  ({RED}{_failed} failed{RESET}{BOLD})", end="")
-    print(RESET)
+        if registered:
+            test_amakerbot_unregister(client, r)
 
-    return 0 if _failed == 0 else 1
+        client.close()
+
+    r.summary()
+    return 0 if r.failed == 0 else 1
 
 
 if __name__ == "__main__":

@@ -100,17 +100,28 @@ void DFR1216::setServo360(eServoNumber_t number, eServo360Direction_t direction,
   }
 }
 
-void DFR1216::setServoAngle(eServoNumber_t number, uint8_t angle)
+void DFR1216::setServoAngle(eServoNumber_t number, uint16_t angle)
+{
+  setServoAngle(number, angle, 270);
+}
+
+void DFR1216::setServoAngle(eServoNumber_t number, uint16_t angle, uint16_t maxAngle)
 {
   uint8_t reg = 0;
   uint16_t period = 0;
   uint8_t result = 0;
   uint8_t _tempData[TEMP_LEN] = {0};
-  if(angle > 180){
-    angle = 180;
+  
+  if (maxAngle == 270) {
+    if (angle > 270) angle = 270;
+    period = SERVO270_MIN_US + ((uint32_t)angle * (SERVO270_MAX_US - SERVO270_MIN_US) / 270);
+  } else {
+    // Default to 180°
+    if (angle > 180) angle = 180;
+    period = SERVO180_MIN_US + ((uint32_t)angle * (SERVO180_MAX_US - SERVO180_MIN_US) / 180);
   }
-  period = 500 + angle * 11;
-  reg = number*2+I2C_SERVO0_DUTY_H;
+
+  reg = number*2 + I2C_SERVO0_DUTY_H;
   _tempData[0] = (period >> 8)& 0xFF;
   _tempData[1] = (period >> 0)& 0xFF;
   for(uint8_t i = 0; i < RETRY_COUNT; i++){

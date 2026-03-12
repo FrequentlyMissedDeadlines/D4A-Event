@@ -9,11 +9,15 @@
  *          - GET  /api/amakerbot/v1/display                 Get current TFT display mode
  *          - POST /api/amakerbot/v1/display?mode=<mode>     Set TFT display mode (APP_UI|APP_LOG|DEBUG_LOG|ESP_LOG)
  *          - POST /api/amakerbot/v1/display/next            Cycle to next display mode (same as button A)
+ *          - GET  /api/amakerbot/v1/name                    Get current bot name
+ *          - POST /api/amakerbot/v1/name?name=<name>        Set bot name (max 32 chars)
  *
  *          UDP protocol (service_id 0x4):
  *          - [0x41]<token>  Register UDP sender as master (if token valid);
  *          - [0x42]         Clear master (master IP only);
  *          - [0x43]         Heartbeat keep-alive — must arrive every ≤50 ms or all motors are stopped
+ *          - [0x45]         Get bot name — server replies with [0x45][name bytes];
+ *          - [0x46]<name>   Set bot name (master only) — server replies with [0x46][status];
  *
  *          On service init, a random 5-character alphanumeric token is generated
  *          and logged to app_info_logger so it appears in MODE_APP_LOG on the screen.
@@ -86,6 +90,8 @@ namespace AmakerBotConsts
     constexpr uint8_t udp_action_master_unregister = (udp_service_id << 4) | 0x02; ///< 0x42 -
     constexpr uint8_t udp_action_heartbeat = (udp_service_id << 4) | 0x03;         ///< 0x43 - (no params), used to detect connection loss to master :  must send at least one heartbeat every ~30ms or all motors are stopped
     constexpr uint8_t udp_action_ping = (udp_service_id << 4) | 0x04;              ///< 0x44 - (no params), used to detect connection loss to master :  must send at least one heartbeat every ~30ms or all motors are stopped
+    constexpr uint8_t udp_action_get_name = (udp_service_id << 4) | 0x05;          ///< 0x45 - (no params), server replies with [0x45][name bytes]
+    constexpr uint8_t udp_action_set_name = (udp_service_id << 4) | 0x06;          ///< 0x46 - followed by name string (max 32 chars, master only); server replies with [0x46][status]
 
     // OpenAPI route metadata
     constexpr const char desc_register[] PROGMEM = "Register the calling client (identified by its IP address) as the master controller. Must provide the server-generated token shown in MODE_APP_LOG.";
@@ -109,6 +115,18 @@ namespace AmakerBotConsts
     constexpr const char resp_display_ok[] PROGMEM = "Current display mode";
     constexpr const char resp_display_changed[] PROGMEM = "Display mode changed";
     constexpr const char resp_invalid_mode[] PROGMEM = "Invalid mode value";
+
+    // Bot name
+    constexpr const char path_name[] PROGMEM = "name";
+    constexpr const char field_name[] PROGMEM = "name";
+    constexpr const char param_name[] PROGMEM = "name";
+    constexpr const char default_bot_name[] PROGMEM = "K10-Bot";
+    constexpr const char desc_name_get[] PROGMEM = "Get the current bot name.";
+    constexpr const char desc_name_set[] PROGMEM = "Set the bot name (max 32 characters).";
+    constexpr const char resp_name_ok[] PROGMEM = "Bot name retrieved";
+    constexpr const char resp_name_set[] PROGMEM = "Bot name updated";
+    constexpr const char resp_missing_name[] PROGMEM = "Missing or empty name parameter";
+    constexpr const char msg_name_changed[] PROGMEM = "[AMAKERBOT] Bot name set to: ";
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +238,9 @@ bool AmakerBotService::initializeService()
     // Generate the random server token once
     server_token_ = generateRandomToken();
 
+    // Set default bot name
+    bot_name_ = progmem_to_string(AmakerBotConsts::default_bot_name);
+
     // Log the token to app_info_logger so it's visible in MODE_APP_LOG
     app_info_logger.info(
         progmem_to_string(AmakerBotConsts::msg_token_generated) + server_token_);
@@ -284,6 +305,29 @@ std::string AmakerBotService::getMasterIP() const
 std::string AmakerBotService::getServerToken() const
 {
     return server_token_;
+}
+
+std::string AmakerBotService::getBotName() const
+{
+    if (master_mutex_ && xSemaphoreTake(master_mutex_, pdMS_TO_TICKS(10)))
+    {
+        std::string name = bot_name_;
+        xSemaphoreGive(master_mutex_);
+        return name;
+    }
+    return progmem_to_string(AmakerBotConsts::default_bot_name);
+}
+
+void AmakerBotService::setBotName(const std::string &name)
+{
+    if (name.empty() || name.size() > 32)
+        return;
+    if (master_mutex_ && xSemaphoreTake(master_mutex_, pdMS_TO_TICKS(100)))
+    {
+        bot_name_ = name;
+        xSemaphoreGive(master_mutex_);
+    }
+    app_info_logger.info(progmem_to_string(AmakerBotConsts::msg_name_changed) + name);
 }
 
 // ---------------------------------------------------------------------------
@@ -386,6 +430,36 @@ bool AmakerBotService::messageHandler(const std::string &message,
 
         return true;
     }
+
+    if (message[0] == AmakerBotConsts::udp_action_get_name)
+    {
+        // Reply: [0x45][name bytes] — available to anyone
+        std::string reply;
+        reply += static_cast<char>(AmakerBotConsts::udp_action_get_name);
+        reply += getBotName();
+        udp_service.sendReply(reply, remoteIP, remotePort);
+        return true;
+    }
+
+    if (message[0] == AmakerBotConsts::udp_action_set_name)
+    {
+        // Only the registered master may rename the bot
+        if (!isMaster(remoteIP.toString().c_str()))
+        {
+            udp_reply(message, UDPResponseStatus::DENIED, remoteIP, remotePort);
+            return true;
+        }
+        std::string name = message.substr(1);
+        if (name.empty() || name.size() > 32)
+        {
+            udp_reply(message, UDPResponseStatus::ERROR, remoteIP, remotePort);
+            return true;
+        }
+        setBotName(name);
+        udp_reply(message, UDPResponseStatus::SUCCESS, remoteIP, remotePort);
+        return true;
+    }
+
     return false; // not our message
 }
 
@@ -803,6 +877,91 @@ bool AmakerBotService::registerRoutes()
                      doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
                      doc[FPSTR(AmakerBotConsts::field_mode)] = mode_to_string(target);
                      doc[FPSTR(AmakerBotConsts::field_mode_index)] = static_cast<int>(target);
+                     String out;
+                     serializeJson(doc, out);
+                     request->send(200, FPSTR(RoutesConsts::mime_json), out);
+                 });
+
+    // ------------------------------------------------------------------
+    // GET /api/amakerbot/v1/name
+    // ------------------------------------------------------------------
+    std::string path_name = getPath(progmem_to_string(AmakerBotConsts::path_name).c_str());
+
+    std::vector<OpenAPIResponse> name_get_responses;
+    OpenAPIResponse name_ok(200, AmakerBotConsts::resp_name_ok);
+    name_ok.schema = R"({"type":"object","properties":{"name":{"type":"string"}}})";
+    name_ok.example = R"({"name":"K10-Bot"})";
+    name_get_responses.push_back(name_ok);
+    name_get_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(path_name.c_str(), RoutesConsts::method_get,
+                     AmakerBotConsts::desc_name_get,
+                     AmakerBotConsts::tag_service, false,
+                     {}, name_get_responses));
+
+    webserver.on(path_name.c_str(), HTTP_GET,
+                 [this](AsyncWebServerRequest *request)
+                 {
+                     if (!checkServiceStarted(request))
+                         return;
+                     JsonDocument doc;
+                     doc[FPSTR(AmakerBotConsts::field_name)] = getBotName().c_str();
+                     String out;
+                     serializeJson(doc, out);
+                     request->send(200, FPSTR(RoutesConsts::mime_json), out);
+                 });
+
+    // ------------------------------------------------------------------
+    // POST /api/amakerbot/v1/name?name=<name>
+    // ------------------------------------------------------------------
+    std::vector<OpenAPIParameter> name_set_params;
+    name_set_params.push_back(
+        OpenAPIParameter(AmakerBotConsts::param_name,
+                         RoutesConsts::type_string,
+                         RoutesConsts::in_query,
+                         "New name for the bot (max 32 characters)",
+                         true));
+
+    std::vector<OpenAPIResponse> name_set_responses;
+    name_set_responses.push_back(OpenAPIResponse(200, AmakerBotConsts::resp_name_set));
+    name_set_responses.push_back(OpenAPIResponse(400, AmakerBotConsts::resp_missing_name));
+    name_set_responses.push_back(createServiceNotStartedResponse());
+
+    registerOpenAPIRoute(
+        OpenAPIRoute(path_name.c_str(), RoutesConsts::method_post,
+                     AmakerBotConsts::desc_name_set,
+                     AmakerBotConsts::tag_service, false,
+                     name_set_params, name_set_responses));
+
+    webserver.on(path_name.c_str(), HTTP_POST,
+                 [this](AsyncWebServerRequest *request)
+                 {
+                     if (!checkServiceStarted(request))
+                         return;
+
+                     const AsyncWebParameter *p = nullptr;
+                     if (request->hasParam(FPSTR(AmakerBotConsts::param_name), true))
+                         p = request->getParam(FPSTR(AmakerBotConsts::param_name), true);
+                     else if (request->hasParam(FPSTR(AmakerBotConsts::param_name)))
+                         p = request->getParam(FPSTR(AmakerBotConsts::param_name));
+
+                     if (!p || p->value().isEmpty())
+                     {
+                         JsonDocument err;
+                         err[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_err);
+                         err[FPSTR(RoutesConsts::message)] = FPSTR(AmakerBotConsts::resp_missing_name);
+                         String out;
+                         serializeJson(err, out);
+                         request->send(400, FPSTR(RoutesConsts::mime_json), out);
+                         return;
+                     }
+
+                     setBotName(p->value().c_str());
+
+                     JsonDocument doc;
+                     doc[FPSTR(RoutesConsts::result)] = FPSTR(RoutesConsts::result_ok);
+                     doc[FPSTR(AmakerBotConsts::field_name)] = getBotName().c_str();
                      String out;
                      serializeJson(doc, out);
                      request->send(200, FPSTR(RoutesConsts::mime_json), out);

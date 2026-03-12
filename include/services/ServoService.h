@@ -41,7 +41,7 @@ public:
     };
     struct ServoAngleOp {
         uint8_t channel;
-        uint16_t angle;
+        int16_t angle;
     };
 
     /**
@@ -55,10 +55,10 @@ public:
     /**
      * @brief Set servo angle
      * @param channel Servo channel (0-7 or 5)
-     * @param angle Angle in degrees (0-180 or 0-270 depending on servo)
+     * @param angle Angle in degrees (-90 to 90 for 180° or -135 to 135 for 270° servo)
      * @return true if successful, false otherwise
      */
-    bool setServoAngle(uint8_t channel, uint16_t angle);
+    bool setServoAngle(uint8_t channel, int16_t angle);
     /**
      * @brief Set servo speed for continuous rotation
      * @param channel      Servo channel (0-7)
@@ -89,7 +89,7 @@ public:
      * @brief Set all attached angular servos to middle position
      * @return true if successful, false otherwise
      */
-    bool setAllServoAngle(u_int16_t angle);
+    bool setAllServoAngle(int16_t angle);
 
     /**
      * @brief Set angle for multiple servos at once

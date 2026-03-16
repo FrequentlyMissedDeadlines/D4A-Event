@@ -116,10 +116,23 @@ AmakerBotService amakerbot_service = AmakerBotService();
  */
 void xtask_UDP_SVR(void *pvParameters)
 {
+  // Counter for periodic WebSocket cleanup (every ~1 second)
+  uint8_t cleanup_counter = 0;
+  constexpr uint8_t cleanup_interval = 100; // 100 * 10ms = 1 second
+  
   for (;;)
   {
     // Check for heartbeat timeout every tick (~10 ms)
     amakerbot_service.checkHeartbeatTimeout();
+    
+    // Periodically cleanup stale WebSocket clients to free TCP resources
+    // This prevents resource exhaustion when browsers have multiple tabs open
+    if (++cleanup_counter >= cleanup_interval)
+    {
+      cleanup_counter = 0;
+      http_service.cleanupWebSockets();
+    }
+    
     vTaskDelay(udp_task_delay_ticks);
   }
 }
@@ -136,20 +149,21 @@ void task_DISPLAY(void *pvParameters)
   int last_displayed_total_messages = 0;
   TickType_t last_update_tick = xTaskGetTickCount();
   TickType_t last_wake_tick = xTaskGetTickCount();
-  bool last_button_state = false;
+  bool last_buttonA_state = false;
 
   for (;;)
   {
     // Check button A for display mode toggle
-    bool button_pressed = unihiker.buttonA != nullptr && unihiker.buttonA->isPressed();
-    if (button_pressed && !last_button_state)
+    bool buttonA_pressed = unihiker.buttonA != nullptr && unihiker.buttonA->isPressed();
+    bool buttonB_pressed = unihiker.buttonB != nullptr && unihiker.buttonB->isPressed();
+    if (buttonA_pressed )
     {
       // Button just pressed (rising edge)
       ui.next_display_mode();
       ui.draw_all(); // Immediately redraw with new mode
       last_update_tick = xTaskGetTickCount(); // Reset update timer
     }
-    last_button_state = button_pressed;
+    last_buttonA_state = buttonA_pressed;
 
     TickType_t now = xTaskGetTickCount();
     if ((now - last_update_tick) >= display_update_interval_ticks)
@@ -162,33 +176,6 @@ void task_DISPLAY(void *pvParameters)
   }
 }
 
-/**
- * @brief FreeRTOS Task: Handle web server on Core 1 (async - no longer needs loop)
- * @param pvParameters Task parameters (unused)
- * @note AsyncWebServer handles requests automatically, so this task is minimal
- */
-void task_HTTP_SVR(void *pvParameters)
-{ return;
-  debug_logger.info(progmem_to_string(MainConsts::msg_http_task_started));
-  
-  constexpr unsigned long watchdog_timeout_ms = 30000; // 30 seconds without any request = stalled
-  constexpr TickType_t check_interval = pdMS_TO_TICKS(5000); // check every 5 seconds
-
-  for (;;)
-  {
-    vTaskDelay(check_interval);
-
-    unsigned long last = http_service.lastRequestTime();
-    unsigned long now = millis();
-
-    // Only trigger after the server has been running for a while (skip first 30s)
-    if (last > 0 && (now - last) > watchdog_timeout_ms)
-    {
-      debug_logger.warning("HTTP watchdog: no request in " + std::to_string((now - last) / 1000) + "s, resetting server");
-      http_service.resetServer();
-    }
-  }
-}
 
 namespace
 {
@@ -283,11 +270,11 @@ void setup()
   esp_log_level_set("*", ESP_LOG_DEBUG);
   
   // Initialize loggers BEFORE hardware to capture early logs
-  app_info_logger.set_max_rows(32);
+  app_info_logger.set_max_rows(40);
   app_info_logger.set_log_level(RollingLogger::INFO);
-  debug_logger.set_max_rows(32);
+  debug_logger.set_max_rows(40);
   debug_logger.set_log_level(RollingLogger::DEBUG);
-  esp_logger.set_max_rows(32);
+  esp_logger.set_max_rows(40);
   esp_logger.set_log_level(RollingLogger::DEBUG);
   
   Serial.println("Loggers initialized");
@@ -331,13 +318,13 @@ void setup()
 
     return;
   }
-  start_service(settings_service);
+  // start_service(settings_service);
   start_service(k10sensors_service);
   start_service(board_info);
-  start_service(servo_service);
+  // start_service(servo_service);
   start_service(webcam_service);
-  start_service(music_service);
-  start_service(dfr1216_service);
+  // start_service(music_service);
+  // start_service(dfr1216_service);
   start_service(amakerbot_service);
 
   // Set up rolling logger service with logger instances (including esp_logger)

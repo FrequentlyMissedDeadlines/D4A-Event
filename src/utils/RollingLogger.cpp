@@ -19,6 +19,8 @@ RollingLogger::RollingLogger()
 
 void RollingLogger::log(std::string message, const LogLevel level)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (level > current_log_level)
         return;
     log_rows.push_back({level, millis(), message});
@@ -39,16 +41,20 @@ void RollingLogger::log(const __FlashStringHelper* message, const LogLevel level
 
 void RollingLogger::set_log_level(const LogLevel level)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     current_log_level = level;
 }
 
 RollingLogger::LogLevel RollingLogger::get_log_level()
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     return current_log_level;
 }
 
 void RollingLogger::set_max_rows(int rows)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (rows <= 0)
         return;
     max_rows = rows;
@@ -62,15 +68,18 @@ void RollingLogger::set_max_rows(int rows)
 
 int RollingLogger::get_max_rows()
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     return max_rows;
 }
 
-const std::vector<RollingLogger::LogEntry>& RollingLogger::get_log_rows() const
+std::vector<RollingLogger::LogEntry> RollingLogger::get_log_rows() const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     return log_rows;
 }
 
 unsigned long RollingLogger::get_version() const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     return log_version_;
 }

@@ -8,6 +8,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <mutex>
 #include <vector>
 #include "FlashStringHelper.h"
 /**
@@ -146,7 +147,7 @@ public:
      * @brief Retrieve all log entries for display or processing
      * @return Const reference to vector of LogEntry structs
      */
-    const std::vector<LogEntry>& get_log_rows() const;
+    std::vector<LogEntry> get_log_rows() const;
 
     /**
      * @brief Get the log version counter
@@ -161,5 +162,6 @@ private:
     int max_rows;
     std::vector<LogEntry> log_rows;
     unsigned long log_version_ = 0;
+    mutable std::mutex mutex_;
 };
 

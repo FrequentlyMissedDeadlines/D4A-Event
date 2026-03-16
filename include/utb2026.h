@@ -18,6 +18,11 @@
 class UTB2026 {
 public:
     /**
+     * @brief Constructor for UTB2026
+     */
+    UTB2026();
+
+    /**
      * @brief Initialize the UI system
      * @details Sets up TFT display, clears screen, and prepares UI components
      */
@@ -120,12 +125,13 @@ public:
      * @details Updates and displays all active logger views with current log entries
      */
     void draw_logger();
-
+    void draw_technical_info();
     /**
      * @brief Display mode enumeration
      */
     enum DisplayMode {
         MODE_APP_UI,      // Application UI only (network info + servos)
+        MODE_APP_INFO,    // Application info only (full screen)
         MODE_APP_LOG,     // App log only (full screen)
         MODE_DEBUG_LOG,   // Debug log only (full screen)
         MODE_ESP_LOG      // ESP log only (full screen)

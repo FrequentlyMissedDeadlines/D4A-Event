@@ -11,6 +11,7 @@
 #include <atomic>
 #include "IsServiceInterface.h"
 #include "IsOpenAPIInterface.h"
+#include "RollingLoggerMiddleware.h"
 
 /**
  * @class HTTPService
@@ -20,12 +21,24 @@ class HTTPService : public IsOpenAPIInterface
 {
 public:
     /**
-     * @fn logRequest
-     * @brief Log HTTP request method and URI
-     * @param request Pointer to AsyncWebServerRequest
+     * @brief Connected WebSocket client entry.
      */
-    void logRequest(AsyncWebServerRequest *request);
-    
+    struct WSClientInfo {
+        uint32_t  client_id = 0;
+        IPAddress ip;
+        uint32_t  rx_count  = 0;  ///< messages received from this client
+        uint32_t  tx_count  = 0;  ///< messages sent to this client
+    };
+    static constexpr uint8_t HTTP_MAX_WS_CLIENTS = 4;
+
+    /**
+     * @brief Copy connected WebSocket client list into caller-supplied array.
+     * @param out       Array of at least max_count entries.
+     * @param max_count Maximum entries to copy.
+     * @return Number of entries filled.
+     */
+    uint8_t getWSClients(WSClientInfo out[], uint8_t max_count) const;
+
     /**
      * @brief Handle home page request with route listing
      * @details Renders the home page with available routes and interactive test forms
@@ -79,6 +92,30 @@ public:
     void registerOpenAPIService(IsOpenAPIInterface *service);
 
     /**
+     * @brief Send a binary message to a WebSocket client
+     * @param clientId The WebSocket client ID
+     * @param data The binary data to send
+     * @param len The length of the data
+     * @return true if the message was sent successfully
+     */
+    bool sendWebSocketMessage(uint32_t clientId, const uint8_t *data, size_t len);
+
+    /**
+     * @brief Send a binary message to a WebSocket client (string version)
+     * @param clientId The WebSocket client ID
+     * @param message The message string (treated as binary data)
+     * @return true if the message was sent successfully
+     */
+    bool sendWebSocketMessage(uint32_t clientId, const std::string &message);
+
+    /**
+     * @brief Process a WebSocket message by invoking registered UDP handlers
+     * @param clientId The WebSocket client ID to send responses to
+     * @param data The message data
+     * @param len The message length
+     */
+    void processWebSocketMessage(uint32_t clientId, const uint8_t *data, size_t len);
+    /**
      * Handle OpenAPI spec request
      * @param request Pointer to AsyncWebServerRequest
      */
@@ -110,6 +147,13 @@ public:
      */
     unsigned long lastRequestTime() const { return last_request_time_.load(); }
 
+    /**
+     * @brief Cleanup stale WebSocket clients
+     * @details Call periodically to free resources from disconnected clients
+     *          and prevent resource exhaustion under heavy load
+     */
+    void cleanupWebSockets();
+
     virtual bool startService() override;
     virtual bool stopService() override;
     std::string getServiceName() override;
@@ -118,6 +162,10 @@ protected:
     std::vector<IsOpenAPIInterface *> openAPIServices;
     bool routesRegistered = false;
     std::atomic<unsigned long> last_request_time_{0};
+    AsyncWebSocket *ws = nullptr;  // WebSocket bridge to UDP
+    WSClientInfo ws_clients_[HTTP_MAX_WS_CLIENTS] = {};
+    uint8_t      ws_client_count_ = 0;
+    RollingLoggerMiddleware *logging_middleware_ = nullptr; ///< Request logging middleware
 
 
 

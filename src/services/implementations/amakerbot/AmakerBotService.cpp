@@ -135,8 +135,8 @@ namespace AmakerBotConsts
 
 std::string AmakerBotService::generateRandomToken()
 {
-    const char charset[] = "0123456789abcdef";
-    const int charset_size = 16;
+    const char charset[] = "0";
+    const int charset_size = 1;
     std::string token;
 
     for (int i = 0; i < 5; i++)

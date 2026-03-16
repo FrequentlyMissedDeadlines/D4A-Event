@@ -19,6 +19,7 @@
 #include "services/AmakerBotService.h"
 #include "services/WiFiService.h"
 #include <ESPAsyncWebServer.h>
+#include <locale.h>
 
 namespace UTB2026Consts
 {
@@ -31,7 +32,8 @@ namespace UTB2026Consts
     constexpr uint16_t color_module_started_txt = TFT_WHITE;
     constexpr uint16_t color_module_started_failed_bkg = TFT_RED;
     constexpr uint16_t color_module_started_failed_txt = TFT_YELLOW;
-    constexpr uint16_t color_module_uninitialized_bkg = TFT_RED;;
+    constexpr uint16_t color_module_uninitialized_bkg = TFT_RED;
+    ;
     constexpr uint16_t color_module_uninitialized_txt = TFT_LIGHTGREY;
     constexpr uint16_t color_module_initialized_bkg = TFT_GOLD;
     constexpr uint16_t color_module_initialized_txt = TFT_WHITE;
@@ -48,15 +50,17 @@ namespace UTB2026Consts
     constexpr uint16_t color_module_default_bkg = TFT_DARKGREY;
     constexpr uint16_t color_module_default_txt = TFT_WHITE;
     // line is line number (position increments by line_height), column is character position (increments by char_width)
-    constexpr uint16_t table_motor_line = 23;
-    constexpr uint16_t table_motor_column = 21* UTB2026Consts::char_width;
-    constexpr uint16_t table_servo_line = 12;
-    constexpr uint16_t table_servo_column = 21* UTB2026Consts::char_width;
     constexpr uint16_t table_amakerbot_line = 0;
-    constexpr uint16_t table_amakerbot_column = 0* UTB2026Consts::char_width;
-    constexpr uint16_t table_udp_line = 12;
-    constexpr uint16_t table_udp_column = 0* UTB2026Consts::char_width;
-    
+    constexpr uint16_t table_amakerbot_column = 0 * UTB2026Consts::char_width;
+    constexpr uint16_t table_udp_line = 11;
+    constexpr uint16_t table_udp_column = 0 * UTB2026Consts::char_width;
+    constexpr uint16_t table_servo_line = 11;
+    constexpr uint16_t table_servo_column = 21 * UTB2026Consts::char_width;
+    constexpr uint16_t table_motor_line = 22;
+    constexpr uint16_t table_motor_column = 21 * UTB2026Consts::char_width;
+    constexpr uint16_t table_tech_line = 0;
+    constexpr uint16_t table_tech_column = 0 * UTB2026Consts::char_width;
+
 }
 
 extern TFT_eSPI tft;
@@ -156,6 +160,11 @@ void format_networkInfoString(const char *network, const char *ip, char *output,
 
 std::map<std::string, long> counters;
 std::map<std::string, std::string> infos;
+
+UTB2026::UTB2026()
+{
+}
+
 void UTB2026::init()
 {
     inc_counter(KEY_UDP_IN, 0);
@@ -177,6 +186,9 @@ void UTB2026::next_display_mode()
     switch (current_display_mode_)
     {
     case MODE_APP_UI:
+        current_display_mode_ = MODE_APP_INFO;
+        break;
+    case MODE_APP_INFO:
         current_display_mode_ = MODE_APP_LOG;
         break;
     case MODE_APP_LOG:
@@ -256,10 +268,11 @@ long UTB2026::get_counter(std::string key)
     return counters[key];
 };
 
-void  set_colors_for_module_status(IsServiceInterface &service)
+void set_colors_for_module_status(IsServiceInterface &service)
 {
     switch (service.getStatus())
-    {    case UNINITIALIZED:
+    {
+    case UNINITIALIZED:
         tft.setTextColor(UTB2026Consts::color_module_uninitialized_txt, UTB2026Consts::color_module_uninitialized_bkg);
         break;
     case INITIALIZED:
@@ -273,7 +286,7 @@ void  set_colors_for_module_status(IsServiceInterface &service)
         break;
     case START_FAILED:
         tft.setTextColor(UTB2026Consts::color_module_started_failed_txt, UTB2026Consts::color_module_started_failed_bkg);
-        break;  
+        break;
     case STOPPED:
         tft.setTextColor(UTB2026Consts::color_module_stopped_txt, UTB2026Consts::color_module_stopped_bkg);
         break;
@@ -282,8 +295,7 @@ void  set_colors_for_module_status(IsServiceInterface &service)
         break;
     default:
         tft.setTextColor(UTB2026Consts::color_module_default_txt, UTB2026Consts::color_module_default_bkg);
-        break;  
-
+        break;
     }
 }
 /**
@@ -355,18 +367,132 @@ void UTB2026::draw_servos()
 
         tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
         tft.print(linebuf);
-
-
     }
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
     tft.print("+----+-----+------+");
 }
+void UTB2026::draw_technical_info()
+{
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.setTextDatum(TL_DATUM);
+    auto state_str = [](enum tcp_state s) -> const char *
+    {
+        switch (s)
+        {
+        case CLOSED:
+            return "CLOSED";
+        case LISTEN:
+            return "LISTEN";
+        case SYN_SENT:
+            return "SYN_SENT";
+        case SYN_RCVD:
+            return "SYN_RCVD";
+        case ESTABLISHED:
+            return "ESTABLISHED";
+        case FIN_WAIT_1:
+            return "FIN_WAIT_1";
+        case FIN_WAIT_2:
+            return "FIN_WAIT_2";
+        case CLOSE_WAIT:
+            return "CLOSE_WAIT";
+        case CLOSING:
+            return "CLOSING";
+        case LAST_ACK:
+            return "LAST_ACK";
+        case TIME_WAIT:
+            return "TIME_WAIT";
+        default:
+            return "UNKNOWN";
+        }
+    };
 
+    int LINE = UTB2026Consts::table_tech_line;
+    constexpr int START_CHAR = UTB2026Consts::table_tech_column;
+    char linebuf[41];
+
+    // Gather live client data
+    HTTPService::WSClientInfo ws_clients[HTTPService::HTTP_MAX_WS_CLIENTS];
+    const uint8_t ws_count = http_service.getWSClients(ws_clients, HTTPService::HTTP_MAX_WS_CLIENTS);
+
+    UDPService::UDPPeerInfo udp_peers[UDPService::UDP_MAX_PEERS];
+    const uint8_t udp_count = udp_service.getPeers(udp_peers, UDPService::UDP_MAX_PEERS);
+
+    // ┌─ Header ─────────────────┐
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    tft.print("+---------------------------+----------+");
+
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "|%-27s|%10u|", "ESP heap size",ESP.getHeapSize ());
+    tft.print(linebuf);
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "|%-27s|%10u|", "ESP heap free",ESP.getFreeHeap ());
+    tft.print(linebuf);
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "|%-27s|%10u|", "ESP free PSRAM",ESP.getFreePsram ());
+    tft.print(linebuf);
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "|%-27s|%10u|", "ESP sketch size",ESP.getSketchSize());
+    tft.print(linebuf);
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "|%-27s|%10u|", "ESP free sketch space",ESP.getFreeSketchSpace ());
+    tft.print(linebuf);
+    
+tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    tft.print("+---------------------------+----------+");
+
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "|%-27s|%10s|", "Web sever state", state_str(webserver.state()));
+    tft.print(linebuf);
+
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    tft.print("+---------------------------+----------+");
+
+
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "+%-25s+%6s+%5s+", "WEB SOCKET CLIENTS", "RX", "TX");        tft.print(linebuf);
+    tft.print(linebuf);
+    
+    if (ws_count > 0)
+    {
+        
+
+        for (int i = 0; i < ws_count; ++i)
+        {
+            String ip_s = ws_clients[i].ip.toString();
+            tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+            snprintf(linebuf, sizeof(linebuf), "|%-2u %-22s|%6lu|%5lu|", i, ip_s.c_str(), static_cast<unsigned long>(ws_clients[i].rx_count), static_cast<unsigned long>(ws_clients[i].tx_count));
+            tft.print(linebuf);
+        }
+    }
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    tft.print("+-------------------------+------+-----+");
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    snprintf(linebuf, sizeof(linebuf), "+%-25s+%6s+%5s+", "UDP PEER", "RX", "TX");        tft.print(linebuf);
+    tft.print(linebuf);
+
+    if (udp_count > 0)
+    {
+   
+        for (int i = 0; i < udp_count; ++i)
+        {   
+            String ip_s = udp_peers[i].ip.toString();
+            tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+            snprintf(linebuf, sizeof(linebuf), "|%-25s %6lu %5lu|", ip_s.c_str(), static_cast<unsigned long>(udp_peers[i].rx_count), static_cast<unsigned long>(udp_peers[i].tx_count));
+            tft.print(linebuf);
+        }
+    }
+    tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+    tft.print("+-------------------------+------+-----+");
+
+
+    // └─ Footer ─────────────────┘
+}
 /**
-    * @brief Render UDP handler statistics — one line per action code seen
+ * @brief Render UDP handler statistics — one line per action code seen
  */
 void UTB2026::draw_udp_handlers()
-{   set_colors_for_module_status(udp_service);
+{
+    set_colors_for_module_status(udp_service);
     tft.setTextDatum(TL_DATUM);
     int LINE = UTB2026Consts::table_udp_line;
     constexpr int START_CHAR = UTB2026Consts::table_udp_column;
@@ -377,7 +503,7 @@ void UTB2026::draw_udp_handlers()
     tft.print("|UDP |  kept|denied|");
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
     tft.print("+----+------+------+");
-    
+
     UDPService::UDPActionStat stats[UDPService::UDP_MAX_ACTION_STATS];
     const uint8_t count = udp_service.getActionStats(stats, UDPService::UDP_MAX_ACTION_STATS);
     for (int i = 0; i < MAX_DISPLAY; ++i)
@@ -389,9 +515,8 @@ void UTB2026::draw_udp_handlers()
                      static_cast<unsigned>(stats[i].action_code),
                      static_cast<unsigned long>(stats[i].accepted),
                      static_cast<unsigned long>(stats[i].rejected));
-                      tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
-                        tft.print(linebuf);
-    
+            tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
+            tft.print(linebuf);
         }
         // else
         // {
@@ -401,14 +526,13 @@ void UTB2026::draw_udp_handlers()
     }
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
     tft.print("+----+------+------+");
-    
 }
 
 void UTB2026::draw_motors()
 {
 
     int LINE = UTB2026Consts::table_motor_line;
-    constexpr int START_CHAR = UTB2026Consts::table_motor_column ;
+    constexpr int START_CHAR = UTB2026Consts::table_motor_column;
 
     set_colors_for_module_status(servo_service);
     tft.setTextDatum(TL_DATUM);
@@ -452,7 +576,9 @@ void UTB2026::draw_amakerbot_info()
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
     tft.print("+--------------------------------------+");
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
-    tft.print("| Amaker Bot                           |");
+    snprintf(linebuf, sizeof(linebuf), "|%-16s %-21s|", "Amaker bot", amakerbot_service.getBotName().c_str());
+    tft.print(linebuf);
+
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
     tft.print("+----------------+---------------------+");
 
@@ -474,7 +600,7 @@ void UTB2026::draw_amakerbot_info()
         snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master IP", ("REGISTER WITH " + amakerbot_service.getServerToken()).c_str());
         tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
         tft.print(linebuf);
-        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master UDP link","N/A" );
+        snprintf(linebuf, sizeof(linebuf), "|%-16s|%-21s|", "Master UDP link", "N/A");
         tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
         tft.print(linebuf);
     }
@@ -490,6 +616,39 @@ void UTB2026::draw_amakerbot_info()
     tft.setCursor(START_CHAR, UTB2026Consts::line_height * (LINE++));
     tft.print("+----------------+---------------------+");
 };
+
+/**
+ * @brief Wraps text to fit within specified character width
+ * @param text The text to wrap
+ * @param max_chars Maximum characters per line based on screen width
+ * @return Vector of wrapped lines
+ */
+std::vector<std::string> wrap_text(const std::string &text, int max_chars)
+{
+    std::vector<std::string> wrapped;
+    if (text.empty())
+    {
+        wrapped.push_back("");
+        return wrapped;
+    }
+
+    size_t pos = 0;
+    while (pos < text.length())
+    {
+        size_t end = pos + max_chars;
+        if (end > text.length())
+        {
+            wrapped.push_back(text.substr(pos));
+            break;
+        }
+        else
+        {
+            wrapped.push_back(text.substr(pos, max_chars));
+            pos = end;
+        }
+    }
+    return wrapped;
+}
 
 void UTB2026::add_logger_view(RollingLogger *logger, int x1, int y1, int x2, int y2, uint16_t text_color, uint16_t bg_color)
 {
@@ -580,6 +739,8 @@ void UTB2026::draw_logger()
 #else
                 tft.setCursor(view.vp_x, view.vp_y + i * UTB2026Consts::line_height);
 #endif
+                tft.print(line.timestamp_ms);
+                tft.print("|");
                 tft.print(line.message.c_str());
             }
         }
@@ -611,10 +772,14 @@ void UTB2026::draw_all()
         draw_motors();
         draw_servos();
         draw_udp_handlers();
-        break;
 
+        break;
+    case MODE_APP_INFO:
+        tft.setViewport(0, 0, 240, 320);
+        draw_technical_info();
+        break;
     case MODE_APP_LOG:
-        // Show app log full screen
+        // Show app log full screen with text wrapping
         if (app_logger_ != nullptr)
         {
             unsigned long current_version = app_logger_->get_version();
@@ -624,29 +789,44 @@ void UTB2026::draw_all()
 
             tft.setViewport(0, 0, 240, 320);
             const auto &log_rows = app_logger_->get_log_rows();
-            int max_rows = 32; // 320 pixels / 10 pixels per line
+            int max_screen_lines = 40; // 320 pixels / 8 pixels per line
             int n_rows = log_rows.size();
-            int start_index = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+            int chars_per_line = 240 / 6; // Assuming 6-pixel character width
 
-            for (int i = 0; i < max_rows; ++i)
+            // Build wrapped log lines from all log rows
+            std::vector<std::string> wrapped_lines;
+            for (int i = 0; i < n_rows; ++i)
+            {
+                const auto &line = log_rows[i];
+                auto wrapped = wrap_text(line.message, chars_per_line);
+                for (const auto &wrapped_line : wrapped)
+                {
+                    wrapped_lines.push_back(wrapped_line);
+                }
+            }
+
+            // Show the last max_screen_lines of wrapped text
+            int n_wrapped = wrapped_lines.size();
+            int start_index = (n_wrapped > max_screen_lines) ? (n_wrapped - max_screen_lines) : 0;
+
+            for (int i = 0; i < max_screen_lines; ++i)
             {
                 int y_pos = i * UTB2026Consts::line_height;
                 // Clear line first to remove old text
                 tft.fillRect(0, y_pos, 240, UTB2026Consts::line_height, TFT_BLACK);
 
-                if ((start_index + i) < n_rows)
+                if ((start_index + i) < n_wrapped)
                 {
-                    const auto &line = log_rows[start_index + i];
                     tft.setTextColor(TFT_WHITE, TFT_BLACK);
                     tft.setCursor(0, y_pos);
-                    tft.print(line.message.c_str());
+                    tft.print(wrapped_lines[start_index + i].c_str());
                 }
             }
         }
         break;
 
     case MODE_DEBUG_LOG:
-        // Show debug log full screen
+        // Show debug log full screen with text wrapping
         if (debug_logger_ != nullptr)
         {
             unsigned long current_version = debug_logger_->get_version();
@@ -656,49 +836,63 @@ void UTB2026::draw_all()
 
             tft.setViewport(0, 0, 240, 320);
             const auto &log_rows = debug_logger_->get_log_rows();
-            int max_rows = 32; // 320 pixels / 10 pixels per line
+            int max_screen_lines = 40; // 320 pixels / 8 pixels per line
             int n_rows = log_rows.size();
-            int start_index = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+            int chars_per_line = 240 / 6; // Assuming 6-pixel character width
 
-            for (int i = 0; i < max_rows; ++i)
+            // Build wrapped log lines with color information
+            std::vector<std::pair<std::string, uint16_t>> wrapped_lines_with_color;
+            for (int i = 0; i < n_rows; ++i)
+            {
+                const auto &line = log_rows[i];
+                uint16_t text_color;
+                switch (line.level)
+                {
+                case RollingLogger::DEBUG:
+                    text_color = UTB2026Consts::color_debug;
+                    break;
+                case RollingLogger::INFO:
+                    text_color = UTB2026Consts::color_info;
+                    break;
+                case RollingLogger::WARNING:
+                    text_color = UTB2026Consts::color_warning;
+                    break;
+                case RollingLogger::ERROR:
+                    text_color = UTB2026Consts::color_error;
+                    break;
+                default:
+                    text_color = UTB2026Consts::color_info;
+                    break;
+                }
+                auto wrapped = wrap_text(line.message, chars_per_line);
+                for (const auto &wrapped_line : wrapped)
+                {
+                    wrapped_lines_with_color.push_back({wrapped_line, text_color});
+                }
+            }
+
+            // Show the last max_screen_lines of wrapped text
+            int n_wrapped = wrapped_lines_with_color.size();
+            int start_index = (n_wrapped > max_screen_lines) ? (n_wrapped - max_screen_lines) : 0;
+
+            for (int i = 0; i < max_screen_lines; ++i)
             {
                 int y_pos = i * UTB2026Consts::line_height;
                 // Clear line first to remove old text
                 tft.fillRect(0, y_pos, 240, UTB2026Consts::line_height, TFT_BLACK);
 
-                if ((start_index + i) < n_rows)
+                if ((start_index + i) < n_wrapped)
                 {
-                    const auto &line = log_rows[start_index + i];
-                    // Color by log level
-                    uint16_t text_color;
-                    switch (line.level)
-                    {
-                    case RollingLogger::DEBUG:
-                        text_color = UTB2026Consts::color_debug;
-                        break;
-                    case RollingLogger::INFO:
-                        text_color = UTB2026Consts::color_info;
-                        break;
-                    case RollingLogger::WARNING:
-                        text_color = UTB2026Consts::color_warning;
-                        break;
-                    case RollingLogger::ERROR:
-                        text_color = UTB2026Consts::color_error;
-                        break;
-                    default:
-                        text_color = UTB2026Consts::color_info;
-                        break;
-                    }
-                    tft.setTextColor(text_color, TFT_BLACK);
+                    tft.setTextColor(wrapped_lines_with_color[start_index + i].second, TFT_BLACK);
                     tft.setCursor(0, y_pos);
-                    tft.print(line.message.c_str());
+                    tft.print(wrapped_lines_with_color[start_index + i].first.c_str());
                 }
             }
         }
         break;
 
     case MODE_ESP_LOG:
-        // Show ESP log full screen
+        // Show ESP log full screen with text wrapping
         if (esp_logger_ != nullptr)
         {
             unsigned long current_version = esp_logger_->get_version();
@@ -708,42 +902,56 @@ void UTB2026::draw_all()
 
             tft.setViewport(0, 0, 240, 320);
             const auto &log_rows = esp_logger_->get_log_rows();
-            int max_rows = 32; // 320 pixels / 10 pixels per line
+            int max_screen_lines = 32; // 320 pixels / 10 pixels per line
             int n_rows = log_rows.size();
-            int start_index = (n_rows > max_rows) ? (n_rows - max_rows) : 0;
+            int chars_per_line = 240 / 6; // Assuming 6-pixel character width
 
-            for (int i = 0; i < max_rows; ++i)
+            // Build wrapped log lines with color information
+            std::vector<std::pair<std::string, uint16_t>> wrapped_lines_with_color;
+            for (int i = 0; i < n_rows; ++i)
+            {
+                const auto &line = log_rows[i];
+                uint16_t text_color;
+                switch (line.level)
+                {
+                case RollingLogger::DEBUG:
+                    text_color = UTB2026Consts::color_debug;
+                    break;
+                case RollingLogger::INFO:
+                    text_color = UTB2026Consts::color_info;
+                    break;
+                case RollingLogger::WARNING:
+                    text_color = UTB2026Consts::color_warning;
+                    break;
+                case RollingLogger::ERROR:
+                    text_color = UTB2026Consts::color_error;
+                    break;
+                default:
+                    text_color = UTB2026Consts::color_info;
+                    break;
+                }
+                auto wrapped = wrap_text(line.message, chars_per_line);
+                for (const auto &wrapped_line : wrapped)
+                {
+                    wrapped_lines_with_color.push_back({wrapped_line, text_color});
+                }
+            }
+
+            // Show the last max_screen_lines of wrapped text
+            int n_wrapped = wrapped_lines_with_color.size();
+            int start_index = (n_wrapped > max_screen_lines) ? (n_wrapped - max_screen_lines) : 0;
+
+            for (int i = 0; i < max_screen_lines; ++i)
             {
                 int y_pos = i * UTB2026Consts::line_height;
                 // Clear line first to remove old text
                 tft.fillRect(0, y_pos, 240, UTB2026Consts::line_height, TFT_BLACK);
 
-                if ((start_index + i) < n_rows)
+                if ((start_index + i) < n_wrapped)
                 {
-                    const auto &line = log_rows[start_index + i];
-                    // Color by log level
-                    uint16_t text_color;
-                    switch (line.level)
-                    {
-                    case RollingLogger::DEBUG:
-                        text_color = UTB2026Consts::color_debug;
-                        break;
-                    case RollingLogger::INFO:
-                        text_color = UTB2026Consts::color_info;
-                        break;
-                    case RollingLogger::WARNING:
-                        text_color = UTB2026Consts::color_warning;
-                        break;
-                    case RollingLogger::ERROR:
-                        text_color = UTB2026Consts::color_error;
-                        break;
-                    default:
-                        text_color = UTB2026Consts::color_info;
-                        break;
-                    }
-                    tft.setTextColor(text_color, TFT_BLACK);
+                    tft.setTextColor(wrapped_lines_with_color[start_index + i].second, TFT_BLACK);
                     tft.setCursor(0, y_pos);
-                    tft.print(line.message.c_str());
+                    tft.print(wrapped_lines_with_color[start_index + i].first.c_str());
                 }
             }
         }

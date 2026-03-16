@@ -2,7 +2,7 @@
 """
 K10 Bot — UDP test suite
 Usage: python test_amakerbot_udp.py <ip> <port> <token>
-
+100% AI slope 
 Covers:
   • AmakerBotService  (0x41 – 0x46)  master registration, heartbeat, ping, bot name
   • BoardInfoService  (0x11 – 0x14)  onboard RGB LEDs

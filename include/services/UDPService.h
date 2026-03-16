@@ -58,6 +58,26 @@ public:
     };
     static constexpr uint8_t UDP_MAX_ACTION_STATS = 16;
 
+    /**
+     * @brief Recently-seen UDP peer entry (last N unique senders).
+     */
+    struct UDPPeerInfo {
+        IPAddress ip;
+        uint16_t  port     = 0;
+        uint32_t  last_ms  = 0;  ///< millis() of last packet from this peer
+        uint32_t  rx_count = 0;  ///< messages received from this peer
+        uint32_t  tx_count = 0;  ///< messages sent to this peer
+    };
+    static constexpr uint8_t UDP_MAX_PEERS = 4;
+
+    /**
+     * @brief Copy recently-seen UDP peer list into caller-supplied array.
+     * @param out       Array of at least max_count entries.
+     * @param max_count Maximum entries to copy.
+     * @return Number of entries filled.
+     */
+    uint8_t getPeers(UDPPeerInfo out[], uint8_t max_count) const;
+
     bool registerRoutes() override;
     std::string getServiceSubPath() override;
     bool initializeService() override;
@@ -101,6 +121,15 @@ public:
      */
     uint8_t getActionStats(UDPActionStat out[], uint8_t max_count) const;
 
+    /**
+     * @brief Invoke all registered message handlers with a message
+     * @param message The message data
+     * @param remoteIP The sender IP address
+     * @param remotePort The sender port
+     * @details This is used internally by handleUDPPacket and also by WebSocket bridge
+     */
+    void invokeMessageHandlers(const std::string& message, const IPAddress& remoteIP, uint16_t remotePort);
+
 protected:
     AsyncUDP *udp = nullptr;
     AsyncUDP *udpHandle = nullptr;
@@ -129,6 +158,8 @@ private:
     SemaphoreHandle_t handler_mutex = nullptr;
 
     UDPActionStat action_stats_[UDP_MAX_ACTION_STATS] = {};
+    UDPPeerInfo   udp_peers_[UDP_MAX_PEERS]           = {};
+    uint8_t       udp_peer_count_                     = 0;
     /**
      * @brief Record one reply's outcome into action_stats_.
      * @param action_byte First byte of the binary reply frame (action code).

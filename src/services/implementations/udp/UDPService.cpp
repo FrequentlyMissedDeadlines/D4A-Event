@@ -9,6 +9,7 @@
 
 #include "FlashStringHelper.h"
 #include "services/UDPService.h"
+#include "services/HTTPService.h"
 #include <Arduino.h>
 #include <AsyncUDP.h>
 #include <freertos/FreeRTOS.h>
@@ -49,6 +50,13 @@ SemaphoreHandle_t messageMutex = NULL;
 unsigned long packetsDropped = 0;
 static UDPService* udp_service_instance = nullptr;
 
+// External access to HTTPService for WebSocket bridge
+extern class HTTPService http_service;
+
+// WebSocket context storage (defined in HTTPService.cpp, set when processing WebSocket messages)
+extern uint32_t ws_client_id_context;
+extern AsyncWebSocket* ws_context;
+
 bool UDPService::begin(AsyncUDP *u, int p)
 {
   if (u == nullptr)
@@ -74,6 +82,7 @@ bool UDPService::sendReply(const std::string &message, const IPAddress &remoteIP
 {
   if (!udpHandle)
     return false;
+  
   // Track per-action outcome from binary response frame: [action:1B][resp_code:1B]
   if (message.size() >= 2)
   {
@@ -81,6 +90,25 @@ bool UDPService::sendReply(const std::string &message, const IPAddress &remoteIP
     const bool ok = (static_cast<uint8_t>(message[1]) == UDPProto::udp_resp_ok);
     recordActionResult(action, ok);
   }
+  
+  // Increment tx_count for the matching peer
+  for (uint8_t pi = 0; pi < udp_peer_count_; ++pi)
+  {
+    if (udp_peers_[pi].ip == remoteIP && udp_peers_[pi].port == remotePort)
+    {
+      ++udp_peers_[pi].tx_count;
+      break;
+    }
+  }
+
+  
+  if (remoteIP == IPAddress(127, 0, 0, 2) && ws_context && ws_client_id_context > 0)
+  {
+  
+    return http_service.sendWebSocketMessage(ws_client_id_context, message);
+  }
+  
+  // Normal UDP reply
   return udpHandle->writeTo(
              reinterpret_cast<const uint8_t *>(message.c_str()),
              message.length(),
@@ -110,7 +138,41 @@ void handleUDPPacket(AsyncUDPPacket packet)
       std::string msg(buffer, len);
       IPAddress remoteIP = packet.remoteIP();
       uint16_t remotePort = packet.remotePort();
-      
+
+      // Update recently-seen peer list (evict oldest when full)
+      {
+        auto    &peers = udp_service_instance->udp_peers_;
+        uint8_t &cnt   = udp_service_instance->udp_peer_count_;
+        const uint32_t now = static_cast<uint32_t>(millis());
+        bool found = false;
+        for (uint8_t pi = 0; pi < cnt; ++pi)
+        {
+          if (peers[pi].ip == remoteIP && peers[pi].port == remotePort)
+          {
+            peers[pi].last_ms = now;
+            ++peers[pi].rx_count;
+            found = true;
+            break;
+          }
+        }
+        if (!found)
+        {
+          if (cnt < UDPService::UDP_MAX_PEERS)
+          {
+            peers[cnt++] = { remoteIP, remotePort, now, 1, 0 };
+          }
+          else
+          {
+            // Evict oldest entry to make room
+            uint8_t oldest = 0;
+            for (uint8_t pi = 1; pi < cnt; ++pi)
+              if (peers[pi].last_ms < peers[oldest].last_ms)
+                oldest = pi;
+            peers[oldest] = { remoteIP, remotePort, now, 1, 0 };
+          }
+        }
+      }
+
       for (const auto& entry : udp_service_instance->message_handlers)
       {
         try {
@@ -188,6 +250,36 @@ uint8_t UDPService::getActionStats(UDPActionStat out[], uint8_t max_count) const
       out[count++] = action_stats_[i];
   }
   return count;
+}
+
+uint8_t UDPService::getPeers(UDPPeerInfo out[], uint8_t max_count) const
+{
+  const uint8_t n = (udp_peer_count_ < max_count) ? udp_peer_count_ : max_count;
+  for (uint8_t i = 0; i < n; ++i)
+    out[i] = udp_peers_[i];
+  return n;
+}
+
+void UDPService::invokeMessageHandlers(const std::string& message, const IPAddress& remoteIP, uint16_t remotePort)
+{
+  
+  // Invoke all registered message handlers
+  // This is called by both UDP packet handling and WebSocket bridge
+  if (!handler_mutex)
+    return;
+
+  if (xSemaphoreTake(handler_mutex, 100 / portTICK_PERIOD_MS))
+  {
+    for (const auto& entry : message_handlers)
+    {
+      try {
+        entry.handler_callback(message, remoteIP, remotePort);
+      } catch (...) {
+        // Silently ignore handler exceptions
+      }
+    }
+    xSemaphoreGive(handler_mutex);
+  }
 }
 
 bool UDPService::initializeService()

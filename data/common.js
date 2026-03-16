@@ -2,6 +2,44 @@
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
+function getDebugLogState() {
+  if (!window.__k10DebugLogState) {
+    window.__k10DebugLogState = { nextId: 1 };
+  }
+  return window.__k10DebugLogState;
+}
+
+function nextDebugLogId() {
+  const state = getDebugLogState();
+  const id = state.nextId;
+  state.nextId += 1;
+  return id;
+}
+
+function getDebugTimestamp() {
+  return new Date().toISOString();
+}
+
+function logCommonApi(message, details) {
+  const logId = nextDebugLogId();
+  const timestamp = getDebugTimestamp();
+  if (details !== undefined) {
+    console.log(`[common.js][${timestamp}][id:${logId}] ${message}`, details);
+    return;
+  }
+  console.log(`[common.js][${timestamp}][id:${logId}] ${message}`);
+}
+
+function logCommonApiError(message, details) {
+  const logId = nextDebugLogId();
+  const timestamp = getDebugTimestamp();
+  if (details !== undefined) {
+    console.error(`[common.js][${timestamp}][id:${logId}] ${message}`, details);
+    return;
+  }
+  console.error(`[common.js][${timestamp}][id:${logId}] ${message}`);
+}
+
 /**
  * General API call with optional JSON body.
  * @param {string} endpoint
@@ -10,16 +48,28 @@
  * @returns {Promise<{ok, status, data}|{ok, error}>}
  */
 async function apiCall(endpoint, method = 'GET', body = null) {
+  const requestId = nextDebugLogId();
+  logCommonApi('apiCall() start', { request_id: requestId, endpoint, method, body });
   const options = { method };
   if (body !== null) {
     options.headers = { 'Content-Type': 'application/json' };
     options.body = JSON.stringify(body);
   }
   try {
+    logCommonApi('apiCall() fetch request', { request_id: requestId, endpoint, options });
     const response = await fetch(endpoint, options);
-    return { ok: response.ok, status: response.status, data: await response.json() };
+    logCommonApi('apiCall() fetch response received', {
+      request_id: requestId,
+      endpoint,
+      method,
+      ok: response.ok,
+      status: response.status
+    });
+    const data = await response.json();
+    logCommonApi('apiCall() response json parsed', { request_id: requestId, endpoint, method, data });
+    return { ok: response.ok, status: response.status, data };
   } catch (error) {
-    console.error('API call failed:', error);
+    logCommonApiError('apiCall() failed', { request_id: requestId, endpoint, method, body, error });
     return { ok: false, error: error.message };
   }
 }
@@ -29,6 +79,7 @@ async function apiCall(endpoint, method = 'GET', body = null) {
  * @param {string} url
  */
 async function apiGet(url) {
+  logCommonApi('apiGet() start', { url });
   return apiCall(url, 'GET');
 }
 
@@ -37,6 +88,7 @@ async function apiGet(url) {
  * @param {string} url
  */
 async function apiPost(url) {
+  logCommonApi('apiPost() start', { url });
   return apiCall(url, 'POST');
 }
 
@@ -48,8 +100,10 @@ async function apiPost(url) {
  * @param {object|null} [params=null]
  */
 async function apiCallParams(endpoint, method = 'GET', params = null) {
+  logCommonApi('apiCallParams() start', { endpoint, method, params });
   let url = endpoint;
   if (params) url += '?' + new URLSearchParams(params).toString();
+  logCommonApi('apiCallParams() resolved url', { url, method });
   return apiCall(url, method);
 }
 
@@ -61,6 +115,7 @@ async function apiCallParams(endpoint, method = 'GET', params = null) {
  * @param {string} color - CSS color string
  */
 function setTitleStatus(text, color) {
+  logCommonApi('setTitleStatus() start', { text, color });
   const el = document.getElementById('titleStatus');
   if (el) { el.textContent = text; el.style.color = color; }
 }
@@ -74,6 +129,8 @@ function setTitleStatus(text, color) {
  * @param {boolean} [isError=false]
  */
 function showStatus(message, isError = false) {
+  logCommonApi('showStatus() start', { message, isError });
+  console.log(`[STATUS] ${message} ${isError ? '(error)' : ''}`);
   const el = document.getElementById('page-status');
   if (!el) return;
   el.textContent = message;
@@ -90,6 +147,7 @@ function showStatus(message, isError = false) {
  * @param {string} btnId     - id of the .collapse-btn element
  */
 function toggleSection(sectionId, btnId) {
+  logCommonApi('toggleSection() start', { sectionId, btnId });
   const body = document.getElementById(sectionId);
   const btn  = document.getElementById(btnId);
   const collapsed = body.classList.toggle('collapsed');
@@ -104,6 +162,7 @@ function toggleSection(sectionId, btnId) {
  * @returns {string}
  */
 function escapeHtml(text) {
+  logCommonApi('escapeHtml() start', { text });
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;

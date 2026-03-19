@@ -1,13 +1,5 @@
-/**
- * @file main.cpp
- * @brief Main application entry point for K10-Bot
- * @details Initializes hardware, manages services, and handles FreeRTOS tasks
- * for WiFi, UDP server, HTTP server, display, and sensor management.
- */
-
 #include <stdio.h>
 // Include AsyncWebServer BEFORE Arduino.h to avoid HTTP method enum conflicts
-#include <ESPAsyncWebServer.h>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <freertos/task.h>
@@ -15,25 +7,18 @@
 #include <esp_log.h>
 #include <AsyncUDP.h>
 #include <unihiker_k10.h>
-#include <esp_camera.h>
-#include <img_converters.h>
 #include "RollingLogger.h"
-#include "ESPLogToRolling.h"
-#include "services/BoardInfoService.h"
-#include "services/DFR1216Service.h"
-#include "services/WebcamService.h"
-#include "services/ServoService.h"
-#include "services/UDPService.h"
-#include "services/HTTPService.h"
-#include "services/SettingsService.h"
-#include "services/K10sensorsService.h"
-#include "services/RollingLoggerService.h"
-#include "services/MusicService.h"
+#include "IsServiceInterface.h"
+#include <esp_log.h>
+#include <stdio.h>
+#include "BotCommunication/BotServerUDP.h"
+#include "BotCommunication/BotServerWeb.h"
+#include "BotCommunication/BotServerWebSocket.h"
 #include "services/WiFiService.h"
 #include "services/AmakerBotService.h"
-#include "utb2026.h"
-
-#define LOAD_FONT8   // TFT font - special case for library config
+#include "services/AmakerBotUIService.h"
+#include "services/MotorServoService.h"
+#define LOAD_FONT8    // TFT font - special case for library config
 #define VERBOSE_DEBUG // Enable verbose debug logging
 
 // Main application constants
@@ -73,109 +58,44 @@ namespace
   constexpr uint32_t color_info = 0xD0D0D0;
   constexpr uint32_t color_subtle = 0xE0E0E0;
 
-  std::string ssid = "";
-  std::string password = "";
+  // ---------- FreeRTOS task configuration ----------
+  /// Core 0: UDP + WebSocket transport (real-time, max priority)
+  constexpr BaseType_t transport_core = 0;
+  constexpr UBaseType_t transport_priority = configMAX_PRIORITIES - 1;
+  constexpr uint32_t transport_stack = 8192;
+
+  /// Core 1: Web server + other services (best-effort)
+  constexpr BaseType_t web_core = 1;
+  constexpr UBaseType_t web_priority = 5;
+  constexpr uint32_t web_stack = 8192;
+
 
   // Separate buffer for display (non-blocking)
-  constexpr int max_message_len = 256;
-  std::set<std::string> all_routes = {};
 
 }
+
+// Core 0 should serve websocket and UDP
+// Core 1 should serve display and webserver
 
 TFT_eSPI tft;
-
 UNIHIKER_K10 unihiker;
-Music music;
-WifiService wifi_service = WifiService();
-AsyncWebServer webserver(web_port);
-UDPService udp_service = UDPService();
-HTTPService http_service = HTTPService();
-SettingsService settings_service = SettingsService();
-K10SensorsService k10sensors_service = K10SensorsService();
-BoardInfoService board_info = BoardInfoService();
-ServoService servo_service = ServoService();
-WebcamService webcam_service = WebcamService();
 RollingLogger debug_logger = RollingLogger();
-RollingLogger app_info_logger = RollingLogger();
+RollingLogger svg_logger = RollingLogger();
+RollingLogger bot_logger = RollingLogger();
 RollingLogger esp_logger = RollingLogger();
-RollingLoggerService rolling_logger_service = RollingLoggerService();
-UTB2026 ui = UTB2026();
-
-MusicService music_service = MusicService();
-DFR1216Service dfr1216_service = DFR1216Service();
-AmakerBotService amakerbot_service = AmakerBotService();
-
-// define CONFIG_GC2145_SUPPORT 1
-
-// Camera frame queue
-// Packet handling is implemented in udp_handler module
-
-/**
- * @brief FreeRTOS Task: Handle UDP messages on Core 0
- * @param pvParameters Task parameters (unused)
- */
-void xtask_UDP_SVR(void *pvParameters)
-{
-  // Counter for periodic WebSocket cleanup (every ~1 second)
-  uint8_t cleanup_counter = 0;
-  constexpr uint8_t cleanup_interval = 100; // 100 * 10ms = 1 second
-  
-  for (;;)
-  {
-    // Check for heartbeat timeout every tick (~10 ms)
-    amakerbot_service.checkHeartbeatTimeout();
-    
-    // Periodically cleanup stale WebSocket clients to free TCP resources
-    // This prevents resource exhaustion when browsers have multiple tabs open
-    if (++cleanup_counter >= cleanup_interval)
-    {
-      cleanup_counter = 0;
-      http_service.cleanupWebSockets();
-    }
-    
-    vTaskDelay(udp_task_delay_ticks);
-  }
-}
-
-/**
- * @brief FreeRTOS Task: Update display on Core 1 (non-blocking)
- * @param pvParameters Task parameters (unused)
- * @details Simplified implementation to avoid blocking operations
- */
-void task_DISPLAY(void *pvParameters)
-{
-  char local_last_message[max_message_len] = {0};
-  int local_total_messages = 0;
-  int last_displayed_total_messages = 0;
-  TickType_t last_update_tick = xTaskGetTickCount();
-  TickType_t last_wake_tick = xTaskGetTickCount();
-  bool last_buttonA_state = false;
-
-  for (;;)
-  {
-    // Check button A for display mode toggle
-    bool buttonA_pressed = unihiker.buttonA != nullptr && unihiker.buttonA->isPressed();
-    bool buttonB_pressed = unihiker.buttonB != nullptr && unihiker.buttonB->isPressed();
-    if (buttonA_pressed )
-    {
-      // Button just pressed (rising edge)
-      ui.next_display_mode();
-      ui.draw_all(); // Immediately redraw with new mode
-      last_update_tick = xTaskGetTickCount(); // Reset update timer
-    }
-    last_buttonA_state = buttonA_pressed;
-
-    TickType_t now = xTaskGetTickCount();
-    if ((now - last_update_tick) >= display_update_interval_ticks)
-    {
-      ui.draw_all();
-      last_update_tick = now;
-    }
-
-    vTaskDelayUntil(&last_wake_tick, display_task_delay_ticks);
-  }
-}
-
+WifiService wifi_service_ = WifiService();
+MotorServoService motor_servo_ = MotorServoService();
+AmakerBotService amaker_bot_ = AmakerBotService({&motor_servo_});
+BotServerUDP bot_over_udp_ = BotServerUDP(amaker_bot_);
+BotServerWeb bot_over_web_ = BotServerWeb(amaker_bot_);
+BotServerWebSocket bot_over_websocket_ = BotServerWebSocket(amaker_bot_);
+AmakerBotUIService ui_service =
+    AmakerBotUIService(unihiker,
+                       wifi_service_,
+                       amaker_bot_,
+                       bot_over_udp_,
+                       bot_over_websocket_,
+                       motor_servo_);
 
 namespace
 {
@@ -197,59 +117,86 @@ namespace
     service.setLogger(&debug_logger);
 
     // Attach settings service if this is not the settings service itself
-    if (&service != static_cast<IsServiceInterface *>(&settings_service))
-    {
-      service.setSettingsService(&settings_service);
-    }
+    // if (&service != static_cast<IsServiceInterface *>(&settings_service))
+    // {
+    //   service.setSettingsService(&settings_service);
+    // }
 
     if (service.initializeService())
     {
       unihiker.rgb->write(0, 32, 32, 0); // pixel0 = red
       if (!service.startService())
       {
-        app_info_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_start_failed));
+        bot_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_start_failed));
       }
       else
       {
         unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
 #ifdef VERBOSE_DEBUG
-        app_info_logger.debug(service.getServiceName() + progmem_to_string(MainConsts::msg_started));
+        bot_logger.debug(service.getServiceName() + progmem_to_string(MainConsts::msg_started));
 #endif
       }
     }
     else
     {
-      app_info_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_initialize_failed));
+      bot_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_initialize_failed));
     }
 
     // Register OpenAPI routes if the service implements IsOpenAPIInterface
-    IsOpenAPIInterface *openapi = service.asOpenAPIInterface();
-    if (openapi)
-    {
-      openapi->registerRoutes();
-      try
-      {
-#ifdef VERBOSE_DEBUG
-        debug_logger.info(progmem_to_string(MainConsts::msg_openapi_registered) + service.getServiceName());
-#endif
-        http_service.registerOpenAPIService(openapi);
-      }
-      catch (const std::exception &e)
-      {
-        debug_logger.error(progmem_to_string(MainConsts::msg_register_failed) + service.getServiceName());
-      }
-    }
-    else
-    {
-#ifdef VERBOSE_DEBUG
-      debug_logger.debug(progmem_to_string(MainConsts::msg_no_openapi) + service.getServiceName());
-#endif
-    }
+
     unihiker.rgb->write(0, 0, 0, 0); // pixel0 = red
 
     return true;
   }
 
+}
+
+// ---------------------------------------------------------------------------
+// FreeRTOS tasks
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Core 0 — UDP + WebSocket transport at maximum priority.
+ *
+ * Only one transport is active at a time (UDP vs WebSocket), so sharing a
+ * single high-priority core keeps latency minimal and avoids contention.
+ * Both servers are event-driven; this task blocks permanently after init.
+ */
+void xtask_bot_transport(void * /*pvParameters*/)
+{
+  bot_over_udp_.setBotMessageLogger(&debug_logger);
+  bot_over_udp_.setPort(24642);
+  bot_over_udp_.start();
+
+  bot_over_websocket_.setBotMessageLogger(&debug_logger);
+  bot_over_websocket_.setPort(81);
+  bot_over_websocket_.start();
+
+  debug_logger.info("BotTransport task ready (UDP:24642 WS:81) on core 0");
+
+  // Both servers are fully event-driven — no polling needed.
+  for (;;) {
+    vTaskDelay(portMAX_DELAY);}
+}
+
+/**
+ * @brief Core 1 — HTTP web server and future service initialisation.
+ *
+ * Runs at normal priority so it never pre-empts the transport task on Core 0.
+ * Additional services (OpenAPI, settings, …) should be started here.
+ */
+void xtask_web_server(void * /*pvParameters*/)
+{
+  bot_over_web_.setBotMessageLogger(&debug_logger);
+  bot_over_web_.setPort(80);
+  bot_over_web_.start();
+
+  debug_logger.info("WebServer task ready (HTTP:80) on core 1");
+
+  for (;;) {
+    ui_service.tick();
+    vTaskDelay(portMAX_DELAY);
+  }
 }
 
 /**
@@ -262,33 +209,27 @@ void setup()
   Serial.begin(serial_baud);
   delay(100);
   Serial.println("\n\n=== K10-Bot Starting ===");
-  
+
   // Small delay to ensure system stabilizes
   delay(500);
-  
+
   // Configure ESP-IDF logging AS FIRST THING before any hardware init
   esp_log_level_set("*", ESP_LOG_DEBUG);
-  
+
   // Initialize loggers BEFORE hardware to capture early logs
-  app_info_logger.set_max_rows(40);
-  app_info_logger.set_log_level(RollingLogger::INFO);
+  bot_logger.set_max_rows(40);
+  bot_logger.set_log_level(RollingLogger::INFO);
   debug_logger.set_max_rows(40);
   debug_logger.set_log_level(RollingLogger::DEBUG);
   esp_logger.set_max_rows(40);
   esp_logger.set_log_level(RollingLogger::DEBUG);
-  
+
   Serial.println("Loggers initialized");
 
   // Redirect ESP-IDF logs BEFORE any other initialization
-  esp_log_to_rolling_init(&esp_logger);
+  // esp_log_to_rolling_init(&esp_logger);
   Serial.println("ESP-IDF logging redirected");
-  
-  // Test ESP logging immediately after redirect
-  ESP_LOGI("Main", "TEST 1: ESP-IDF logging initialized");
-  ESP_LOGD("Main", "TEST 2: Debug level message");
-  ESP_LOGW("Main", "TEST 3: Warning level message");
-  ESP_LOGE("Main", "TEST 4: Error level message");
-  
+
   // Now initialize hardware
   Serial.println("Initializing UniHiker hardware...");
   unihiker.begin();
@@ -300,100 +241,23 @@ void setup()
   unihiker.rgb->write(0, 0, 0, 0);
   unihiker.rgb->write(1, 0, 0, 0);
   unihiker.rgb->write(2, 0, 0, 0);
-  
+  ui_service.setLogger(&debug_logger);
+  ui_service.setLoggers(&bot_logger, &debug_logger, &esp_logger, nullptr);
+  ui_service.initializeService();
+  ui_service.startService();
 
+  wifi_service_.wifi_activation();
 
-  ui.init();
-  ui.set_logger_instances(&debug_logger, &app_info_logger, &esp_logger);
-  // ui.add_logger_view(&app_info_logger, 0, 120, 240, 240, TFT_BLACK, TFT_BLACK);
-  ui.add_logger_view(&debug_logger, 0, 40, 240, 120, TFT_DARKGREY,TFT_DARKGREY);
-  xTaskCreatePinnedToCore(task_DISPLAY, "Display_Task", 4096, nullptr, 1, nullptr, 1);
+  // Core 0 — UDP + WebSocket at maximum priority (real-time transport)
+  xTaskCreatePinnedToCore(
+      xtask_bot_transport,
+      "BotTransport",
+      transport_stack,
+      nullptr,
+      transport_priority,
+      nullptr,
+      transport_core);
 
-  Serial.println("Starting services...");
-  debug_logger.info(progmem_to_string(MainConsts::msg_starting_services));
-  if (!start_service(wifi_service))
-  {
-    Serial.println("FATAL: WiFi service failed to start");
-    app_info_logger.error(progmem_to_string(MainConsts::msg_fatal_wifi_failed));
-
-    return;
-  }
-  // start_service(settings_service);
-  start_service(k10sensors_service);
-  start_service(board_info);
-  // start_service(servo_service);
-  start_service(webcam_service);
-  // start_service(music_service);
-  // start_service(dfr1216_service);
-  start_service(amakerbot_service);
-
-  // Set up rolling logger service with logger instances (including esp_logger)
-  rolling_logger_service.set_logger_instances(&debug_logger, &app_info_logger, &esp_logger);
-  start_service(rolling_logger_service);
-
-  if (start_service(udp_service))
-  {
-    // Auto-register UDP message handlers for services implementing IsUDPMessageHandlerInterface
-    IsServiceInterface *udp_aware_services[] = {
-        &servo_service,
-        &k10sensors_service,
-        &board_info,
-        &music_service,
-        &dfr1216_service,
-        &amakerbot_service
-    };
-    for (IsServiceInterface *svc : udp_aware_services)
-    {
-      IsUDPMessageHandlerInterface *udp_iface = svc->asUDPMessageHandlerInterface();
-      if (udp_iface)
-      {
-        udp_service.registerMessageHandler(
-            [udp_iface](const std::string &msg, const IPAddress &ip, uint16_t port)
-            { return udp_iface->messageHandler(msg, ip, port); });
-#ifdef VERBOSE_DEBUG
-        debug_logger.debug(progmem_to_string(MainConsts::msg_udp_handler_registered) + svc->getServiceName());
-#endif
-      }
-    }
-    xTaskCreatePinnedToCore(xtask_UDP_SVR, "UDPServer_Task", 4096, nullptr, 10, nullptr, 0);
-  }
-  else
-  {
-    app_info_logger.error(progmem_to_string(MainConsts::msg_failed_udp));
-  }
-
-  // Initialize fast camera and register route BEFORE starting HTTP service
-
-  if (start_service(http_service))
-  {
-    Serial.println("HTTP service initialized, starting web server...");
-    // Start the web server AFTER all routes have been registered
-    if (!http_service.startWebServer())
-    {
-      Serial.println("ERROR: Failed to start web server");
-      app_info_logger.error("Failed to start web server");
-    }
-    else
-    {
-      Serial.println("Web server started successfully on port 80");
-    }
-  }
-  else
-  {
-    Serial.println("ERROR: HTTP service failed to initialize");
-    app_info_logger.error(progmem_to_string(MainConsts::msg_failed_webserver));
-  }
-
-  ui.set_info(ui.KEY_WIFI_NAME, wifi_service.getSSID().c_str());
-  ui.set_info(ui.KEY_IP_ADDRESS, wifi_service.getIP().c_str());
-  ui.draw_all();
-  unihiker.rgb->write(0, 0, 0, 0);
-  unihiker.rgb->write(1, 0, 0, 0);
-  unihiker.rgb->write(2, 0, 0, 0);
-
-  app_info_logger.info(progmem_to_string(MainConsts::msg_bot_started) + wifi_service.getHostname() + progmem_to_string(MainConsts::msg_started));
-  app_info_logger.info(wifi_service.getIP() + progmem_to_string(RoutesConsts::str_space) + wifi_service.getSSID());
-  app_info_logger.info(progmem_to_string(MainConsts::msg_udp_port) + std::to_string(udp_service.getPort()));
 }
 
 /**
@@ -405,7 +269,3 @@ void loop()
   // All application logic runs inside FreeRTOS tasks
   delay(1000);
 }
-
-
-
-

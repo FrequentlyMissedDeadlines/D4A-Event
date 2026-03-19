@@ -1,147 +1,187 @@
 #pragma once
-
-#include <ESPAsyncWebServer.h>
-#include "IsOpenAPIInterface.h"
-#include "isUDPMessageHandlerInterface.h"
-#include "IsMasterRegistryInterface.h"
-#include "services/UDPService.h"
+#include "IsServiceInterface.h"
+#include "BotCommunication/BotMessageHandler.h"
 #include <freertos/semphr.h>
+#include <functional>
+#include <initializer_list>
 #include <string>
 
 /**
  * @file AmakerBotService.h
- * @brief Header for master-registration service
- * @details Generates a random 5-character alphanumeric token on startup and logs it
- *          to the device screen (MODE_APP_LOG). Clients must provide this exact token
- *          to register as the master controller. Registration locks the master to the
- *          caller's IP address.
+ * @brief Token-based master-registration and heartbeat-watchdog service.
  *
- * Exposed HTTP routes:
- *   POST /api/amakerbot/v1/register?token=<token>  — register caller as master (if token matches)
- *   GET  /api/amakerbot/v1/master                  — query current master info
- *   POST /api/amakerbot/v1/unregister              — clear master (master IP only)
- *   GET  /api/amakerbot/v1/token                   — retrieve the server-generated token (for reference)
- *   GET  /api/amakerbot/v1/display                 — get current TFT display mode
- *   POST /api/amakerbot/v1/display/next            — cycle to next display mode (same as button A)
- *   POST /api/amakerbot/v1/display?mode=<mode>     — set display mode (APP_UI|APP_LOG|DEBUG_LOG|ESP_LOG)
- *   GET  /api/amakerbot/v1/name                    — get current bot name
- *   POST /api/amakerbot/v1/name?name=<name>        — set bot name (max 32 chars)
+ * @details Generates a random 5-character alphanumeric token on startup.
+ *          Clients must present this token to register as the master controller.
+ *          All master-IP tracking is delegated to the injected `BotMaster`
+ *          instance; `AmakerBotService` only owns the token, bot name, and
+ *          heartbeat watchdog.
  *
- * UDP protocol (service_id 0x4):
- *   [0x41]<token>  — register UDP sender IP as master (if token matches);
- *   [0x42]         — clear master (master IP only);
- *   [0x43]         — heartbeat keep-alive; must be sent every ≤50 ms or all motors are stopped
- *   [0x45]         — get bot name; server replies with [0x45][name bytes];
- *   [0x46]<name>   — set bot name (master only); server replies with [0x46][status];
+ * ## Binary protocol — service_id: 0x04
+ *
+ * | Action | Cmd  | Payload                      | Reply                               |
+ * |--------|------|------------------------------|-------------------------------------|
+ * | 0x41   | 0x01 | [token bytes…]               | [0x41][resp_ok or resp_not_master]  |
+ * | 0x42   | 0x02 | (none)                       | [0x42][resp_ok or resp_not_master]  |
+ * | 0x43   | 0x03 | (none — heartbeat)           | (no reply)                          |
+ * | 0x44   | 0x04 | [id:4B ping payload]         | [0x44][id:4B] echo                  |
+ * | 0x45   | 0x05 | (none)                       | [0x45][resp_ok][name bytes…]        |
+ * | 0x46   | 0x06 | [name bytes…] (master only)  | [0x46][resp_ok or resp_not_master]  |
  */
-class AmakerBotService : public IsOpenAPIInterface,
-                         public IsUDPMessageHandlerInterface
+class AmakerBotService : public IsServiceInterface,
+                         public IsBotActionHandlerInterface
 {
 public:
-    bool registerRoutes() override;
-    std::string getServiceSubPath() override;
+    /**
+     * @brief Construct with the list of action handlers to dispatch to.
+     * @param handlers Zero or more IsBotActionHandlerInterface* instances to register.
+     *                 AmakerBotService always registers itself (service_id 0x04) first,
+     *                 then each handler in order.  All pointed-to objects must outlive
+     *                 this AmakerBotService.
+     */
+    explicit AmakerBotService(std::initializer_list<IsBotActionHandlerInterface *> handlers):bot_message_handlers(handlers) {}
+    // ---- IsServiceInterface ------------------------------------------
+
+    /** @return "AmakerBot Service" */
     std::string getServiceName() override;
+
+    /**
+     * @brief Generate the server token and set the default bot name.
+     * @return Always true.
+     */
     bool initializeService() override;
+
+    /**
+     * @brief Mark service started.
+     * @return false (START_FAILED) if BotMaster is not yet started.
+     */
+    bool startService() override;
+
+    /**
+     * @brief Release the bot-name mutex and mark service stopped.
+     * @return Always true.
+     */
     bool stopService() override;
 
-    /**
-     * @brief Check whether the given IP string is the registered master.
-     * @param ip IP address to check
-     * @return true if ip matches the current master IP
-     */
-    bool isMaster(const std::string &ip) const override;
+    // ---- IsBotActionHandlerInterface ---------------------------------
+
+    /** @return 0x04 */
+    uint8_t getBotServiceId() const override;
 
     /**
-     * @brief Return the registered master IP address.
-     * @return Master IP string, empty string if no master is registered.
+     * @brief Dispatch a binary bot frame to the appropriate bot message handler (handleBotMessage)
+     * @param data Raw frame; byte[0] is the destination+action byte
+     * @param len  Frame length in bytes
      */
-    std::string getMasterIP() const override;
+    std::string dispatch(const uint8_t *data, size_t len);
 
     /**
-     * @brief Return the server-generated token (for display/debug purposes).
-     * @return The 5-character alphanumeric token generated on init.
+     * @brief Dispatch a binary bot frame to the appropriate command.
+     * @param data Raw frame; byte[0] is the destination+action byte
+     * @param len  Frame length in bytes
+     * @return Binary response string
      */
+    std::string handleBotMessage(const uint8_t *data, size_t len) override;
+
+    // ---- Public accessors -------------------------------------------
+
+
+
+    /** @return The 5-character alphanumeric token generated on init. */
     std::string getServerToken() const;
 
-    /**
-     * @brief Return the current bot name.
-     * @return Bot name string (default: "K10-Bot").
-     */
+    /** @return Current bot name (default: "K10-Bot"). */
     std::string getBotName() const;
 
     /**
-     * @brief Set the bot name (thread-safe).
-     * @param name New name (1–32 characters); ignored if empty or > 32 chars.
+     * @brief Set the bot name (thread-safe, max 32 chars).
+     * @param name New name; ignored if empty or longer than 32 characters.
      */
     void setBotName(const std::string &name);
 
     /**
-     * @brief Handle incoming UDP messages for master registration.
-     * @param message    Raw UDP message string
-     * @param remoteIP   Sender IP address
-     * @param remotePort Sender UDP port
-     * @return true if message was claimed by this service
-     */
-    bool messageHandler(const std::string &message,
-                        const IPAddress &remoteIP,
-                        uint16_t remotePort) override;
-
-    IsUDPMessageHandlerInterface *asUDPMessageHandlerInterface() override { return this; }
-
-    /**
-     * @brief Programmatically set the master IP (only if token is valid).
-     * @param ip    IP address to register as master
-     * @param token Token to validate
-     * @return true if token matched and master was set, false if token invalid
+     * @brief Register @p ip as master only if @p token matches the server token.
+     * @return true if the token was valid and master was set.
      */
     bool setMasterIfTokenValid(const std::string &ip, const std::string &token);
 
-
-
     /**
-     * @brief Check whether the master heartbeat has timed out (>50 ms without a
-     *        heartbeat from the registered master) and, if so, stop all motors.
-     * @details Must be called periodically (e.g. every 10 ms from the UDP task).
-     *          The stop is triggered only once per timeout event; it resets
-     *          automatically when the next heartbeat arrives.
+     * @brief Watchdog: invoke the timeout callback if the master heartbeat has
+     *        timed out (> 50 ms without a heartbeat from the registered master).
+     *
+     * @details Must be called periodically (e.g. every 10 ms from the transport
+     *          task).  The callback fires only once per timeout event and resets
+     *          automatically when the next valid heartbeat arrives.
      */
     void checkHeartbeatTimeout();
 
+    /**
+     * @brief Set the callback invoked when the heartbeat watchdog fires.
+     * @param cb Callable `void()` — called exactly once per timeout event.
+     *           Typical use: `[&]{ motor_servo.stopAllMotors(); }`
+     */
+    void setHeartbeatTimeoutCallback(std::function<void()> cb);
+
+
+      /**
+     * @brief Register @p requesterIP as master — only if no master is currently set.
+     * @param requesterIP IP address of the registration requester.
+     * @return true  if registration succeeded (was not set, now set).
+     * @return false if a master is already registered.
+     */
+    bool registerMaster(const std::string &requesterIP);
+
+    /**
+     * @brief Unregister the master — only if @p requesterIP is the current master.
+     * @param requesterIP IP address of the unregistration requester.
+     * @return true  if the master was cleared.
+     * @return false if @p requesterIP is not the current master.
+     */
+    bool unregister(const std::string &requesterIP);
+
+    /**
+     * @brief Check whether @p requesterIP is the registered master.
+     * @param requesterIP IP address to test.
+     * @return true if it matches the current master IP.
+     */
+    bool isMaster(const std::string &requesterIP) const;
+
+    /**
+     * @brief Return the registered master IP address.
+     * @return Current master IP string, or empty string if no master is registered.
+     */
+    std::string getMasterIP() const;
+
+    // ---- Keep-alive ---------------------------------------------------
+
+    /**
+     * @brief Refresh the "last seen" timestamp to millis().
+     * @details Call this whenever a keepalive or message is received from the master.
+     */
+    void updateMasterLastSeen();
+
+    /**
+     * @brief Return the millis() value of the last updateMasterLastSeen() call.
+     * @return 0 if updateMasterLastSeen() has never been called.
+     */
+    unsigned long getMasterLastSeen() const;
+
 private:
-    /**
-     * @brief Generate a random 5-character alphanumeric token.
-     * @return Random token string (e.g., "A3K9B")
-     */
+    std::string       server_token_;        ///< Random token, set once in initializeService()
+    std::string       bot_name_;            ///< Display name, protected by name_mutex_
+    SemaphoreHandle_t name_mutex_ = nullptr; ///< Guards bot_name_ only
+    
+    std::string            master_ip_;       ///< Current master IP; empty = no master
+    volatile unsigned long last_seen_ms_ = 0; ///< millis() of last updateMasterLastSeen()
+    SemaphoreHandle_t      master_mutex_        = nullptr; ///< Protects master_ip_
+
+    // ---- Heartbeat watchdog (AmakerBot-specific) ----------------------
+    volatile bool heartbeat_active_    = false; ///< true once ≥1 heartbeat received from master
+    volatile bool heartbeat_timed_out_ = false; ///< true while in timed-out state (avoids log spam)
+
+    std::function<void()> heartbeat_timeout_cb_; ///< Called once on timeout
+
+    std::initializer_list<IsBotActionHandlerInterface *> bot_message_handlers;
+
+    /** @brief Generate a random 5-character alphanumeric token via esp_random(). */
     std::string generateRandomToken();
-
-    /**
-     * @brief Register a client as master (thread-safe) and log to app_info_logger.
-     * @param ip IP address of the new master
-     */
-    bool registerMaster(const std::string &ip);
-
-    /**
-     * @brief Internal helper — atomically clear master registration and log to app_info_logger.
-     */
-    bool unregisterMaster(const std::string &ip);
-
-    /**
-     * @brief Send a UDP reply echoing the original message followed by a status byte.
-     * @param message Original incoming message (echoed back as-is)
-     * @param status  UDPResponseStatus value appended as trailing byte
-     * @param remoteIP    Destination IP
-     * @param remotePort  Destination port
-     */
-    void udp_reply(const std::string &message, UDPResponseStatus status,
-                   const IPAddress &remoteIP, uint16_t remotePort);
-
-    std::string server_token_;    // Generated once on init, never changes
-    std::string master_ip_;       // Current master's IP, empty if none
-    std::string bot_name_;        // Bot name (default: "K10-Bot", protected by master_mutex_)
-    SemaphoreHandle_t master_mutex_ = nullptr;
-
-    // Heartbeat watchdog state
-    volatile unsigned long last_heartbeat_ms_ = 0;  ///< millis() of last valid heartbeat
-    volatile bool heartbeat_active_    = false;     ///< true once ≥1 heartbeat received from current master
-    volatile bool heartbeat_timed_out_ = false;     ///< true while in timed-out state (avoids log spam)
 };

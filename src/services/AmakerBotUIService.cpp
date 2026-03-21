@@ -19,11 +19,12 @@ extern TFT_eSPI tft;
 AmakerBotUIService::AmakerBotUIService(UNIHIKER_K10        &k10,
                                         WifiService         &wifi,
                                         AmakerBotService    &amakerbot,
+                                        BotServerWeb        &web,
                                         BotServerUDP        &udp,
                                         BotServerWebSocket  &ws,
                                         MotorServoService   &motor_servo)
     : k10_(k10),
-      app_screen_(wifi, amakerbot, udp, ws, motor_servo)
+      app_screen_(wifi, amakerbot, web, udp, ws, motor_servo)
 {
 }
 
@@ -37,10 +38,10 @@ AmakerBotUIService::~AmakerBotUIService()
 }
 
 // ---------------------------------------------------------------------------
-// setLoggers — create one LogScreen per non-null logger
+// setShownLoggers — create one LogScreen per non-null logger
 // ---------------------------------------------------------------------------
 
-void AmakerBotUIService::setLoggers(RollingLogger *app,
+void AmakerBotUIService::setShownLoggers(RollingLogger *app,
                                      RollingLogger *svc,
                                      RollingLogger *debug,
                                      RollingLogger *esp)
@@ -73,7 +74,7 @@ bool AmakerBotUIService::initializeService()
         return true;
 
     previous_screen_ = static_cast<Screen>(0xFF);
-    current_screen_  = SCREEN_APP_INFO;
+    current_screen_  = SCREEN_SPLASH;
     btn_a_prev_      = false;
     btn_a_last_ms_   = 0;
 
@@ -93,7 +94,6 @@ bool AmakerBotUIService::startService()
     tft.setTextFont(1);
     tft.setTextSize(1);
     tft.fillScreen(UIColors::CLR_BLACK);
-    app_screen_.initScreen();
 
     setServiceStatus(STARTED);
     logger->info(FPSTR(AmakerBotUIConsts::msg_started));
@@ -126,10 +126,13 @@ void AmakerBotUIService::setScreen(Screen s)
 
 IsScreen *AmakerBotUIService::activeScreen()
 {
+    if (current_screen_ == SCREEN_SPLASH)
+        return &splash_screen_;
+
     if (current_screen_ == SCREEN_APP_INFO)
         return &app_screen_;
 
-    const int idx = static_cast<int>(current_screen_) - 1;
+    const int idx = static_cast<int>(current_screen_) - 2;
     if (idx >= 0 && idx < 4)
         return log_screens_[idx]; // may be nullptr if logger was not attached
 
@@ -173,10 +176,13 @@ void AmakerBotUIService::tick()
 
 bool AmakerBotUIService::needsRedraw() const
 {
+    if (current_screen_ == SCREEN_SPLASH)
+        return false; // static image, no periodic redraw needed
+
     if (current_screen_ == SCREEN_APP_INFO)
         return app_screen_.needsUpdate();
 
-    const int idx = static_cast<int>(current_screen_) - 1;
+    const int idx = static_cast<int>(current_screen_) - 2;
     if (idx >= 0 && idx < 4 && log_screens_[idx])
         return log_screens_[idx]->needsUpdate();
 

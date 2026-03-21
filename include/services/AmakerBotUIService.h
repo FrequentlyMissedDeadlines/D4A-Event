@@ -11,16 +11,17 @@
  * ## Screens
  * | # | Enum               | Class       | Content                           |
  * |---|--------------------|-----------  |-----------------------------------|
- * | 0 | SCREEN_APP_INFO    | AppScreen   | Network, master, servos & motors  |
- * | 1 | SCREEN_APP_LOG     | LogScreen   | Application / bot logger          |
- * | 2 | SCREEN_SVC_LOG     | LogScreen   | Services logger                   |
- * | 3 | SCREEN_DEBUG_LOG   | LogScreen   | Debug logger                      |
- * | 4 | SCREEN_ESP_LOG     | LogScreen   | ESP-IDF logger                    |
+ * | 0 | SCREEN_SPLASH      | SplashScreen| Boot splash image                 |
+ * | 1 | SCREEN_APP_INFO    | AppScreen   | Network, master, servos & motors  |
+ * | 2 | SCREEN_APP_LOG     | LogScreen   | Application / bot logger          |
+ * | 3 | SCREEN_SVC_LOG     | LogScreen   | Services logger                   |
+ * | 4 | SCREEN_DEBUG_LOG   | LogScreen   | Debug logger                      |
+ * | 5 | SCREEN_ESP_LOG     | LogScreen   | ESP-IDF logger                    |
  *
  * ## Usage
  * @code
  *   AmakerBotUIService ui(unihiker, wifi, amakerbot, udp, ws, motor_servo);
- *   ui.setLoggers(&bot_logger, &svc_logger, &debug_logger, nullptr);
+ *   ui.setShownLoggers(&bot_logger, &svc_logger, &debug_logger, nullptr);
  *   ui.setLogger(&debug_logger);   // IsServiceInterface logger
  *   ui.initializeService();
  *   ui.startService();
@@ -40,6 +41,7 @@
 #include "RollingLogger.h"
 #include "UI/AppScreen.h"
 #include "UI/LogScreen.h"
+#include "UI/SplashScreen.h"
 
 // ---------------------------------------------------------------------------
 // PROGMEM string constants
@@ -51,7 +53,7 @@ namespace AmakerBotUIConsts
     constexpr const char msg_started[]      PROGMEM = "AmakerBotUIService: started";
     constexpr const char msg_stopped[]      PROGMEM = "AmakerBotUIService: stopped";
 
-    constexpr unsigned long BTN_A_DEBOUNCE_MS = 250; ///< Button A debounce period (ms)
+    constexpr unsigned long BTN_A_DEBOUNCE_MS  = 250;  ///< Button A debounce period (ms)
 
     // Log-screen title strings (held in flash)
     constexpr const char scr_name_app_log[]   PROGMEM = "2: App Log";
@@ -68,7 +70,7 @@ namespace AmakerBotUIConsts
  * @brief Manages five TFT screens for the AmakerBot, cycled with button A.
  *
  * Construct with all runtime service references (forwarded to AppScreen).
- * Attach RollingLogger instances via setLoggers() to enable log screens.
+ * Attach RollingLogger instances via setShownLoggers() to enable log screens.
  * Call tick() periodically from a FreeRTOS task (e.g. every 500 ms).
  */
 class AmakerBotUIService : public IsServiceInterface
@@ -78,12 +80,13 @@ public:
 
     enum Screen : uint8_t
     {
-        SCREEN_APP_INFO  = 0,   ///< AppScreen dashboard
-        SCREEN_APP_LOG   = 1,   ///< LogScreen — application/bot logger
-        SCREEN_SVC_LOG   = 2,   ///< LogScreen — services logger
-        SCREEN_DEBUG_LOG = 3,   ///< LogScreen — debug logger
-        SCREEN_ESP_LOG   = 4,   ///< LogScreen — ESP-IDF logger
-        SCREEN_COUNT     = 5,
+        SCREEN_SPLASH    = 0,   ///< SplashScreen — shown first on boot
+        SCREEN_APP_INFO  = 1,   ///< AppScreen dashboard
+        SCREEN_APP_LOG   = 2,   ///< LogScreen — application/bot logger
+        SCREEN_SVC_LOG   = 3,   ///< LogScreen — services logger
+        SCREEN_DEBUG_LOG = 4,   ///< LogScreen — debug logger
+        SCREEN_ESP_LOG   = 5,   ///< LogScreen — ESP-IDF logger
+        SCREEN_COUNT     = 6,
     };
 
     // ---- Construction / Destruction ---------------------------------
@@ -96,6 +99,7 @@ public:
     AmakerBotUIService(UNIHIKER_K10        &k10,
                        WifiService         &wifi,
                        AmakerBotService    &amakerbot,
+                       BotServerWeb        &web,
                        BotServerUDP        &udp,
                        BotServerWebSocket  &ws,
                        MotorServoService   &motor_servo);
@@ -115,7 +119,7 @@ public:
      * @param debug  → SCREEN_DEBUG_LOG
      * @param esp    → SCREEN_ESP_LOG
      */
-    void setLoggers(RollingLogger *app,
+    void setShownLoggers(RollingLogger *app,
                     RollingLogger *svc,
                     RollingLogger *debug,
                     RollingLogger *esp);
@@ -163,8 +167,9 @@ private:
     UNIHIKER_K10 &k10_;
 
     // ---- Owned screen objects ---------------------------------------
-    AppScreen   app_screen_;          ///< Screen 0 — always present
-    LogScreen  *log_screens_[4] = {}; ///< Screens 1–4 — created in setLoggers()
+    SplashScreen splash_screen_;      ///< Shown once on startup
+    AppScreen    app_screen_;         ///< Screen 0 — always present
+    LogScreen   *log_screens_[4] = {}; ///< Screens 1–4 — created in setShownLoggers()
 
     // ---- Navigation state -------------------------------------------
     Screen        current_screen_  = SCREEN_APP_INFO;

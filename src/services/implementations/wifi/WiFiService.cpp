@@ -20,22 +20,21 @@
 #include <Arduino.h>    // millis(), delay(), ESP
 
 // ---------------------------------------------------------------------------
-// Compile-time default credentials
-// ---------------------------------------------------------------------------
-#define DEFAULT_WIFI_SSID       "Freebox-A35871"
-#define DEFAULT_WIFI_PASSWORD   "azerQSDF1234"
-#define DEFAULT_AP_SSID         "aMaker-"
-#define DEFAULT_AP_PASSWORD     "amaker-club"
-#define DEFAULT_HOSTNAME        "amakerbot-"
-
-#define WIFI_CONN_MAX_ATTEMPTS  8    ///< Attempts before giving up on STA
-#define WIFI_CONN_SLEEP_MS      500  ///< ms between connection attempts
-
-// ---------------------------------------------------------------------------
-// PROGMEM string constants
+// PROGMEM string constants + compile-time defaults
 // ---------------------------------------------------------------------------
 namespace WiFiConsts
 {
+    // ---- Compile-time default credentials (development only) ----
+    /// @warning Do NOT commit real credentials to source control.
+    constexpr const char default_wifi_ssid[]     = "Freebox-A35871";
+    constexpr const char default_wifi_password[] = "azerQSDF1234";
+    constexpr const char default_ap_ssid[]       = "aMaker-";
+    constexpr const char default_ap_password[]   = "amaker-club";
+    constexpr const char default_hostname[]      = "amakerbot-";
+
+    constexpr uint8_t  wifi_conn_max_attempts = 8;    ///< Attempts before giving up on STA
+    constexpr uint32_t wifi_conn_sleep_ms     = 500;  ///< ms between connection attempts
+
     constexpr const char str_service_name[]     PROGMEM = "WiFi Service";
     constexpr const char path_service[]         PROGMEM = "wifi/v1";
 
@@ -68,11 +67,12 @@ namespace WiFiConsts
 // ---------------------------------------------------------------------------
 // Module-level state (scoped to this translation unit)
 // ---------------------------------------------------------------------------
-static std::string s_wifi_ssid    = DEFAULT_WIFI_SSID;
-static std::string s_wifi_pwd     = DEFAULT_WIFI_PASSWORD;
-static std::string s_ap_ssid      = DEFAULT_AP_SSID;
-static std::string s_ap_password  = DEFAULT_AP_PASSWORD;
-static std::string s_hostname     = DEFAULT_HOSTNAME;
+static std::string s_wifi_ssid    = WiFiConsts::default_wifi_ssid;
+static std::string s_wifi_pwd     = WiFiConsts::default_wifi_password;
+static std::string s_ap_ssid      = WiFiConsts::default_ap_ssid;
+static std::string s_ap_password  = WiFiConsts::default_ap_password;
+static std::string s_hostname     = WiFiConsts::default_hostname;
+
 static std::string s_connected_ip;
 static std::string s_connected_ssid;
 static std::string s_mac_suffix;   ///< 6-char uppercase hex suffix derived from MAC
@@ -80,7 +80,14 @@ static std::string s_mac_suffix;   ///< 6-char uppercase hex suffix derived from
 // ---------------------------------------------------------------------------
 // Accessors
 // ---------------------------------------------------------------------------
-
+WifiService::WifiService()
+{
+     // Build a 6-char uppercase hex suffix from the upper 3 bytes of the ESP32 MAC
+    char mac_buf[8];
+    snprintf(mac_buf, sizeof(mac_buf), "%06X",
+             static_cast<uint32_t>(ESP.getEfuseMac() >> 24));
+    s_mac_suffix = std::string(mac_buf);
+}
 std::string WifiService::getIP()
 {
     return s_connected_ip;
@@ -148,7 +155,7 @@ bool WifiService::open_access_point()
 
 /**
  * @brief Attempt to connect to an existing WiFi network.
- *        Retries WIFI_CONN_MAX_ATTEMPTS times before returning false.
+ *        Retries WiFiConsts::wifi_conn_max_attempts times before returning false.
  */
 bool WifiService::connect_to_wifi(const std::string &ssid,
                                   const std::string &password)
@@ -174,14 +181,14 @@ bool WifiService::connect_to_wifi(const std::string &ssid,
     if (logger)
         logger->info(FPSTR(WiFiConsts::msg_connecting_to) + ssid);
 
-    for (int i = 0; i < WIFI_CONN_MAX_ATTEMPTS && WiFi.status() != WL_CONNECTED; ++i)
+    for (int i = 0; i < WiFiConsts::wifi_conn_max_attempts && WiFi.status() != WL_CONNECTED; ++i)
     {
         if (logger)
             logger->info(FPSTR(WiFiConsts::msg_attempt)
                          + std::to_string(i + 1)
                          + std::string("/")
-                         + std::to_string(WIFI_CONN_MAX_ATTEMPTS));
-        delay(WIFI_CONN_SLEEP_MS);
+                         + std::to_string(WiFiConsts::wifi_conn_max_attempts));
+        delay(WiFiConsts::wifi_conn_sleep_ms);
     }
 
     if (WiFi.status() == WL_CONNECTED)
@@ -251,13 +258,8 @@ bool WifiService::initializeService()
     // Load credentials first so startService() uses up-to-date values
     loadSettings();
 
-    // Build a 6-char uppercase hex suffix from the upper 3 bytes of the ESP32 MAC
-    char mac_buf[8];
-    snprintf(mac_buf, sizeof(mac_buf), "%06X",
-             static_cast<uint32_t>(ESP.getEfuseMac() >> 24));
-    s_mac_suffix = std::string(mac_buf);
 
-    WiFi.setHostname(getHostname().c_str());
+
 
     setServiceStatus(INITIALIZED);
 #ifdef VERBOSE_DEBUG
@@ -347,11 +349,11 @@ bool WifiService::loadSettings()
         return false;
     }
 
-    s_wifi_ssid   = prefs.getString(WiFiConsts::nvs_ssid,        DEFAULT_WIFI_SSID).c_str();
-    s_wifi_pwd    = prefs.getString(WiFiConsts::nvs_password,     DEFAULT_WIFI_PASSWORD).c_str();
-    s_ap_ssid     = prefs.getString(WiFiConsts::nvs_ap_ssid,      DEFAULT_AP_SSID).c_str();
-    s_ap_password = prefs.getString(WiFiConsts::nvs_ap_password,  DEFAULT_AP_PASSWORD).c_str();
-    s_hostname    = prefs.getString(WiFiConsts::nvs_hostname,     DEFAULT_HOSTNAME).c_str();
+    s_wifi_ssid   = prefs.getString(WiFiConsts::nvs_ssid,        WiFiConsts::default_wifi_ssid).c_str();
+    s_wifi_pwd    = prefs.getString(WiFiConsts::nvs_password,     WiFiConsts::default_wifi_password).c_str();
+    s_ap_ssid     = prefs.getString(WiFiConsts::nvs_ap_ssid,      WiFiConsts::default_ap_ssid).c_str();
+    s_ap_password = prefs.getString(WiFiConsts::nvs_ap_password,  WiFiConsts::default_ap_password).c_str();
+    s_hostname    = prefs.getString(WiFiConsts::nvs_hostname,     WiFiConsts::default_hostname).c_str();
     prefs.end();
 
     if (logger)

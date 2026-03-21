@@ -43,7 +43,9 @@ namespace MotorServoConsts
 {
     constexpr const char str_service_name[]        PROGMEM = "MotorServo Service";
     constexpr const char msg_init_ok[]             PROGMEM = "MotorServoService: initialized";
+    constexpr const char msg_init_failed[]         PROGMEM = "MotorServoService: initialization failed";
     constexpr const char msg_started[]             PROGMEM = "MotorServoService: started";
+    constexpr const char msg_start_failed[]        PROGMEM = "MotorServoService: start failed";
     constexpr const char msg_stopped[]             PROGMEM = "MotorServoService: stopped";
     constexpr const char msg_board_not_started[]   PROGMEM = "MotorServoService: DFR1216Board not started";
     constexpr const char msg_stopped_all_motors[]  PROGMEM = "MotorServoService: all motors stopped";

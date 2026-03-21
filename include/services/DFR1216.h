@@ -14,7 +14,7 @@
 #include <Wire.h>
 #include <freertos/semphr.h>
 #include "IsServiceInterface.h"
-#include "IsBotMessageHandlerInterface.h"
+#include "BotCommunication/BotMessageHandler.h"
 // #define ENABLE_DBG  1 ///> Open this macro and you can see the details of the program
 #ifdef ENABLE_DBG
 #define DBG(...)                 \
@@ -170,11 +170,17 @@ struct LedState
 };
 
 class DFR1216Board : public IsServiceInterface,
-                     public IsBotMessageHandlerInterface
+                     public IsBotActionHandlerInterface
 {
 public:
   DFR1216Board();
   ~DFR1216Board();
+
+  /**
+   * @brief Initialize the hardware bus/device. Implemented by DFR1216_I2C.
+   * Called automatically by initializeService().
+   */
+  virtual bool begin() = 0;
 
   // ---- IsServiceInterface overrides ------------------------------------
   /** @return "DFR1216 Service" */
@@ -214,10 +220,19 @@ public:
   /** @brief Turn all three LEDs off. */
   bool turnOffAllLEDs();
 
-  // ---- IsBotMessageHandlerInterface ------------------------------------
-  bool messageHandler(const std::string &message,
-                      const IPAddress   &remoteIP,
-                      uint16_t           remotePort) override;
+  // ---- IsBotActionHandlerInterface -------------------------------------
+  /** @return DFR1216Consts::udp_service_id (0x03) */
+  uint8_t getBotServiceId() const override;
+
+  /**
+   * @brief Dispatch an incoming binary bot frame to the appropriate LED command.
+   *        Returns the binary response; the caller (UDP/WebSocket/Web) is
+   *        responsible for sending it.
+   * @param data Pointer to the raw binary frame (byte[0] is the action byte)
+   * @param len  Frame length in bytes
+   * @return Binary response string; empty means no reply
+   */
+  std::string handleBotMessage(const uint8_t *data, size_t len) override;
 
   // ---- Hardware API ----------------------------------------------------
   /**
@@ -361,10 +376,6 @@ public:
   int16_t getSr04Distance(void);
 
 protected:
-  /// Resolve 'logger' ambiguity — both IsServiceInterface and
-  /// IsBotMessageHandlerInterface carry this member; prefer IsServiceInterface's.
-  using IsServiceInterface::logger;
-
 private:
   virtual uint8_t writeReg(uint8_t reg, uint8_t *data, uint8_t len) = 0;
   virtual int16_t readReg(uint8_t reg, uint8_t *data, uint8_t len)  = 0;
@@ -387,4 +398,5 @@ private:
   uint8_t          __I2C_addr;
   static SemaphoreHandle_t __i2c_mutex;  ///< Shared recursive mutex for I2C bus access
 };
+
 #endif

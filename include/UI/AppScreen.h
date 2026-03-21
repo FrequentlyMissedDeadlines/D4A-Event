@@ -17,10 +17,11 @@
 #include "services/AmakerBotService.h"
 #include "services/MotorServoService.h"
 #include "BotCommunication/BotServerUDP.h"
+#include "BotCommunication/BotServerWeb.h"
 #include "BotCommunication/BotServerWebSocket.h"
 
 /**
- * @class AppScreen
+ * @class AppScreencells
  * @brief Renders the AmakerBot application info dashboard to the TFT.
  *
  * Construct with references to the services it needs to read data from.
@@ -40,14 +41,15 @@ public:
      */
     AppScreen(WifiService        &wifi,
               AmakerBotService   &amakerbot,
+              BotServerWeb       &web,
               BotServerUDP       &udp,
               BotServerWebSocket &ws,
               MotorServoService  &motor_servo);
 
-    /** @brief Clear screen to black and set up font. */
+    /** @brief Clear screen to black, then draw all static chrome (borders, fixed labels) once. */
     void initScreen() override;
 
-    /** @brief Redraw the full dashboard: info panel, servo table, motor table. */
+    /** @brief Repaint dynamic cells only (live values); chrome is drawn once in initScreen(). */
     void updateScreen() override;
 
     /** @return Always true — live counters change every tick. */
@@ -56,18 +58,41 @@ public:
 private:
     WifiService        &wifi_;
     AmakerBotService   &amakerbot_;
+    BotServerWeb       &web_;
     BotServerUDP       &udp_;
     BotServerWebSocket &ws_;
     MotorServoService  &motor_servo_;
 
-    /** @brief Draw left panel: bot name, network, master IP, transport counters. */
-    void drawInfoPanel();
+    /**
+     * @brief Draw left info panel (bot name, network, master IP).
+     * @param chrome_only true → static borders and fixed-value rows only;
+     *                    false → dynamic value cells only.
+     */
+    void drawInfoPanel(bool chrome_only);
 
-    /** @brief Draw right-panel servo table (chars 21+, lines 0–10). */
-    void drawServoTable();
+    /**
+     * @brief Draw transport counters panel (UDP / Web / WebSocket).
+     * @param chrome_only true → header borders; false → live counter values.
+     */
+    void drawCountersPanel(bool chrome_only);
 
-    /** @brief Draw right-panel motor table (chars 21+, below servos). */
-    void drawMotorTable();
+    /**
+     * @brief Draw right-panel servo table.
+     * @param chrome_only true → static borders; false → status header + angles.
+     */
+    void drawServoTable(bool chrome_only);
+
+    /**
+     * @brief Draw right-panel motor table.
+     * @param chrome_only true → static borders; false → status header + speeds.
+     */
+    void drawMotorTable(bool chrome_only);
+
+    /**
+     * @brief Draw ESP info panel (chip model, memory stats).
+     * @param chrome_only true → static rows (chip, fixed sizes); false → heap/PSRAM free.
+     */
+    void drawESPInfo(bool chrome_only);
 
     /**
      * @brief Map a ServiceStatus to foreground/background TFT colours.
@@ -83,4 +108,11 @@ private:
      * @return "180", "270", or "rot"
      */
     static const char *servoTypeLabel(ServoType t);
+
+    /**
+     * @brief Format an integer with space thousands separators (e.g. 1234567 → "1 234 567").
+     * @param value  Integer value to format.
+     * @return std::string formatted with space-separated digit groups of three.
+     */
+    static std::string formatThousands(uint32_t value);
 };

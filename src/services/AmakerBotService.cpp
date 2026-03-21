@@ -64,7 +64,8 @@ bool AmakerBotService::initializeService()
     name_mutex_ = xSemaphoreCreateMutex();
     if (!name_mutex_)
     {
-        logger->error(FPSTR(AmakerBotConsts::msg_mutex_failed));
+        if (logger)
+            logger->error(FPSTR(AmakerBotConsts::msg_mutex_failed));
         setServiceStatus(INITIALIZED_FAILED);
         return false;
     }
@@ -82,7 +83,8 @@ bool AmakerBotService::initializeService()
     heartbeat_active_    = false;
     heartbeat_timed_out_ = false;
 
-    logger->info(progmem_to_string(AmakerBotConsts::msg_token) + server_token_);
+    if (logger)
+        logger->info(progmem_to_string(AmakerBotConsts::msg_token) + server_token_);
     master_ip_    = "";
     last_seen_ms_ = 0;
     if (logger)

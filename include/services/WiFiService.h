@@ -30,6 +30,13 @@
 class WifiService : public IsServiceInterface
 {
 public:
+    // ---- Construction --------------------------------------------------
+
+    /**
+     * @brief Initialise the MAC suffix used for AP SSID and hostname generation.
+     */
+    WifiService();
+
     // ---- Public helpers ------------------------------------------------
 
     /**

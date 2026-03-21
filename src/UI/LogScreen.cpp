@@ -10,7 +10,11 @@
 
 extern TFT_eSPI tft;
 
-#define LH UILayout::LINE_H  // 8 px per line
+namespace
+{
+    /// Font-1 line height in pixels — shorthand for UILayout::LINE_H.
+    constexpr int lh = UILayout::LINE_H;
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -86,8 +90,8 @@ void LogScreen::updateScreen()
 
     for (int i = 0; i < MAX_CONTENT_LINES; ++i)
     {
-        const int y = (i + 1) * LH; // +1 to skip title bar
-        tft.fillRect(0, y, UILayout::SCREEN_W, LH, UIColors::CLR_BLACK);
+        const int y = (i + 1) * lh; // +1 to skip title bar
+        tft.fillRect(0, y, UILayout::SCREEN_W, lh, UIColors::CLR_BLACK);
 
         const int idx = start + i;
         if (idx < n)

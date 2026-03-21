@@ -18,8 +18,8 @@
 #include "services/AmakerBotService.h"
 #include "services/AmakerBotUIService.h"
 #include "services/MotorServoService.h"
+#include "ESPLogToRolling.h"
 #define LOAD_FONT8    // TFT font - special case for library config
-#define VERBOSE_DEBUG // Enable verbose debug logging
 
 // Main application constants
 namespace MainConsts
@@ -80,12 +80,13 @@ namespace
 TFT_eSPI tft;
 UNIHIKER_K10 unihiker;
 RollingLogger debug_logger = RollingLogger();
-RollingLogger svg_logger = RollingLogger();
-RollingLogger bot_logger = RollingLogger();
-RollingLogger esp_logger = RollingLogger();
+RollingLogger svc_logger   = RollingLogger();
+RollingLogger bot_logger   = RollingLogger();
+RollingLogger esp_logger   = RollingLogger();
 WifiService wifi_service_ = WifiService();
 MotorServoService motor_servo_ = MotorServoService();
-AmakerBotService amaker_bot_ = AmakerBotService({&motor_servo_});
+extern DFR1216_I2C board;  ///< Defined in DFR1216.cpp; registered as 0x03 service handler
+AmakerBotService amaker_bot_ = AmakerBotService({&motor_servo_, &board});
 BotServerUDP bot_over_udp_ = BotServerUDP(amaker_bot_);
 BotServerWeb bot_over_web_ = BotServerWeb(amaker_bot_);
 BotServerWebSocket bot_over_websocket_ = BotServerWebSocket(amaker_bot_);
@@ -93,6 +94,7 @@ AmakerBotUIService ui_service =
     AmakerBotUIService(unihiker,
                        wifi_service_,
                        amaker_bot_,
+                       bot_over_web_,
                        bot_over_udp_,
                        bot_over_websocket_,
                        motor_servo_);
@@ -124,14 +126,16 @@ namespace
 
     if (service.initializeService())
     {
-      unihiker.rgb->write(0, 32, 32, 0); // pixel0 = red
+      unihiker.rgb->write(0, 32, 32, 0); // pixel0 = yellow (initialised, starting)
       if (!service.startService())
       {
         bot_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_start_failed));
+        unihiker.rgb->write(0, 0, 0, 0);
+        return false;
       }
       else
       {
-        unihiker.rgb->write(0, 0, 32, 0); // pixel0 = red
+        unihiker.rgb->write(0, 0, 32, 0); // pixel0 = green (started ok)
 #ifdef VERBOSE_DEBUG
         bot_logger.debug(service.getServiceName() + progmem_to_string(MainConsts::msg_started));
 #endif
@@ -140,11 +144,13 @@ namespace
     else
     {
       bot_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_initialize_failed));
+      unihiker.rgb->write(0, 0, 0, 0);
+      return false;
     }
 
     // Register OpenAPI routes if the service implements IsOpenAPIInterface
 
-    unihiker.rgb->write(0, 0, 0, 0); // pixel0 = red
+    unihiker.rgb->write(0, 0, 0, 0);
 
     return true;
   }
@@ -195,7 +201,7 @@ void xtask_web_server(void * /*pvParameters*/)
 
   for (;;) {
     ui_service.tick();
-    vTaskDelay(portMAX_DELAY);
+    vTaskDelay(display_update_interval_ticks);
   }
 }
 
@@ -205,11 +211,13 @@ void xtask_web_server(void * /*pvParameters*/)
  */
 void setup()
 {
+  esp_log_level_set("*", ESP_LOG_DEBUG);
   // Initialize Serial FIRST for debugging
+  #ifdef SERIAL_DEBUG
   Serial.begin(serial_baud);
   delay(100);
   Serial.println("\n\n=== K10-Bot Starting ===");
-
+  #endif
   // Small delay to ensure system stabilizes
   delay(500);
 
@@ -219,21 +227,28 @@ void setup()
   // Initialize loggers BEFORE hardware to capture early logs
   bot_logger.set_max_rows(40);
   bot_logger.set_log_level(RollingLogger::INFO);
+  svc_logger.set_max_rows(40);
+  svc_logger.set_log_level(RollingLogger::INFO);
   debug_logger.set_max_rows(40);
   debug_logger.set_log_level(RollingLogger::DEBUG);
   esp_logger.set_max_rows(40);
   esp_logger.set_log_level(RollingLogger::DEBUG);
-
+#ifdef SERIAL_DEBUG
   Serial.println("Loggers initialized");
-
+#endif
   // Redirect ESP-IDF logs BEFORE any other initialization
-  // esp_log_to_rolling_init(&esp_logger);
+  esp_log_to_rolling_init(&esp_logger);
+  #ifdef SERIAL_DEBUG
   Serial.println("ESP-IDF logging redirected");
-
+#endif
   // Now initialize hardware
+    #ifdef SERIAL_DEBUG
   Serial.println("Initializing UniHiker hardware...");
+  #endif
   unihiker.begin();
+    #ifdef SERIAL_DEBUG
   Serial.println("Initializing display...");
+  #endif
   unihiker.initScreen(2, 30);
   unihiker.creatCanvas();
   unihiker.setScreenBackground(TFT_BLACK);
@@ -241,12 +256,20 @@ void setup()
   unihiker.rgb->write(0, 0, 0, 0);
   unihiker.rgb->write(1, 0, 0, 0);
   unihiker.rgb->write(2, 0, 0, 0);
+
   ui_service.setLogger(&debug_logger);
-  ui_service.setLoggers(&bot_logger, &debug_logger, &esp_logger, nullptr);
+  ui_service.setShownLoggers(&bot_logger, &svc_logger, &debug_logger, &esp_logger);
   ui_service.initializeService();
   ui_service.startService();
 
-  wifi_service_.wifi_activation();
+  // Initialize DFR1216 board as a full service before MotorServoService
+  // (MotorServoService::initializeService() requires board.getStatus() == STARTED)
+  start_service(board);
+
+  start_service(motor_servo_);
+  start_service(amaker_bot_);
+
+  start_service(wifi_service_);
 
   // Core 0 — UDP + WebSocket at maximum priority (real-time transport)
   xTaskCreatePinnedToCore(
@@ -258,6 +281,16 @@ void setup()
       nullptr,
       transport_core);
 
+  // Core 1 — HTTP web server + display (best-effort)
+  xTaskCreatePinnedToCore(
+      xtask_web_server,
+      "WebServer",
+      web_stack,
+      nullptr,
+      web_priority,
+      nullptr,
+      web_core);
+
 }
 
 /**
@@ -267,5 +300,8 @@ void setup()
 void loop()
 {
   // All application logic runs inside FreeRTOS tasks
-  delay(1000);
+  // we can remove the task with 
+  vTaskDelete(nullptr); 
+  // or we could make a  loooooong sleep on it.
+    //vTaskDelay(portMAX_DELAY); 
 }

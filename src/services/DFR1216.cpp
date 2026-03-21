@@ -11,7 +11,6 @@
 
 #include "services/DFR1216.h"
 #include "FlashStringHelper.h"
-#include <ESPAsyncWebServer.h>
 #include <pgmspace.h>
 #include <ArduinoJson.h>
 
@@ -81,9 +80,15 @@ namespace DFR1216Consts
     constexpr uint8_t udp_action_turn_off_all_leds = (udp_service_id << 4) | 0x03;  ///< (no params)
     constexpr uint8_t udp_action_get_led_status = (udp_service_id << 4) | 0x04;  ///< (no params) → [action][ok][JSON]
     constexpr uint8_t udp_action_max = (udp_service_id << 4) | 0x04;  ///< highest valid action code
+
+    /// Number of WS2812 LEDs on the DFR1216 board (on-board module, indices 0–1).
+    constexpr uint8_t DFR1216_WS2812_LED_COUNT = 2;
 }
 
-DFR1216_I2C controller = DFR1216_I2C();
+/// Singleton I2C driver for the DFR1216 expansion board.
+/// Declared here so it is co-located with its implementation.
+/// MotorServoService and main.cpp access it via `extern DFR1216_I2C board;`.
+DFR1216_I2C board;
 
 std::string DFR1216Board::getServiceName()
 {
@@ -92,7 +97,7 @@ std::string DFR1216Board::getServiceName()
 
 bool DFR1216Board::initializeService()
 {
-    if (!controller.begin())
+    if (!begin())
     {
         setServiceStatus(INITIALIZED_FAILED);
         logger->error(getServiceName() + " " + getStatusString());
@@ -124,10 +129,8 @@ bool DFR1216Board::stopService()
     logger->info(getServiceName() + " " + getStatusString());
     return true;
 }
-
 bool DFR1216Board::saveSettings() { return true; }
 bool DFR1216Board::loadSettings() { return true; }
-
 bool DFR1216Board::setServoAngle(uint8_t channel, uint16_t angle)
 {
     if (!isServiceStarted())
@@ -145,14 +148,13 @@ bool DFR1216Board::setServoAngle(uint8_t channel, uint16_t angle)
         return false;
     }
 
-    controller.setServoAngle(static_cast<eServoNumber_t>(channel), angle);
+    setServoAngle(static_cast<eServoNumber_t>(channel), angle);
 
     char log_buf[64];
     snprintf(log_buf, sizeof(log_buf), "Set servo %u to angle %u", channel, angle);
     logger->info(log_buf);
     return true;
 }
-
 bool DFR1216Board::setMotorSpeed(uint8_t motor, int8_t speed)
 {
     if (!isServiceStarted())
@@ -195,16 +197,13 @@ bool DFR1216Board::setMotorSpeed(uint8_t motor, int8_t speed)
 
     // Convert speed percentage to duty cycle (0-65535)
     uint16_t duty = static_cast<uint16_t>((abs(speed) * 65535) / 100);
-    controller.setMotorDuty(motor_enum, duty);
+    setMotorDuty(motor_enum, duty);
 
     char log_buf[64];
     snprintf(log_buf, sizeof(log_buf), "Set motor %u to speed %d", motor, speed);
     logger->info(log_buf);
     return true;
 }
-
-
-
 bool DFR1216Board::setLEDColor(uint8_t led_index, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness)
 {
     if (!isServiceStarted())
@@ -219,40 +218,40 @@ bool DFR1216Board::setLEDColor(uint8_t led_index, uint8_t red, uint8_t green, ui
         return false;
     }
 
-    try
+    // Rebuild the full WS2812 array from the cache so that writing one LED
+    // does not zero-out the other two.
+    uint32_t colors[3];
+    for (uint8_t i = 0; i < 3; ++i)
     {
-        // WS2812 LED array - set RGB values for the specified LED
-        uint32_t colors[3] = {0, 0, 0};
-        colors[led_index] = (static_cast<uint32_t>(red) << 16) | (static_cast<uint32_t>(green) << 8) | blue;
-        
-        controller.setWS2812(colors, brightness);
-        
-        // Store in cache
-        led_states_[led_index].red = red;
-        led_states_[led_index].green = green;
-        led_states_[led_index].blue = blue;
-        
-        char log_buf[64];
-        snprintf(log_buf, sizeof(log_buf), "Set LED %u to RGB(%u,%u,%u)", led_index, red, green, blue);
-        IsServiceInterface::logger->info(log_buf);
-        return true;
+        colors[i] = (static_cast<uint32_t>(led_states_[i].red)   << 16)
+                  | (static_cast<uint32_t>(led_states_[i].green) <<  8)
+                  |  static_cast<uint32_t>(led_states_[i].blue);
     }
-    catch (const std::exception& e)
-    {
-        IsServiceInterface::logger->error("Error setting LED color: " + std::string(e.what()));
-        return false;
-    }
-}
+    // Override the target slot with the new colour.
+    colors[led_index] = (static_cast<uint32_t>(red) << 16)
+                      | (static_cast<uint32_t>(green) <<  8)
+                      |  static_cast<uint32_t>(blue);
 
+    setWS2812(colors, brightness);
+
+    // Store in cache
+    led_states_[led_index].red   = red;
+    led_states_[led_index].green = green;
+    led_states_[led_index].blue  = blue;
+
+    char log_buf[64];
+    snprintf(log_buf, sizeof(log_buf), "Set LED %u to RGB(%u,%u,%u)", led_index, red, green, blue);
+    IsServiceInterface::logger->info(log_buf);
+    return true;
+}
 bool DFR1216Board::turnOffLED(uint8_t led_index)
 {
     return setLEDColor(led_index, 0, 0, 0, 0);
 }
-
 bool DFR1216Board::turnOffAllLEDs()
 {
     bool success = true;
-    for (uint8_t i = 0; i < 3; i++)
+    for (uint8_t i = 0; i < DFR1216Consts::DFR1216_WS2812_LED_COUNT; i++)
     {
         if (!turnOffLED(i))
         {
@@ -261,165 +260,109 @@ bool DFR1216Board::turnOffAllLEDs()
     }
     return success;
 }
-
-// UDP helper function to build binary responses
-static inline void udp_build_response(uint8_t action, uint8_t resp, const char *payload, std::string &out)
+/**
+ * @brief Return the service identifier used to route bot protocol messages.
+ */
+uint8_t DFR1216Board::getBotServiceId() const
 {
-    out.clear();
-    out += static_cast<char>(action);
-    out += static_cast<char>(resp);
-    if (payload && *payload) out.append(payload);
+    return DFR1216Consts::udp_service_id; // 0x03
 }
 
-// bool DFR1216Board::messageHandler(const std::string &message,
-
-bool DFR1216Board::messageHandler(const std::string & /*message*/,
-                                  const IPAddress   & /*remoteIP*/,
-                                  uint16_t            /*remotePort*/)
+/**
+ * @brief Handle incoming binary bot frames for DFR1216 LED commands (service 0x3x).
+ *        Builds and returns the binary response; the transport layer
+ *        (UDP / WebSocket / Web) is responsible for sending it.
+ *
+ * Protocol format: [action:1B][params...]
+ * Commands (low nibble):
+ *  0x01: SET_LED_COLOR   [led:1B][r:1B][g:1B][b:1B][brightness:1B]
+ *  0x02: TURN_OFF_LED    [led:1B]
+ *  0x03: TURN_OFF_ALL    (no params)
+ *  0x04: GET_LED_STATUS  (no params) → [action][ok][JSON]
+ */
+std::string DFR1216Board::handleBotMessage(const uint8_t *data, size_t len)
 {
-    // TODO: implement LED UDP command handling
-    return false;
+    if (!data || len < 1)
+        return BotProto::make_ack(0x00, BotProto::resp_invalid_params);
+
+    const uint8_t action = data[0];
+    const uint8_t cmd    = BotProto::command(action);
+
+    if (!isServiceStarted())
+        return BotProto::make_ack(action, BotProto::resp_not_started);
+
+    switch (cmd)
+    {
+    // 0x01 SET_LED_COLOR [led:1B][r:1B][g:1B][b:1B][brightness:1B]
+    case 0x01:
+    {
+        if (len < 6)
+            return BotProto::make_ack(action, BotProto::resp_invalid_params);
+
+        const uint8_t led_index  = data[1];
+        const uint8_t red        = data[2];
+        const uint8_t green      = data[3];
+        const uint8_t blue       = data[4];
+        const uint8_t brightness = data[5];
+
+        if (led_index > 2)
+            return BotProto::make_ack(action, BotProto::resp_invalid_values);
+
+        return BotProto::make_ack(action,
+            setLEDColor(led_index, red, green, blue, brightness)
+                ? BotProto::resp_ok : BotProto::resp_operation_failed);
+    }
+
+    // 0x02 TURN_OFF_LED [led:1B]
+    case 0x02:
+    {
+        if (len < 2)
+            return BotProto::make_ack(action, BotProto::resp_invalid_params);
+
+        const uint8_t led_index = data[1];
+
+        if (led_index > 2)
+            return BotProto::make_ack(action, BotProto::resp_invalid_values);
+
+        return BotProto::make_ack(action,
+            turnOffLED(led_index)
+                ? BotProto::resp_ok : BotProto::resp_operation_failed);
+    }
+
+    // 0x03 TURN_OFF_ALL_LEDS (no params)
+    case 0x03:
+        return BotProto::make_ack(action,
+            turnOffAllLEDs()
+                ? BotProto::resp_ok : BotProto::resp_operation_failed);
+
+    // 0x04 GET_LED_STATUS → [action][resp_ok][JSON]
+    case 0x04:
+    {
+        ArduinoJson::JsonDocument doc;
+        ArduinoJson::JsonArray leds = doc["leds"].to<ArduinoJson::JsonArray>();
+
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            ArduinoJson::JsonObject led_obj = leds.add<ArduinoJson::JsonObject>();
+            led_obj["id"]    = i;
+            led_obj["red"]   = led_states_[i].red;
+            led_obj["green"] = led_states_[i].green;
+            led_obj["blue"]  = led_states_[i].blue;
+        }
+
+        std::string resp;
+        resp += static_cast<char>(action);
+        resp += static_cast<char>(BotProto::resp_ok);
+        std::string json_str;
+        serializeJson(doc, json_str);
+        resp += json_str;
+        return resp;
+    }
+
+    default:
+        return BotProto::make_ack(action, BotProto::resp_unknown_cmd);
+    }
 }
-
-
-//                                      const IPAddress &remoteIP,
-//                                      uint16_t remotePort)
-// {
-//     const size_t len = message.size();
-//     if (len < 1) return false;
-
-//     const uint8_t *d      = reinterpret_cast<const uint8_t *>(message.data());
-//     const uint8_t  action = d[0];
-
-//     if (action < 0x31 || action > DFR1216Consts::udp_action_max) return false;
-
-//     static std::string resp;
-//     resp.clear();
-
-//     if (!IsServiceInterface::isServiceStarted())
-//     {
-//         udp_build_response(action, BotMessageProto::udp_resp_not_started, nullptr, resp);
-//         udp_service.sendReply(resp, remoteIP, remotePort);
-//         return true;
-//     }
-
-//     if (!checkUDPIsMaster(action, remoteIP, &amakerbot_service, resp))
-//     {
-//         udp_service.sendReply(resp, remoteIP, remotePort);
-//         return true;
-//     }
-
-//     switch (action)
-//     {
-//     // 0x31 SET_LED_COLOR [led:1B][r:1B][g:1B][b:1B][brightness:1B]
-//     case DFR1216Consts::udp_action_set_led_color:
-//     {
-//         if (len < 6)
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_invalid_params, nullptr, resp);
-//             break;
-//         }
-//         const uint8_t led_index  = d[1];
-//         const uint8_t red        = d[2];
-//         const uint8_t green      = d[3];
-//         const uint8_t blue       = d[4];
-//         const uint8_t brightness = d[5];
-
-//         if (led_index > 2)
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_invalid_values, nullptr, resp);
-//             break;
-//         }
-
-//         if (setLEDColor(led_index, red, green, blue, brightness))
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_ok, nullptr, resp);
-//         }
-//         else
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_operation_failed, nullptr, resp);
-//         }
-//         break;
-//     }
-
-//     // 0x32 TURN_OFF_LED [led:1B]
-//     case DFR1216Consts::udp_action_turn_off_led:
-//     {
-//         if (len < 2)
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_invalid_params, nullptr, resp);
-//             break;
-//         }
-//         const uint8_t led_index = d[1];
-
-//         if (led_index > 2)
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_invalid_values, nullptr, resp);
-//             break;
-//         }
-
-//         if (turnOffLED(led_index))
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_ok, nullptr, resp);
-//         }
-//         else
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_operation_failed, nullptr, resp);
-//         }
-//         break;
-//     }
-
-//     // 0x33 TURN_OFF_ALL_LEDS (no params)
-//     case DFR1216Consts::udp_action_turn_off_all_leds:
-//     {
-//         if (turnOffAllLEDs())
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_ok, nullptr, resp);
-//         }
-//         else
-//         {
-//             udp_build_response(action, BotMessageProto::udp_resp_operation_failed, nullptr, resp);
-//         }
-//         break;
-//     }
-
-//     // 0x34 GET_LED_STATUS (no params) → [action][ok][JSON]
-//     case DFR1216Consts::udp_action_get_led_status:
-//     {
-//         JsonDocument doc;
-//         JsonArray leds = doc["leds"].to<JsonArray>();
-        
-//         for (uint8_t i = 0; i < 3; i++)
-//         {
-//             JsonObject led = leds.add<JsonObject>();
-//             led["id"] = i;
-//             led["red"] = led_states_[i].red;
-//             led["green"] = led_states_[i].green;
-//             led["blue"] = led_states_[i].blue;
-//         }
-        
-//         std::string json_str;
-//         serializeJson(doc, json_str);
-        
-//         resp.clear();
-//         resp += static_cast<char>(action);
-//         resp += static_cast<char>(BotMessageProto::udp_resp_ok);
-//         resp += json_str;
-        
-//         udp_service.sendReply(resp, remoteIP, remotePort);
-//         return true;
-//     }
-
-//     default:
-//     {
-//         udp_build_response(action, BotMessageProto::udp_resp_unknown_cmd, nullptr, resp);
-//         break;
-//     }
-//     }
-
-//     udp_service.sendReply(resp, remoteIP, remotePort);
-//     return true;
-// }
 
 // ---------------------------------------------------------------------------
 // DFR1216Board low-level hardware methods (I2C register writes/reads)
@@ -456,7 +399,6 @@ void DFR1216Board::setMotorDuty(eMotorNumber_t number, uint16_t duty)
         delay(I2C_RETRY_DELAY_MS);
     }
 }
-
 void DFR1216Board::setServo360(eServoNumber_t number, eServo360Direction_t direction, uint8_t speed)
 {
     if (speed > 100) speed = 100;
@@ -477,12 +419,10 @@ void DFR1216Board::setServo360(eServoNumber_t number, eServo360Direction_t direc
         delay(I2C_RETRY_DELAY_MS);
     }
 }
-
 void DFR1216Board::setServoAngle(eServoNumber_t number, uint16_t angle)
 {
     setServoAngle(number, angle, 270);
 }
-
 void DFR1216Board::setServoAngle(eServoNumber_t number, uint16_t angle, uint16_t maxAngle)
 {
     uint16_t period = 0;
@@ -504,7 +444,6 @@ void DFR1216Board::setServoAngle(eServoNumber_t number, uint16_t angle, uint16_t
         delay(I2C_RETRY_DELAY_MS);
     }
 }
-
 uint8_t DFR1216Board::getBattery(void)
 {
     uint8_t result = 0;
@@ -516,7 +455,6 @@ uint8_t DFR1216Board::getBattery(void)
     }
     return 0xFF;
 }
-
 uint32_t DFR1216Board::getIRData(void)
 {
     uint8_t result = 0;
@@ -532,7 +470,6 @@ uint32_t DFR1216Board::getIRData(void)
     }
     return 0xFFFFFFFF;
 }
-
 uint8_t DFR1216Board::sendIR(uint32_t data)
 {
     uint8_t result = 0;
@@ -549,7 +486,6 @@ uint8_t DFR1216Board::sendIR(uint32_t data)
     }
     return 0xFF;
 }
-
 uint8_t DFR1216Board::setWS2812(uint32_t *data, uint8_t bright)
 {
     uint8_t result = 0;
@@ -569,7 +505,6 @@ uint8_t DFR1216Board::setWS2812(uint32_t *data, uint8_t bright)
     }
     return 0xFF;
 }
-
 uint8_t DFR1216Board::setMode(eIONumber_t number, eIOType_t mode)
 {
     uint8_t result = 0;
@@ -583,7 +518,6 @@ uint8_t DFR1216Board::setMode(eIONumber_t number, eIOType_t mode)
     }
     return 0xFF;
 }
-
 uint8_t DFR1216Board::setGpioState(eIONumber_t number, eGpioState_t state)
 {
     uint8_t result = 0;
@@ -597,7 +531,6 @@ uint8_t DFR1216Board::setGpioState(eIONumber_t number, eGpioState_t state)
     }
     return 0xFF;
 }
-
 uint8_t DFR1216Board::getGpioState(eIONumber_t number)
 {
     uint8_t result = 0;
@@ -610,7 +543,6 @@ uint8_t DFR1216Board::getGpioState(eIONumber_t number)
     }
     return 0xFF;
 }
-
 uint16_t DFR1216Board::getADCValue(eIONumber_t number)
 {
     uint8_t  result = 0;
@@ -632,7 +564,6 @@ uint16_t DFR1216Board::getADCValue(eIONumber_t number)
     }
     return 0xFFFF;
 }
-
 sDhtData_t DFR1216Board::getDHTValue(eIONumber_t number)
 {
     sDhtData_t dhtData = {0.0f, 0.0f, 0};
@@ -662,7 +593,6 @@ sDhtData_t DFR1216Board::getDHTValue(eIONumber_t number)
     }
     return dhtData;
 }
-
 float DFR1216Board::get18b20Value(eIONumber_t number)
 {
     uint8_t reg = I2C_18B20_C0_S + number * 3;
@@ -688,7 +618,6 @@ float DFR1216Board::get18b20Value(eIONumber_t number)
     }
     return 0.0f;
 }
-
 int16_t DFR1216Board::getSr04Distance(void)
 {
     uint8_t reg = I2C_SR04_STATE;
@@ -729,31 +658,39 @@ DFR1216_I2C::DFR1216_I2C(TwoWire *pWire, uint8_t addr)
 }
 
 bool DFR1216_I2C::begin()
-{
+{   logger->info("Initializing DFR1216 I2C communication");
     if (!__i2c_mutex)
         __i2c_mutex = xSemaphoreCreateRecursiveMutex();
-
+    logger->info("I2C mutex created");
     uint8_t retry    = 0;
     uint8_t tempData = DATA_ENABLE;
 
     __pWire->begin();
+    logger->info("I2C bus started");
     __pWire->setClock(400000);
     __pWire->beginTransmission(__I2C_addr);
-    if (__pWire->endTransmission() != 0)
+    char addr_buf[32];
+    snprintf(addr_buf, sizeof(addr_buf), "Checking I2C device presence at address 0x%02X", __I2C_addr);
+    logger->info(addr_buf);
+    if (__pWire->endTransmission() != 0) {
+        logger->error("I2C device not responding ");
         return false;
+    }
 
     // Reset all sensors on the board
     writeReg(I2C_RESET_SENSOR, &tempData, 1);
+    logger->info("Sent sensor reset command");
     delay(20);
 
     while (true)
     {
-        __pWire->begin();
         __pWire->beginTransmission(__I2C_addr);
-        if (__pWire->endTransmission() == 0)
-            return true;
-        if (++retry > 100)
-            return false;
+        if (__pWire->endTransmission() == 0) {
+            logger->info("I2C device is responsive");
+            return true;}
+        if (++retry > 100) {
+            logger->error("I2C device not responding after 100 retries");
+            return false; }
         delay(10);
     }
 }

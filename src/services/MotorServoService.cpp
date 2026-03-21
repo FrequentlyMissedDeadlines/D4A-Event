@@ -10,19 +10,14 @@
 #include <Arduino.h>
 #include <cstdlib>  // abs()
 #include <cstring>  // memset()
-DFR1216_I2C board = DFR1216_I2C(); // Singleton instance of the board service
+
+/// The DFR1216_I2C singleton is owned by DFR1216.cpp; reference it here.
+extern DFR1216_I2C board;
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
 
-MotorServoService::MotorServoService()
-{
-    
-    memset(motor_speeds_, 0, sizeof(motor_speeds_));
-    memset(servo_angles_, 0, sizeof(servo_angles_));
-    for (uint8_t i = 0; i < MotorServoConsts::SERVO_COUNT; ++i)
-        servo_types_[i] = ServoType::SERVO_180;
-}
+MotorServoService::MotorServoService() = default;
 
 // ---------------------------------------------------------------------------
 // IsServiceInterface
@@ -34,12 +29,18 @@ std::string MotorServoService::getServiceName()
 }
 
 bool MotorServoService::initializeService()
-{
+{ 
     memset(motor_speeds_, 0, sizeof(motor_speeds_));
     memset(servo_angles_, 0, sizeof(servo_angles_));
     for (uint8_t i = 0; i < MotorServoConsts::SERVO_COUNT; ++i)
         servo_types_[i] = ServoType::SERVO_180;
-
+    if (board.getStatus() != STARTED)
+    {
+        setServiceStatus(INITIALIZED_FAILED);
+        if (logger)
+            logger->error(progmem_to_string(MotorServoConsts::msg_board_not_started).c_str());
+        return false;
+    }
     setServiceStatus(INITIALIZED);
     if (logger)
         logger->info(progmem_to_string(MotorServoConsts::msg_init_ok).c_str());
@@ -47,14 +48,7 @@ bool MotorServoService::initializeService()
 }
 
 bool MotorServoService::startService()
-{
-    if (!board.isServiceStarted())
-    {
-        if (logger)
-            logger->error(progmem_to_string(MotorServoConsts::msg_board_not_started).c_str());
-        setServiceStatus(START_FAILED);
-        return false;
-    }
+{   
     setServiceStatus(STARTED);
     if (logger)
         logger->info(progmem_to_string(MotorServoConsts::msg_started).c_str());

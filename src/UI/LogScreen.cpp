@@ -70,12 +70,13 @@ void LogScreen::updateScreen()
 
     for (const auto &entry : log_.get_log_rows())
     {
-        char prefix[12];
-        snprintf(prefix, sizeof(prefix), "%c|%6lu|",
+        char prefix[20];
+        snprintf(prefix, sizeof(prefix), "%c|%.5s|%5lu|",
                  (entry.level == RollingLogger::ERROR)   ? 'E' :
                  (entry.level == RollingLogger::WARNING) ? 'W' :
                  (entry.level == RollingLogger::INFO)    ? 'I' :
                  (entry.level == RollingLogger::DEBUG)   ? 'D' : 'T',
+                 entry.source,
                  entry.timestamp_ms % 100000UL);
 
         std::string full_line = std::string(prefix) + entry.message;

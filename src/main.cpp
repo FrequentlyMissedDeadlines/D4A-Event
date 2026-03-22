@@ -7,6 +7,7 @@
 #include <esp_log.h>
 #include <AsyncUDP.h>
 #include <unihiker_k10.h>
+#include <esp_camera.h>
 #include "RollingLogger.h"
 #include "IsServiceInterface.h"
 #include <esp_log.h>
@@ -18,6 +19,7 @@
 #include "services/AmakerBotService.h"
 #include "services/AmakerBotUIService.h"
 #include "services/MotorServoService.h"
+#include "services/LEDService.h"
 #include "ESPLogToRolling.h"
 #define LOAD_FONT8    // TFT font - special case for library config
 
@@ -27,9 +29,6 @@ namespace MainConsts
   constexpr const char msg_http_task_started[] PROGMEM = "HTTP server task started";
   constexpr const char msg_webserver_running[] PROGMEM = "WebServer task running...";
   constexpr const char msg_service[] PROGMEM = "Service ";
-  constexpr const char msg_start_failed[] PROGMEM = " start failed.";
-  constexpr const char msg_started[] PROGMEM = " started.";
-  constexpr const char msg_initialize_failed[] PROGMEM = " initialize failed.";
   constexpr const char msg_openapi_registered[] PROGMEM = "OpenAPI registered ";
   constexpr const char msg_register_failed[] PROGMEM = "registerOpenAPIService failed for ";
   constexpr const char msg_no_openapi[] PROGMEM = "No OpenAPI for ";
@@ -86,7 +85,8 @@ RollingLogger esp_logger   = RollingLogger();
 WifiService wifi_service_ = WifiService();
 MotorServoService motor_servo_ = MotorServoService();
 extern DFR1216_I2C board;  ///< Defined in DFR1216.cpp; registered as 0x03 service handler
-AmakerBotService amaker_bot_ = AmakerBotService({&motor_servo_, &board});
+LEDService led_service_(unihiker, board);
+AmakerBotService amaker_bot_ = AmakerBotService({&motor_servo_, &board, &led_service_});
 BotServerUDP bot_over_udp_ = BotServerUDP(amaker_bot_);
 BotServerWeb bot_over_web_ = BotServerWeb(amaker_bot_);
 BotServerWebSocket bot_over_websocket_ = BotServerWebSocket(amaker_bot_);
@@ -116,7 +116,8 @@ namespace
 #ifdef VERBOSE_DEBUG
     debug_logger.debug(progmem_to_string(MainConsts::msg_service) + service.getServiceName());
 #endif
-    service.setLogger(&debug_logger);
+    service.setDebugLogger(&debug_logger);
+    service.setServiceLogger(&svc_logger);
 
     // Attach settings service if this is not the settings service itself
     // if (&service != static_cast<IsServiceInterface *>(&settings_service))
@@ -129,7 +130,7 @@ namespace
       unihiker.rgb->write(0, 32, 32, 0); // pixel0 = yellow (initialised, starting)
       if (!service.startService())
       {
-        bot_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_start_failed));
+        bot_logger.error(service.getServiceName() + " " + FPSTR(ServiceConst::msg_start_failed));
         unihiker.rgb->write(0, 0, 0, 0);
         return false;
       }
@@ -137,13 +138,13 @@ namespace
       {
         unihiker.rgb->write(0, 0, 32, 0); // pixel0 = green (started ok)
 #ifdef VERBOSE_DEBUG
-        bot_logger.debug(service.getServiceName() + progmem_to_string(MainConsts::msg_started));
+        bot_logger.debug(service.getServiceName() + " " + FPSTR(ServiceConst::msg_start_ok));
 #endif
       }
     }
     else
     {
-      bot_logger.error(service.getServiceName() + progmem_to_string(MainConsts::msg_initialize_failed));
+      bot_logger.error(service.getServiceName() + " " + FPSTR(ServiceConst::msg_init_failed));
       unihiker.rgb->write(0, 0, 0, 0);
       return false;
     }
@@ -197,6 +198,17 @@ void xtask_web_server(void * /*pvParameters*/)
   bot_over_web_.setPort(80);
   bot_over_web_.start();
 
+  // Initialize camera and register /cam/snapshot + /cam/stream routes
+  static QueueHandle_t cam_queue = xQueueCreate(2, sizeof(camera_fb_t *));
+  if (cam_queue) {
+    register_camera(PIXFORMAT_RGB565, FRAMESIZE_HVGA, 2, cam_queue);
+    esp_log_level_set("cam_hal", ESP_LOG_ERROR); // suppress noisy queue-full warnings
+    bot_over_web_.registerCameraRoutes(cam_queue);
+    debug_logger.info("Camera routes registered (/cam/snapshot, /cam/stream)");
+  } else {
+    debug_logger.error("Camera queue allocation failed — camera routes not registered");
+  }
+
   debug_logger.info("WebServer task ready (HTTP:80) on core 1");
 
   for (;;) {
@@ -211,15 +223,15 @@ void xtask_web_server(void * /*pvParameters*/)
  */
 void setup()
 {
-  esp_log_level_set("*", ESP_LOG_DEBUG);
+
   // Initialize Serial FIRST for debugging
   #ifdef SERIAL_DEBUG
   Serial.begin(serial_baud);
   delay(100);
   Serial.println("\n\n=== K10-Bot Starting ===");
+  delay(500);
   #endif
   // Small delay to ensure system stabilizes
-  delay(500);
 
   // Configure ESP-IDF logging AS FIRST THING before any hardware init
   esp_log_level_set("*", ESP_LOG_DEBUG);
@@ -257,7 +269,8 @@ void setup()
   unihiker.rgb->write(1, 0, 0, 0);
   unihiker.rgb->write(2, 0, 0, 0);
 
-  ui_service.setLogger(&debug_logger);
+  ui_service.setDebugLogger(&debug_logger);
+  ui_service.setServiceLogger(&svc_logger);
   ui_service.setShownLoggers(&bot_logger, &svc_logger, &debug_logger, &esp_logger);
   ui_service.initializeService();
   ui_service.startService();
@@ -267,6 +280,7 @@ void setup()
   start_service(board);
 
   start_service(motor_servo_);
+  start_service(led_service_);
   start_service(amaker_bot_);
 
   start_service(wifi_service_);

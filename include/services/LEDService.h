@@ -46,9 +46,6 @@
 namespace LEDConsts
 {
     constexpr const char str_service_name[]        PROGMEM = "LED Service";
-    constexpr const char msg_init_ok[]             PROGMEM = "LEDService: initialized";
-    constexpr const char msg_started[]             PROGMEM = "LEDService: started";
-    constexpr const char msg_stopped[]             PROGMEM = "LEDService: stopped";
     constexpr const char msg_board_not_started[]   PROGMEM = "LEDService: DFR1216Board not started";
     constexpr const char msg_invalid_mask[]        PROGMEM = "LEDService: led_mask has no valid bits (0x1F)";
     constexpr const char msg_invalid_brightness[]  PROGMEM = "LEDService: brightness out of range (0-255)";
@@ -102,7 +99,7 @@ struct LEDState
  *   extern DFR1216Board    dfr_board;
  *
  *   LEDService led_service(unihiker, dfr_board);
- *   led_service.setLogger(&debug_logger);
+ *   led_service.setDebugLogger(&debug_logger);
  *   led_service.initializeService();
  *   led_service.startService();
  *

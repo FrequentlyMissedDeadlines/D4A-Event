@@ -24,7 +24,7 @@
  *   logger.error(FPSTR(MyConsts::msg_failed));
  *
  *   for (const auto &entry : logger.get_log_rows())
- *       Serial.println(entry.message.c_str());
+ *       Serial.println(entry.message.c_str());  // entry.source holds the 5-letter tag
  * @endcode
  */
 
@@ -60,6 +60,7 @@ public:
         LogLevel      level;        ///< Severity level
         unsigned long timestamp_ms; ///< millis() at log time
         std::string   message;      ///< Message text
+        char          source[6];    ///< 5-letter source tag (null-terminated), e.g. "MOTOR" or "WiFi "
     };
 
     // ---- Construction ----
@@ -94,23 +95,36 @@ public:
 
     // ---- Logging ----
 
-    /** @brief Log a message at the given level. */
-    void log(const std::string &message, LogLevel level);
+    /**
+     * @brief Log a message at the given level.
+     * @param source Optional 5-letter source tag (e.g. "MOTOR", "WiFi "). Truncated to 5 chars.
+     */
+    void log(const std::string &message, LogLevel level, const char *source = "     ");
 
     /** @brief Log a PROGMEM message at the given level. */
-    void log(const __FlashStringHelper *message, LogLevel level);
+    void log(const __FlashStringHelper *message, LogLevel level, const char *source = "     ");
 
-    void trace(const std::string &message)             { log(message, TRACE);   }
-    void trace(const __FlashStringHelper *message)     { log(message, TRACE);   }
-    void debug(const std::string &message)             { log(message, DEBUG);   }
-    void debug(const __FlashStringHelper *message)     { log(message, DEBUG);   }
-    void info(const std::string &message)              { log(message, INFO);    }
-    void info(const __FlashStringHelper *message)      { log(message, INFO);    }
-    void warning(const std::string &message)           { log(message, WARNING); }
-    void warning(const __FlashStringHelper *message)   { log(message, WARNING); }
-    void error(const std::string &message)             { log(message, ERROR);   }
-    void error(const __FlashStringHelper *message)     { log(message, ERROR);   }
-
+    // void trace(const std::string &message)             { log(message, TRACE);   }
+    // void trace(const __FlashStringHelper *message)     { log(message, TRACE);   }
+    // void debug(const std::string &message)             { log(message, DEBUG);   }
+    // void debug(const __FlashStringHelper *message)     { log(message, DEBUG);   }
+    // void info(const std::string &message)              { log(message, INFO);    }
+    // void info(const __FlashStringHelper *message)      { log(message, INFO);    }
+    // void warning(const std::string &message)           { log(message, WARNING); }
+    // void warning(const __FlashStringHelper *message)   { log(message, WARNING); }
+    // void error(const std::string &message)             { log(message, ERROR);   }
+    // void error(const __FlashStringHelper *message)     { log(message, ERROR);   }
+    
+    void trace(const std::string &message, const char *source = "     ")             { log(message, TRACE, source);   }
+    void trace(const __FlashStringHelper *message, const char *source = "     ")     { log(message, TRACE, source);   }
+    void debug(const std::string &message, const char *source = "     ")             { log(message, DEBUG, source);   }
+    void debug(const __FlashStringHelper *message, const char *source = "     ")     { log(message, DEBUG, source);   }
+    void info(const std::string &message, const char *source = "     ")              { log(message, INFO, source);    }
+    void info(const __FlashStringHelper *message, const char *source = "     ")      { log(message, INFO, source);    }
+    void warning(const std::string &message, const char *source = "     ")           { log(message, WARNING, source); }
+    void warning(const __FlashStringHelper *message, const char *source = "     ")   { log(message, WARNING, source); }
+    void error(const std::string &message, const char *source = "     ")             { log(message, ERROR, source);   }
+    void error(const __FlashStringHelper *message, const char *source = "     ")     { log(message, ERROR, source);   }
     // ---- Access ----
 
     /**

@@ -1,0 +1,4 @@
+# Requirements for K10 Bot test scripts
+# Install with: pip install -r scripts/requirements.txt
+
+websockets>=13.0   # test_websocket.py — async WebSocket client

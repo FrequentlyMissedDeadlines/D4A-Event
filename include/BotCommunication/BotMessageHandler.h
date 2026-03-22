@@ -202,7 +202,7 @@ public:
     // ---- Lifecycle ----
 
     /**
-     * @brief Attach a logger for debug / error output.
+     * @brief Attach a debugLogger for debug / error output.
      * @param log Pointer to a RollingLogger instance (may be nullptr to disable logging)
      */
     void setBotMessageLogger(RollingLogger *log) { logger_ = log; }

@@ -60,6 +60,16 @@ function checkGamepadConnection() {
 }
 
 /**
+ * Public entry point to detect a gamepad (called from HTML button).
+ */
+function detectGamepad() {
+  checkGamepadConnection();
+  if (!gamepadConnected) {
+    showStatus('No controller detected. Press any button on your controller.', false);
+  }
+}
+
+/**
  * Handle gamepad connection
  */
 function onGamepadConnected(event) {
@@ -140,44 +150,44 @@ function processGamepadInput(gamepad) {
   });
   // RB Button (button 5)
   handleButton(gamepad, XBOX_BUTTONS.RB, 'RB', () => {
-    setServoAngle(4, +45);
+    setServoAngle(5, +45);
   }, () => {
-    setServoAngle(4, 0 );
+    setServoAngle(5, 0);
   });
   
   // RT Button (button 7)
   handleButton(gamepad, XBOX_BUTTONS.RT, 'RT', () => {
-    setServoAngle(4, -45);
+    setServoAngle(5, -45);
   }, () => {
-    setServoAngle(4, 0);
+    setServoAngle(5, 0);
   });
   
   // D-Pad Up (button 12)
   handleButton(gamepad, XBOX_BUTTONS.DPAD_UP, 'UP', () => {
-    setServoSpeeds([1, 2], [100, 100]);
+    _setServoSpeeds([1, 2], [100, 100]);
   }, () => {
-    setServoSpeeds([1, 2], [0, 0]);
+    _setServoSpeeds([1, 2], [0, 0]);
   });
   
   // D-Pad Down (button 13)
   handleButton(gamepad, XBOX_BUTTONS.DPAD_DOWN, 'DOWN', () => {
-    setServoSpeeds([1, 2], [-100, -100]);
+    _setServoSpeeds([1, 2], [-100, -100]);
   }, () => {
-    setServoSpeeds([1, 2], [0, 0]);
+    _setServoSpeeds([1, 2], [0, 0]);
   });
   
   // D-Pad Left (button 14)
   handleButton(gamepad, XBOX_BUTTONS.DPAD_LEFT, 'LEFT', () => {
-    setServoSpeeds([1, 2], [100, -100]);
+    _setServoSpeeds([1, 2], [100, -100]);
   }, () => {
-    setServoSpeeds([1, 2], [0, 0]);
+    _setServoSpeeds([1, 2], [0, 0]);
   });
   
   // D-Pad Right (button 15)
   handleButton(gamepad, XBOX_BUTTONS.DPAD_RIGHT, 'RIGHT', () => {
-    setServoSpeeds([1, 2], [-100, 100]);
+    _setServoSpeeds([1, 2], [-100, 100]);
   }, () => {
-    setServoSpeeds([1, 2], [0, 0]);
+    _setServoSpeeds([1, 2], [0, 0]);
   });
 }
 
@@ -230,22 +240,22 @@ function onKeyDown(event) {
     // Arrow keys → D-Pad
     case 'arrowup':
       updateButtonIndicator('UP', true);
-      setServoSpeeds([1, 2], [100, 100]);
+      _setServoSpeeds([1, 2], [100, 100]);
       break;
       
     case 'arrowdown':
       updateButtonIndicator('DOWN', true);
-      setServoSpeeds([1, 2], [-100, -100]);
+      _setServoSpeeds([1, 2], [-100, -100]);
       break;
       
     case 'arrowleft':
       updateButtonIndicator('LEFT', true);
-      setServoSpeeds([1, 2], [100, -100]);
+      _setServoSpeeds([1, 2], [100, -100]);
       break;
       
     case 'arrowright':
       updateButtonIndicator('RIGHT', true);
-      setServoSpeeds([1, 2], [-100, 100]);
+      _setServoSpeeds([1, 2], [-100, 100]);
       break;
       
     // Q → LB
@@ -253,7 +263,7 @@ function onKeyDown(event) {
       updateButtonIndicator('LB', true);
       setServoAngle(4, 45);
       break;
-    // Q → LT
+    // A → LT
     case 'a':
       updateButtonIndicator('LT', true);
       setServoAngle(4, -45);
@@ -262,13 +272,13 @@ function onKeyDown(event) {
     // W → RB
     case 'w':
       updateButtonIndicator('RB', true);
-      setServoAngle(4, 45);
+      setServoAngle(5, 45);
       break;
       
-    // W → RT
+    // S → RT
     case 's':
       updateButtonIndicator('RT', true);
-      setServoAngle(4, -45);
+      setServoAngle(5, -45);
       break;
   }
 }
@@ -285,45 +295,45 @@ function onKeyUp(event) {
     // Arrow keys → Stop servos
     case 'arrowup':
       updateButtonIndicator('UP', false);
-      setServoSpeeds([1, 2], [0, 0]);
+      _setServoSpeeds([1, 2], [0, 0]);
       break;
       
     case 'arrowdown':
       updateButtonIndicator('DOWN', false);
-      setServoSpeeds([1, 2], [0, 0]);
+      _setServoSpeeds([1, 2], [0, 0]);
       break;
       
     case 'arrowleft':
       updateButtonIndicator('LEFT', false);
-      setServoSpeeds([1, 2], [0, 0]);
+      _setServoSpeeds([1, 2], [0, 0]);
       break;
       
     case 'arrowright':
       updateButtonIndicator('RIGHT', false);
-      setServoSpeeds([1, 2], [0, 0]);
+      _setServoSpeeds([1, 2], [0, 0]);
       break;
       
     // Q → LB release
     case 'q':
       updateButtonIndicator('LB', false);
-      setServoAngle(4, 45);
+      setServoAngle(4, 0);
       break;
-    // Q → LT release
+    // A → LT release
     case 'a':
       updateButtonIndicator('LT', false);
-      setServoAngle(4, -45);
+      setServoAngle(4, 0);
       break;
       
     // W → RB release
     case 'w':
       updateButtonIndicator('RB', false);
-      setServoAngle(4, 45);
+      setServoAngle(5, 0);
       break;
       
-     // W → RT release
+    // S → RT release
     case 's':
       updateButtonIndicator('RT', false);
-      setServoAngle(4, -45);
+      setServoAngle(5, 0);
       break;
   }
 }
@@ -332,7 +342,7 @@ function onKeyUp(event) {
 
 /**
  * Set servo angle (for angular servos).
- * Uses fire-and-forget over the WebSocket UDP bridge so that rapid
+ * Uses fire-and-forget over the WebSocket WS bridge so that rapid
  * joystick inputs are never queued behind a pending response.
  *
  * @param {number} channel - Servo channel (0-7)
@@ -358,21 +368,21 @@ function setServoAngle(channel, angle) {
 
   const packet = new Uint8Array([0x21, ...angles]);
 
-  // Fire-and-forget (UDP-like): no response awaited
-  if (typeof sendUDPFireAndForget !== 'undefined') {
-    sendUDPFireAndForget(packet);
+  // Fire-and-forget (WS-like): no response awaited
+  if (typeof sendWSFireAndForget !== 'undefined') {
+    sendWSFireAndForget(packet);
   }
 }
 
 /**
  * Set servo speeds (for rotational servos).
- * Uses fire-and-forget over the WebSocket UDP bridge so that rapid
+ * Uses fire-and-forget over the WebSocket WS bridge so that rapid
  * joystick inputs are never queued behind a pending response.
  *
  * @param {number[]} channels - Array of channel numbers
  * @param {number[]} speeds - Array of speeds (-100 to +100)
  */
-function setServoSpeeds(channels, speeds) {
+function _setServoSpeeds(channels, speeds) {
   if (typeof isMasterRegistered !== 'undefined' && !isMasterRegistered) {
     return;
   }
@@ -388,9 +398,9 @@ function setServoSpeeds(channels, speeds) {
 
   const packet = new Uint8Array([0x22, mask, ...speedBytes]);
 
-  // Fire-and-forget (UDP-like): no response awaited
-  if (typeof sendUDPFireAndForget !== 'undefined') {
-    sendUDPFireAndForget(packet);
+  // Fire-and-forget (WS-like): no response awaited
+  if (typeof sendWSFireAndForget !== 'undefined') {
+    sendWSFireAndForget(packet);
   }
 }
 

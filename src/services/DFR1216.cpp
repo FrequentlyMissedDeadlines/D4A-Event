@@ -100,11 +100,11 @@ bool DFR1216Board::initializeService()
     if (!begin())
     {
         setServiceStatus(INITIALIZED_FAILED);
-        logger->error(getServiceName() + " " + getStatusString());
+        debugLogger->error(getServiceName() + " " + getStatusString());
         return false;
     }
     setServiceStatus(INITIALIZED);
-    logger->info(getServiceName() + " " + getStatusString());   
+    debugLogger->info(getServiceName() + " " + getStatusString());   
     return true;
 }
 
@@ -113,20 +113,20 @@ bool DFR1216Board::startService()
     if (IsServiceInterface::getStatus() != INITIALIZED)
     {
         setServiceStatus(START_FAILED);
-        logger->error(getServiceName() + " " + getStatusString());   
+        debugLogger->error(getServiceName() + " " + getStatusString());   
         return false;
     }
 
     setServiceStatus(STARTED);
 
-    logger->info(getServiceName() + " " + getStatusString());
+    debugLogger->info(getServiceName() + " " + getStatusString());
     return true;
 }
 
 bool DFR1216Board::stopService()
 {
     setServiceStatus(STOPPED);
-    logger->info(getServiceName() + " " + getStatusString());
+    debugLogger->info(getServiceName() + " " + getStatusString());
     return true;
 }
 bool DFR1216Board::saveSettings() { return true; }
@@ -138,13 +138,13 @@ bool DFR1216Board::setServoAngle(uint8_t channel, uint16_t angle)
 
     if (channel > 5)
     {
-        logger->error(progmem_to_string(DFR1216Consts::msg_servo_channel_out_of_range));
+        debugLogger->error(progmem_to_string(DFR1216Consts::msg_servo_channel_out_of_range));
         return false;
     }
 
     if (angle > 180)
     {
-        logger->error(progmem_to_string(DFR1216Consts::msg_angle_out_of_range));
+        debugLogger->error(progmem_to_string(DFR1216Consts::msg_angle_out_of_range));
         return false;
     }
 
@@ -152,7 +152,7 @@ bool DFR1216Board::setServoAngle(uint8_t channel, uint16_t angle)
 
     char log_buf[64];
     snprintf(log_buf, sizeof(log_buf), "Set servo %u to angle %u", channel, angle);
-    logger->info(log_buf);
+    debugLogger->info(log_buf);
     return true;
 }
 bool DFR1216Board::setMotorSpeed(uint8_t motor, int8_t speed)
@@ -162,13 +162,13 @@ bool DFR1216Board::setMotorSpeed(uint8_t motor, int8_t speed)
 
     if (motor < 1 || motor > 4)
     {
-        logger->error(progmem_to_string(DFR1216Consts::msg_motor_out_of_range));
+        debugLogger->error(progmem_to_string(DFR1216Consts::msg_motor_out_of_range));
         return false;
     }
 
     if (speed < -100 || speed > 100)
     {
-        logger->error(progmem_to_string(DFR1216Consts::msg_speed_out_of_range));
+        debugLogger->error(progmem_to_string(DFR1216Consts::msg_speed_out_of_range));
         return false;
     }
 
@@ -201,20 +201,20 @@ bool DFR1216Board::setMotorSpeed(uint8_t motor, int8_t speed)
 
     char log_buf[64];
     snprintf(log_buf, sizeof(log_buf), "Set motor %u to speed %d", motor, speed);
-    logger->info(log_buf);
+    debugLogger->info(log_buf);
     return true;
 }
 bool DFR1216Board::setLEDColor(uint8_t led_index, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness)
 {
     if (!isServiceStarted())
     {
-        IsServiceInterface::logger->error("Service not started");
+        IsServiceInterface::debugLogger->error("Service not started");
         return false;
     }
 
     if (led_index > 2)
     {
-        IsServiceInterface::logger->error("Invalid LED index: " + std::to_string(led_index));
+        IsServiceInterface::debugLogger->error("Invalid LED index: " + std::to_string(led_index));
         return false;
     }
 
@@ -241,7 +241,7 @@ bool DFR1216Board::setLEDColor(uint8_t led_index, uint8_t red, uint8_t green, ui
 
     char log_buf[64];
     snprintf(log_buf, sizeof(log_buf), "Set LED %u to RGB(%u,%u,%u)", led_index, red, green, blue);
-    IsServiceInterface::logger->info(log_buf);
+    IsServiceInterface::debugLogger->info(log_buf);
     return true;
 }
 bool DFR1216Board::turnOffLED(uint8_t led_index)
@@ -658,38 +658,38 @@ DFR1216_I2C::DFR1216_I2C(TwoWire *pWire, uint8_t addr)
 }
 
 bool DFR1216_I2C::begin()
-{   logger->info("Initializing DFR1216 I2C communication");
+{   debugLogger->info("Initializing DFR1216 I2C communication");
     if (!__i2c_mutex)
         __i2c_mutex = xSemaphoreCreateRecursiveMutex();
-    logger->info("I2C mutex created");
+    debugLogger->info("I2C mutex created");
     uint8_t retry    = 0;
     uint8_t tempData = DATA_ENABLE;
 
     __pWire->begin();
-    logger->info("I2C bus started");
+    debugLogger->info("I2C bus started");
     __pWire->setClock(400000);
     __pWire->beginTransmission(__I2C_addr);
     char addr_buf[32];
     snprintf(addr_buf, sizeof(addr_buf), "Checking I2C device presence at address 0x%02X", __I2C_addr);
-    logger->info(addr_buf);
+    debugLogger->info(addr_buf);
     if (__pWire->endTransmission() != 0) {
-        logger->error("I2C device not responding ");
+        debugLogger->error("I2C device not responding ");
         return false;
     }
 
     // Reset all sensors on the board
     writeReg(I2C_RESET_SENSOR, &tempData, 1);
-    logger->info("Sent sensor reset command");
+    debugLogger->info("Sent sensor reset command");
     delay(20);
 
     while (true)
     {
         __pWire->beginTransmission(__I2C_addr);
         if (__pWire->endTransmission() == 0) {
-            logger->info("I2C device is responsive");
+            debugLogger->info("I2C device is responsive");
             return true;}
         if (++retry > 100) {
-            logger->error("I2C device not responding after 100 retries");
+            debugLogger->error("I2C device not responding after 100 retries");
             return false; }
         delay(10);
     }

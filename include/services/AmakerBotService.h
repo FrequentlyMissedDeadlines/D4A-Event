@@ -69,18 +69,30 @@ public:
 
     /**
      * @brief Dispatch a binary bot frame to the appropriate bot message handler (handleBotMessage)
-     * @param data Raw frame; byte[0] is the destination+action byte
-     * @param len  Frame length in bytes
+     * @param data      Raw frame; byte[0] is the destination+action byte
+     * @param len       Frame length in bytes
+     * @param senderIP  IP address (or unique identifier) of the sender — used by
+     *                  CMD_REGISTER to record the master.  Pass an empty string
+     *                  when the sender IP is not available.
      */
-    std::string dispatch(const uint8_t *data, size_t len);
+    std::string dispatch(const uint8_t *data, size_t len,
+                         const std::string &senderIP = {});
 
     /**
      * @brief Dispatch a binary bot frame to the appropriate command.
-     * @param data Raw frame; byte[0] is the destination+action byte
-     * @param len  Frame length in bytes
+     * @param data      Raw frame; byte[0] is the destination+action byte
+     * @param len       Frame length in bytes
+     * @param senderIP  IP address (or unique identifier) of the sender.
      * @return Binary response string
      */
-    std::string handleBotMessage(const uint8_t *data, size_t len) override;
+    std::string handleBotMessage(const uint8_t *data, size_t len,
+                                 const std::string &senderIP);
+
+    /** @brief Satisfies IsBotActionHandlerInterface (no sender IP available). */
+    std::string handleBotMessage(const uint8_t *data, size_t len) override
+    {
+        return handleBotMessage(data, len, {});
+    }
 
     // ---- Public accessors -------------------------------------------
 

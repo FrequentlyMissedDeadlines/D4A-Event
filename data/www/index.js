@@ -1,113 +1,236 @@
+'use strict';
 
-const MASTER_BASE = '/api/amakerbot/v1';
+// ── Bot protocol constants (service 0x04, AmakerBot) ─────────────────────────
+// Action byte = (service_id << 4) | cmd
+const IDX_ACTION = {
+  REGISTER:   0x41,   // CMD_REGISTER   (0x04 << 4 | 0x01)
+  UNREGISTER: 0x42,   // CMD_UNREGISTER (0x04 << 4 | 0x02)
+  PING:       0x44    // CMD_PING       (0x04 << 4 | 0x04)
+};
+
+const IDX_STATUS = {
+  OK:      0x01,
+  IGNORED: 0x02,
+  DENIED:  0x03,
+  ERROR:   0x04
+};
+
+const WS_TIMEOUT_MS = 2000;
+
+// ── Module state ─────────────────────────────────────────────────────────────
+let _ws              = null;
+let _wsConnected     = false;
+let _wsConnectPromise = null;
+let _pendingResponse = null;
+let _registered      = false;
+
+// ── Feedback helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Show a feedback message in the #master-feedback element.
+ * @param {string}  msg
+ * @param {boolean} ok  - true → green, false → red
+ */
 function setFeedback(msg, ok) {
   const el = document.getElementById('master-feedback');
+  if (!el) return;
   el.textContent = msg;
   el.style.color = ok ? '#388e3c' : '#c62828';
 }
-function renderMasterStatus(data) {
+
+/**
+ * Update the master-status box to reflect current registration state.
+ * @param {'registered'|'unregistered'|'error'|'connecting'} state
+ * @param {string} [detail]  Optional extra text (e.g. error message)
+ */
+function renderMasterStatus(state, detail) {
   const box = document.getElementById('master-status-box');
-  if (data && data.registered) {
-    box.style.background = '#e8f5e9';
-    box.style.color = '#2e7d32';
-    box.innerHTML = '✅ <strong>Master registered</strong> — IP: <code>' + data.ip +
-                    '</code>&nbsp;&nbsp;Token: <code>' + (data.token || '—') + '</code>';
-  } else {
-    box.style.background = '#fff3e0';
-    box.style.color = '#e65100';
-    box.innerHTML = '⚠️ <strong>No master registered</strong>';
+  if (!box) return;
+
+  switch (state) {
+    case 'registered':
+      box.style.background = '#e8f5e9';
+      box.style.color      = '#2e7d32';
+      box.innerHTML        = '✅ <strong>Registered as master</strong>';
+      break;
+    case 'unregistered':
+      box.style.background = '#fff3e0';
+      box.style.color      = '#e65100';
+      box.innerHTML        = '⚠️ <strong>Not registered</strong>';
+      break;
+    case 'connecting':
+      box.style.background = '#f3f3f3';
+      box.style.color      = '#555';
+      box.textContent      = '⏳ Connecting…';
+      break;
+    case 'error':
+    default:
+      box.style.background = '#ffebee';
+      box.style.color      = '#b71c1c';
+      box.textContent      = '❌ ' + (detail || 'WebSocket error');
+      break;
   }
 }
-function refreshMasterStatus() {
-  fetch(MASTER_BASE + '/master')
-    .then(r => r.json())
-    .then(renderMasterStatus)
-    .catch(() => {
-      const box = document.getElementById('master-status-box');
-      box.style.background = '#ffebee';
-      box.style.color = '#b71c1c';
-      box.textContent = '❌ Could not reach AmakerBot service';
-    });
+
+// ── WebSocket management ─────────────────────────────────────────────────────
+
+/**
+ * Open (or reuse) the WebSocket connection to /ws on the current host.
+ * @returns {Promise<WebSocket>}
+ */
+function ensureWebSocket() {
+  if (_wsConnected && _ws && _ws.readyState === WebSocket.OPEN) {
+    return Promise.resolve(_ws);
+  }
+  if (_wsConnectPromise) {
+    return _wsConnectPromise;
+  }
+
+  const wsUrl = 'ws://' + window.location.hostname + ':' + (window.location.port || '80') + '/ws';
+
+  _wsConnectPromise = new Promise((resolve, reject) => {
+    const socket = new WebSocket(wsUrl);
+    _ws = socket;
+    socket.binaryType = 'arraybuffer';
+
+    const connectionTimeout = setTimeout(() => {
+      if (socket.readyState === WebSocket.CONNECTING) socket.close();
+    }, 5000);
+
+    socket.onopen = () => {
+      clearTimeout(connectionTimeout);
+      _wsConnected      = true;
+      _wsConnectPromise = null;
+      resolve(socket);
+    };
+
+    socket.onmessage = (event) => {
+      const data = new Uint8Array(event.data);
+      if (_pendingResponse && data.length > 0 && data[0] === _pendingResponse.expectedAction) {
+        clearTimeout(_pendingResponse.timeoutId);
+        _pendingResponse.resolve(data);
+        _pendingResponse = null;
+      }
+    };
+
+    socket.onerror = () => {
+      clearTimeout(connectionTimeout);
+      _wsConnected      = false;
+      _wsConnectPromise = null;
+      if (_pendingResponse) {
+        clearTimeout(_pendingResponse.timeoutId);
+        _pendingResponse.reject(new Error('WebSocket error'));
+        _pendingResponse = null;
+      }
+      reject(new Error('WebSocket connection failed to ' + wsUrl));
+    };
+
+    socket.onclose = () => {
+      clearTimeout(connectionTimeout);
+      _wsConnected      = false;
+      _wsConnectPromise = null;
+      if (_pendingResponse) {
+        clearTimeout(_pendingResponse.timeoutId);
+        _pendingResponse.reject(new Error('WebSocket closed'));
+        _pendingResponse = null;
+      }
+    };
+  });
+
+  return _wsConnectPromise;
 }
-function doRegister() {
+
+/**
+ * Send a binary packet over the WebSocket and wait for the matching reply.
+ * @param {Uint8Array} packet
+ * @returns {Promise<Uint8Array>}
+ */
+async function sendPacket(packet) {
+  const socket = await ensureWebSocket();
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      _pendingResponse = null;
+      reject(new Error('No reply within ' + WS_TIMEOUT_MS + ' ms'));
+    }, WS_TIMEOUT_MS);
+
+    _pendingResponse = { resolve, reject, timeoutId, expectedAction: packet[0] };
+    socket.send(packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength));
+  });
+}
+
+// ── Master registration ───────────────────────────────────────────────────────
+
+/**
+ * Register this browser as bot master using the given token.
+ * Sends WS action 0x41 + token bytes over WebSocket.
+ */
+async function doRegister() {
   const token = document.getElementById('master-token-input').value.trim();
   if (!token) { setFeedback('Please enter a token.', false); return; }
-  fetch(MASTER_BASE + '/register?token=' + encodeURIComponent(token), { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.result === 'ok') {
-        setFeedback('Registered successfully (token logged on device).', true);
-        refreshMasterStatus();
-      } else {
-        setFeedback('Error: ' + (data.message || JSON.stringify(data)), false);
-      }
-    })
-    .catch(e => setFeedback('Request failed: ' + e, false));
+
+  renderMasterStatus('connecting');
+  setFeedback('Connecting…', true);
+
+  try {
+    const encoded = new TextEncoder().encode(token);
+    const packet  = new Uint8Array(1 + encoded.length);
+    packet[0]     = IDX_ACTION.REGISTER;
+    packet.set(encoded, 1);
+
+    const response   = await sendPacket(packet);
+    const statusByte = response.length >= 2 ? response[1] : 0xFF;
+
+    if (statusByte === IDX_STATUS.OK) {
+      _registered = true;
+      renderMasterStatus('registered');
+      setFeedback('Registered successfully.', true);
+    } else if (statusByte === IDX_STATUS.IGNORED) {
+      renderMasterStatus('unregistered');
+      setFeedback('Ignored — another master is already registered.', false);
+    } else if (statusByte === IDX_STATUS.DENIED) {
+      renderMasterStatus('unregistered');
+      setFeedback('Denied — invalid token.', false);
+    } else {
+      renderMasterStatus('error', 'status 0x' + statusByte.toString(16));
+      setFeedback('Registration failed (0x' + statusByte.toString(16) + ').', false);
+    }
+  } catch (e) {
+    renderMasterStatus('error', e.message);
+    setFeedback('Request failed: ' + e.message, false);
+  }
 }
-function doUnregister() {
-  const token = document.getElementById('master-token-input').value.trim();
-  const url = token
-    ? MASTER_BASE + '/unregister?token=' + encodeURIComponent(token)
-    : MASTER_BASE + '/unregister';
-  fetch(url, { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.result === 'ok') {
-        setFeedback('Master unregistered.', true);
-        refreshMasterStatus();
-      } else {
-        setFeedback('Error: ' + (data.message || JSON.stringify(data)), false);
-      }
-    })
-    .catch(e => setFeedback('Request failed: ' + e, false));
+
+/**
+ * Unregister this browser as bot master.
+ * Sends WS action 0x42 over WebSocket.
+ */
+async function doUnregister() {
+  renderMasterStatus('connecting');
+  setFeedback('Unregistering…', true);
+
+  try {
+    const packet  = new Uint8Array([IDX_ACTION.UNREGISTER]);
+    const response   = await sendPacket(packet);
+    const statusByte = response.length >= 2 ? response[1] : 0xFF;
+
+    if (statusByte === IDX_STATUS.OK) {
+      _registered = false;
+      renderMasterStatus('unregistered');
+      setFeedback('Unregistered.', true);
+    } else if (statusByte === IDX_STATUS.DENIED) {
+      setFeedback('Denied — not the current master.', false);
+    } else {
+      renderMasterStatus('error', 'status 0x' + statusByte.toString(16));
+      setFeedback('Unregistration failed (0x' + statusByte.toString(16) + ').', false);
+    }
+  } catch (e) {
+    renderMasterStatus('error', e.message);
+    setFeedback('Request failed: ' + e.message, false);
+  }
 }
-refreshMasterStatus();
-setInterval(refreshMasterStatus, 5000);
-const DISPLAY_BASE = '/api/amakerbot/v1/display';
-const DISPLAY_MODE_LABELS = { APP_UI: '🖥 App UI', APP_LOG: '📋 App Log', DEBUG_LOG: '🐛 Debug Log', ESP_LOG: '⚙️ ESP Log' };
-function renderDisplayStatus(data) {
-  const box = document.getElementById('display-status-box');
-  const label = DISPLAY_MODE_LABELS[data.mode] || data.mode;
-  box.style.background = '#e3f2fd';
-  box.style.color = '#0d47a1';
-  box.innerHTML = 'Current mode: <strong>' + label + '</strong>';
-}
-function setDisplayFeedback(msg, ok) {
-  const el = document.getElementById('display-feedback');
-  el.textContent = msg;
-  el.style.color = ok ? '#388e3c' : '#c62828';
-}
-function refreshDisplayStatus() {
-  fetch(DISPLAY_BASE)
-    .then(r => r.json())
-    .then(renderDisplayStatus)
-    .catch(() => {
-      const box = document.getElementById('display-status-box');
-      box.style.background = '#ffebee';
-      box.style.color = '#b71c1c';
-      box.textContent = '❌ Could not reach display endpoint';
-    });
-}
-function setDisplayMode(mode) {
-  fetch(DISPLAY_BASE + '?mode=' + mode, { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.result === 'ok' || data.mode) {
-        setDisplayFeedback('Mode set to ' + (DISPLAY_MODE_LABELS[data.mode] || data.mode), true);
-        renderDisplayStatus(data);
-      } else {
-        setDisplayFeedback('Error: ' + (data.message || JSON.stringify(data)), false);
-      }
-    })
-    .catch(e => setDisplayFeedback('Request failed: ' + e, false));
-}
-function cycleDisplayMode() {
-  fetch(DISPLAY_BASE + '/next', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      setDisplayFeedback('Cycled to ' + (DISPLAY_MODE_LABELS[data.mode] || data.mode), true);
-      renderDisplayStatus(data);
-    })
-    .catch(e => setDisplayFeedback('Request failed: ' + e, false));
-}
-refreshDisplayStatus();
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderMasterStatus('unregistered');
+});

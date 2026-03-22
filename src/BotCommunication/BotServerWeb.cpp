@@ -165,7 +165,7 @@ bool BotServerWeb::start()
     register_get_botserver();
     server_->on("/", HTTP_GET, [this](AsyncWebServerRequest *request)   
     {
-        request->redirect(FPSTR(BotServerWebConsts::static_url_root));
+        request->redirect(FPSTR(BotServerWebConsts::default_file));
     });
 
     server_->onNotFound([this](AsyncWebServerRequest *request)

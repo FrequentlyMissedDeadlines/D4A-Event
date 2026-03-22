@@ -16,14 +16,14 @@
 // ---------------------------------------------------------------------------
 
 namespace AmakerBotConsts
-{
+{   
     constexpr const char str_service_name[]     PROGMEM = "AmakerBot Service";
     constexpr const char default_bot_name[]     PROGMEM = "K10-Bot";
     constexpr const char msg_registered[]          PROGMEM = "Master registered: ";
     constexpr const char msg_already_registered[]  PROGMEM = "Master already registered: ";
     constexpr const char msg_unregistered[]        PROGMEM = "Master unregistered: ";
     constexpr const char msg_unregister_denied[]   PROGMEM = "Unregister denied (not master): ";
-    constexpr const char msg_init_ok[]             PROGMEM = "BotMaster: initialized";
+
 
     constexpr const char msg_token[]            PROGMEM = "AmakerBot: token=";
     constexpr const char msg_master_set[]       PROGMEM = "AmakerBot: master registered: ";
@@ -45,7 +45,7 @@ namespace AmakerBotConsts
     constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 50;  ///< ms without heartbeat → emergency stop
 } // namespace AmakerBotConsts
 
-
+char svccode[6] = "core ";
 // ---------------------------------------------------------------------------
 // IsServiceInterface
 // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ std::string AmakerBotService::getServiceName()
 }
 
 bool AmakerBotService::initializeService()
-{
+{   
     if (isServiceInitialized())
         return true;
 
@@ -64,16 +64,16 @@ bool AmakerBotService::initializeService()
     name_mutex_ = xSemaphoreCreateMutex();
     if (!name_mutex_)
     {
-        if (logger)
-            logger->error(FPSTR(AmakerBotConsts::msg_mutex_failed));
+        if (debugLogger)
+            debugLogger->error(FPSTR(AmakerBotConsts::msg_mutex_failed));
         setServiceStatus(INITIALIZED_FAILED);
         return false;
     }
     master_mutex_ = xSemaphoreCreateMutex();
     if (!master_mutex_)
     {
-        if (logger)
-            logger->error(progmem_to_string(AmakerBotConsts::msg_mutex_failed).c_str());
+        if (debugLogger)
+            debugLogger->error(progmem_to_string(AmakerBotConsts::msg_mutex_failed).c_str());
         setServiceStatus(INITIALIZED_FAILED);
         return false;
     }
@@ -83,14 +83,14 @@ bool AmakerBotService::initializeService()
     heartbeat_active_    = false;
     heartbeat_timed_out_ = false;
 
-    if (logger)
-        logger->info(progmem_to_string(AmakerBotConsts::msg_token) + server_token_);
+    if (debugLogger)
+        debugLogger->info(progmem_to_string(AmakerBotConsts::msg_token) + server_token_);
     master_ip_    = "";
     last_seen_ms_ = 0;
-    if (logger)
-        logger->info(progmem_to_string(AmakerBotConsts::msg_init_ok).c_str());
+
     setServiceStatus(INITIALIZED);
 
+    if (serviceLogger) serviceLogger->info((getServiceName() + " " + FPSTR(ServiceConst::msg_init_ok)).c_str(),svccode);
     return true;
 }
 
@@ -103,6 +103,7 @@ bool AmakerBotService::startService()
     }
 
     setServiceStatus(STARTED);
+    serviceLogger->info((getServiceName() + " " + FPSTR(ServiceConst::msg_start_ok)).c_str(),svccode);
     return true;
 }
 
@@ -131,14 +132,15 @@ uint8_t AmakerBotService::getBotServiceId() const
     return AmakerBotConsts::BOT_SERVICE_ID;
 }
 
-std::string AmakerBotService::handleBotMessage(const uint8_t *data, size_t len)
+std::string AmakerBotService::handleBotMessage(const uint8_t *data, size_t len,
+                                                const std::string &senderIP)
 {
     if (!data || len < 1)
         return BotProto::make_ack(0x00, BotProto::resp_invalid_params);
 
     const uint8_t action = data[0];
     const uint8_t cmd    = BotProto::command(action);
-    
+
     // ---- CMD_HEARTBEAT 0x03 : keep-alive, no reply --------------------
     if (cmd == AmakerBotConsts::CMD_HEARTBEAT)
     {
@@ -154,30 +156,33 @@ std::string AmakerBotService::handleBotMessage(const uint8_t *data, size_t len)
         if (len < 2)
             return BotProto::make_ack(action, BotProto::resp_invalid_params);
 
-        // Extract token (bytes 1..len-1) as string
         const std::string token(reinterpret_cast<const char *>(data + 1), len - 1);
 
         if (token != server_token_)
             return BotProto::make_ack(action, BotProto::resp_not_master);
 
-        // The sender's IP is not available here; main.cpp / BotServerUDP
-        // must call setMasterIfTokenValid() out-of-band with the sender IP,
-        // OR pass the IP in the payload.  For the UDP path the token is enough
-        // — the IP will be registered by the transport layer.
-        // Register a placeholder acknowledgement; full registration goes via
-        // setMasterIfTokenValid() which is called by the transport adapter.
-        return BotProto::make_ack(action, BotProto::resp_ok);
+        // Idempotent: already the master → just confirm
+        if (isMaster(senderIP))
+            return BotProto::make_ack(action, BotProto::resp_ok);
+
+        // Attempt to register; fails only if a *different* master is active
+        const bool ok = registerMaster(senderIP);
+        if (ok)
+        {
+            // Reset heartbeat watchdog for the new master session
+            heartbeat_active_    = false;
+            heartbeat_timed_out_ = false;
+        }
+        return BotProto::make_ack(action, ok ? BotProto::resp_ok
+                                             : BotProto::resp_operation_failed);
     }
 
     // ---- CMD_UNREGISTER 0x02 : (no payload, sender must be master) ----
     if (cmd == AmakerBotConsts::CMD_UNREGISTER)
     {
-        // NOTE: IP-based auth is enforced by the caller (BotServerUDP /
-        //       BotServerWebSocket) before dispatch, or can be added here
-        //       once sender IP is threaded through the handler interface.
-        const bool ok = unregister(getMasterIP());
+        const bool ok = unregister(senderIP);
         if (ok)
-            logger->info(FPSTR(AmakerBotConsts::msg_master_cleared));
+            debugLogger->info(FPSTR(AmakerBotConsts::msg_master_cleared));
         return BotProto::make_ack(action, ok ? BotProto::resp_ok : BotProto::resp_not_master);
     }
 
@@ -211,9 +216,7 @@ std::string AmakerBotService::handleBotMessage(const uint8_t *data, size_t len)
     // ---- CMD_SET_NAME 0x06 : [name…] (master only) --------------------
     if (cmd == AmakerBotConsts::CMD_SET_NAME)
     {
-        // Caller must verify master status before passing to this handler;
-        // we still defend here for belt-and-suspenders.
-        if (getMasterIP().empty())
+        if (!isMaster(senderIP))
             return BotProto::make_ack(action, BotProto::resp_not_master);
 
         if (len < 2)
@@ -270,7 +273,7 @@ void AmakerBotService::setBotName(const std::string &name)
     bot_name_ = name;
     xSemaphoreGive(name_mutex_);
 
-    logger->info(progmem_to_string(AmakerBotConsts::msg_name_changed) + name);
+    debugLogger->info(progmem_to_string(AmakerBotConsts::msg_name_changed) + name);
 }
 
 bool AmakerBotService::setMasterIfTokenValid(const std::string &ip, const std::string &token)
@@ -284,7 +287,7 @@ bool AmakerBotService::setMasterIfTokenValid(const std::string &ip, const std::s
         // Reset watchdog for the new master session
         heartbeat_active_    = false;
         heartbeat_timed_out_ = false;
-        logger->info(progmem_to_string(AmakerBotConsts::msg_master_set) + ip);
+        debugLogger->info(progmem_to_string(AmakerBotConsts::msg_master_set) + ip);
     }
     return ok;
 }
@@ -311,7 +314,7 @@ void AmakerBotService::checkHeartbeatTimeout()
         if (!heartbeat_timed_out_)
         {
             heartbeat_timed_out_ = true;
-            logger->error(FPSTR(AmakerBotConsts::msg_hb_timeout));
+            debugLogger->error(FPSTR(AmakerBotConsts::msg_hb_timeout));
             if (heartbeat_timeout_cb_)
                 heartbeat_timeout_cb_();
         }
@@ -320,7 +323,7 @@ void AmakerBotService::checkHeartbeatTimeout()
     {
         // Heartbeat restored
         heartbeat_timed_out_ = false;
-        logger->info(FPSTR(AmakerBotConsts::msg_hb_restored));
+        debugLogger->info(FPSTR(AmakerBotConsts::msg_hb_restored));
     }
 }
 
@@ -347,18 +350,19 @@ std::string AmakerBotService::generateRandomToken()
 // AmakerBotService::dispatch
 // ---------------------------------------------------------------------------
 
-std::string AmakerBotService::dispatch(const uint8_t *data, size_t len)
+std::string AmakerBotService::dispatch(const uint8_t *data, size_t len,
+                                        const std::string &senderIP)
 {
     if (!data || len == 0)
     {
-        if (logger)
-            logger->debug(FPSTR(BotMessageHandlerConsts::msg_empty_message));
+        if (debugLogger)
+            debugLogger->debug(FPSTR(BotMessageHandlerConsts::msg_empty_message));
         return {};
     }
     if ((data[0]>>4) == getBotServiceId())
-        return handleBotMessage(data, len);
-    
-        for (IsBotActionHandlerInterface *handler : bot_message_handlers) {
+        return handleBotMessage(data, len, senderIP);
+
+    for (IsBotActionHandlerInterface *handler : bot_message_handlers) {
         if (handler && (data[0]>>4) == handler->getBotServiceId()) {
             return handler->handleBotMessage(data, len);
         }
@@ -381,12 +385,12 @@ bool AmakerBotService::registerMaster(const std::string &requesterIP)
     if (!already_set)
         master_ip_ = requesterIP;
     xSemaphoreGive(master_mutex_);
-    if (logger)
+    if (debugLogger)
     {
         if (already_set)
-            logger->info((progmem_to_string(AmakerBotConsts::msg_already_registered) + requesterIP).c_str());
+            debugLogger->info((progmem_to_string(AmakerBotConsts::msg_already_registered) + requesterIP).c_str());
         else
-            logger->info((progmem_to_string(AmakerBotConsts::msg_registered) + requesterIP).c_str());
+            debugLogger->info((progmem_to_string(AmakerBotConsts::msg_registered) + requesterIP).c_str());
     }
     return !already_set;
 }
@@ -401,12 +405,12 @@ bool AmakerBotService::unregister(const std::string &requesterIP)
     if (is_master)
         master_ip_ = "";
     xSemaphoreGive(master_mutex_);
-    if (logger)
+    if (debugLogger)
     {
         if (is_master)
-            logger->info((progmem_to_string(AmakerBotConsts::msg_unregistered) + requesterIP).c_str());
+            debugLogger->info((progmem_to_string(AmakerBotConsts::msg_unregistered) + requesterIP).c_str());
         else
-            logger->info((progmem_to_string(AmakerBotConsts::msg_unregister_denied) + requesterIP).c_str());
+            debugLogger->info((progmem_to_string(AmakerBotConsts::msg_unregister_denied) + requesterIP).c_str());
     }
     return is_master;
 }

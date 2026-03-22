@@ -48,7 +48,7 @@ bool LEDService::initializeService()
     }
 
     setServiceStatus(INITIALIZED);
-    logger->info(FPSTR(LEDConsts::msg_init_ok));
+    debugLogger->info(getServiceName() + " " + FPSTR(ServiceConst::msg_init_ok));
     return true;
 }
 
@@ -61,14 +61,10 @@ bool LEDService::startService()
     }
 
     if (!board_.isServiceStarted())
-    {
-        logger->error(FPSTR(LEDConsts::msg_board_not_started));
-        setServiceStatus(START_FAILED);
-        return false;
-    }
+        debugLogger->error(FPSTR(LEDConsts::msg_board_not_started));
 
     setServiceStatus(STARTED);
-    logger->info(FPSTR(LEDConsts::msg_started));
+    debugLogger->info(getServiceName() + " " + FPSTR(ServiceConst::msg_start_ok));
     return true;
 }
 
@@ -76,7 +72,7 @@ bool LEDService::stopService()
 {
     turnOffAll();
     setServiceStatus(STOPPED);
-    logger->info(FPSTR(LEDConsts::msg_stopped));
+    debugLogger->info(getServiceName() + " " + FPSTR(ServiceConst::msg_stop_ok));
     return true;
 }
 
@@ -251,7 +247,7 @@ uint8_t LEDService::turnOffAll()
 
     flushDFRLeds();
 
-    logger->info(FPSTR(LEDConsts::msg_all_off));
+    debugLogger->info(FPSTR(LEDConsts::msg_all_off));
     return BotProto::resp_ok;
 }
 
@@ -291,6 +287,9 @@ void LEDService::flushK10Led(uint8_t idx)
 
 void LEDService::flushDFRLeds()
 {
+    if (!board_.isServiceStarted())
+        return;
+
     // Build a 2-element packed-color array for setWS2812.
     // DFR1216 uses states_[3] (LED 0) and states_[4] (LED 1).
     uint32_t colors[2] = {0u, 0u};

@@ -24,16 +24,16 @@ const WS_PORT = 80;
 const WS_TIMEOUT = 500;
 const HEARTBEAT_INTERVAL_MS = 40; // Send every 40ms (well under 50ms deadline)
 
-// UDP Response Status codes (AmakerBot specific)
-const UDP_STATUS = {
+// WS Response Status codes (AmakerBot specific)
+const WS_STATUS = {
   SUCCESS: 0x01,
   IGNORED: 0x02,
   DENIED: 0x03,
   ERROR: 0x04
 };
 
-// UDP Action codes
-const UDP_ACTION = {
+// WS Action codes
+const WS_ACTION = {
   MASTER_REGISTER: 0x41,
   MASTER_UNREGISTER: 0x42,
   HEARTBEAT: 0x43,
@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   updateUIState();
-  showStatus('UDP demo loaded. Enter master token to register.', false);
+  showStatus('WS demo loaded. Enter master token to register.', false);
   
   // Initialize ping graph
   initPingGraph();
@@ -91,7 +91,7 @@ function cleanupRealtimeConnections() {
 }
 
 /**
- * Reject the currently pending UDP response, if any.
+ * Reject the currently pending WS response, if any.
  *
  * @param {Error} error - Reason for rejection.
  */
@@ -145,7 +145,7 @@ function initializeWebSocket() {
   const portStr = port ? `:${port}` : ':80';
   const wsUrl = `ws://${botIp}${portStr}/ws`;
   wsManualClose = false;
-  console.log('[UDP] initializeWebSocket '+wsUrl);
+  console.log('[WS] initializeWebSocket '+wsUrl);
   console.log(`[WS] Connecting to ${wsUrl}`);
 
   wsConnectPromise = new Promise((resolve, reject) => {
@@ -184,7 +184,7 @@ function initializeWebSocket() {
 
         const response = new Uint8Array(event.data);
         console.log(`[WS RX] ${Array.from(response).map(b => b.toString(16).padStart(2, '0')).join('')}`);
-        processUDPResponse(response);
+        processWSResponse(response);
       };
 
       socket.onerror = (error) => {
@@ -231,10 +231,10 @@ function initializeWebSocket() {
 }
 
 /**
- * Create UDP socket if not already created
+ * Create WebSocket bridge if not already created
  * Now we use the WebSocket bridge instead
  */
-function ensureUDPSocket() {
+function ensureWebSocketBridge() {
   const botIp = document.getElementById('botIp').value.trim();
   
   if (!botIp) {
@@ -304,15 +304,15 @@ async function registerMaster() {
   try {
     showStatus('Registering as master...', false);
 
-    // Build UDP packet: 0x41 + token bytes
+    // Build WS packet: 0x41 + token bytes
     const packet = new Uint8Array(1 + token.length);
-    packet[0] = UDP_ACTION.MASTER_REGISTER;
+    packet[0] = WS_ACTION.MASTER_REGISTER;
     for (let i = 0; i < token.length; i++) {
       packet[i + 1] = token.charCodeAt(i);
     }
     
-    // Send UDP packet (simulated via HTTP proxy)
-    const response = await sendUDPPacket(packet);
+    // Send WS packet (simulated via HTTP proxy)
+    const response = await sendWSPacket(packet);
     
     // Parse response: should be echo + status byte
     if (response && response.length >= packet.length + 1) {
@@ -335,23 +335,23 @@ async function registerMaster() {
  */
 function handleMasterRegistrationResponse(statusByte, token) {
   const statusNames = {
-    [UDP_STATUS.SUCCESS]: 'SUCCESS',
-    [UDP_STATUS.IGNORED]: 'IGNORED',
-    [UDP_STATUS.DENIED]: 'DENIED',
-    [UDP_STATUS.ERROR]: 'ERROR'
+    [WS_STATUS.SUCCESS]: 'SUCCESS',
+    [WS_STATUS.IGNORED]: 'IGNORED',
+    [WS_STATUS.DENIED]: 'DENIED',
+    [WS_STATUS.ERROR]: 'ERROR'
   };
   
   const statusName = statusNames[statusByte] || `UNKNOWN(0x${statusByte.toString(16)})`;
   updateLastResponse(`MASTER_REGISTER: ${statusName}`);
   
-  if (statusByte === UDP_STATUS.SUCCESS) {
+  if (statusByte === WS_STATUS.SUCCESS) {
     isMasterRegistered = true;
     showStatus(`✓ Registered as master with token ${token}`, false);
     startHeartbeat();
     updateUIState();
-  } else if (statusByte === UDP_STATUS.IGNORED) {
+  } else if (statusByte === WS_STATUS.IGNORED) {
     showStatus('Registration ignored (master already registered)', true);
-  } else if (statusByte === UDP_STATUS.DENIED) {
+  } else if (statusByte === WS_STATUS.DENIED) {
     showStatus('Registration denied (invalid token)', true);
   } else {
     showStatus(`Registration failed: ${statusName}`, true);
@@ -366,11 +366,11 @@ async function unregisterMaster() {
   try {
     showStatus('Unregistering master...', false);
     
-    // Build UDP packet: 0x42
-    const packet = new Uint8Array([UDP_ACTION.MASTER_UNREGISTER]);
+    // Build WS packet: 0x42
+    const packet = new Uint8Array([WS_ACTION.MASTER_UNREGISTER]);
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     
     // Parse response: 0x42 + status byte
     if (response && response.length >= 2) {
@@ -393,21 +393,21 @@ async function unregisterMaster() {
  */
 function handleMasterUnregistrationResponse(statusByte) {
   const statusNames = {
-    [UDP_STATUS.SUCCESS]: 'SUCCESS',
-    [UDP_STATUS.DENIED]: 'DENIED',
-    [UDP_STATUS.ERROR]: 'ERROR'
+    [WS_STATUS.SUCCESS]: 'SUCCESS',
+    [WS_STATUS.DENIED]: 'DENIED',
+    [WS_STATUS.ERROR]: 'ERROR'
   };
   
   const statusName = statusNames[statusByte] || `UNKNOWN(0x${statusByte.toString(16)})`;
   updateLastResponse(`MASTER_UNREGISTER: ${statusName}`);
   
-  if (statusByte === UDP_STATUS.SUCCESS) {
+  if (statusByte === WS_STATUS.SUCCESS) {
     isMasterRegistered = false;
     showStatus('✓ Successfully unregistered as master', false);
     stopHeartbeat();
     closeWebSocket();
     updateUIState();
-  } else if (statusByte === UDP_STATUS.DENIED) {
+  } else if (statusByte === WS_STATUS.DENIED) {
     showStatus('Unregistration denied (not the registered master)', true);
   } else {
     showStatus(`Unregistration failed: ${statusName}`, true);
@@ -417,7 +417,7 @@ function handleMasterUnregistrationResponse(statusByte) {
 // ── Bot Name Management ───────────────────────────────────────────────────────
 
 /**
- * Set the bot name via UDP
+ * Set the bot name via WS
  */
 async function setBotName() {
   const botName = document.getElementById('botName').value.trim();
@@ -435,12 +435,12 @@ async function setBotName() {
   try {
     showStatus('Setting bot name...', false);
     
-    // Build UDP packet: "AMAKERBOT:setname:<name>"
+    // Build WS packet: "AMAKERBOT:setname:<name>"
     const message = `AMAKERBOT:setname:${botName}`;
     const packet = new TextEncoder().encode(message);
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     
     // Parse text response
     if (response && response.length > 0) {
@@ -530,11 +530,11 @@ async function attachServos() {
   try {
     showStatus('Attaching servos...', false);
     
-    // Build UDP packet: 0x24 [mask] [type]
+    // Build WS packet: 0x24 [mask] [type]
     const packet = new Uint8Array([0x24, mask, type]);
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     
     // Parse response: 0x24 + resp_code
     if (response && response.length >= 2) {
@@ -570,11 +570,11 @@ async function detachServos() {
   try {
     showStatus('Detaching servos...', false);
     
-    // Build UDP packet: 0x24 [mask] [type=0]
+    // Build WS packet: 0x24 [mask] [type=0]
     const packet = new Uint8Array([0x24, mask, 0]);
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     
     // Parse response: 0x24 + resp_code
     if (response && response.length >= 2) {
@@ -678,8 +678,8 @@ async function setServoAngles() {
     
     const packet = new Uint8Array([0x21, ...angles]);
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     
     // Parse response: 0x21 + resp_code
     if (response && response.length >= 2) {
@@ -781,8 +781,8 @@ async function setServoSpeeds() {
     
     const packet = new Uint8Array([0x22, mask, ...speeds]);
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     
     // Parse response: 0x22 + resp_code
     if (response && response.length >= 2) {
@@ -841,8 +841,8 @@ async function stopAllServos() {
     // Build packet: 0x23 [mask=0xFF]
     const packet = new Uint8Array([0x23, 0xFF]);
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     
     // Parse response: 0x23 + resp_code
     if (response && response.length >= 2) {
@@ -879,8 +879,8 @@ async function stopAllServos() {
 
 /**
  * Start sending heartbeat packets every 40ms.
- * Uses fire-and-forget (UDP-like): no response is awaited.
- * DENIED responses are detected asynchronously in processUDPResponse().
+ * Uses fire-and-forget (WS-like): no response is awaited.
+ * DENIED responses are detected asynchronously in processWSResponse().
  */
 function startHeartbeat() {
   if (heartbeatInterval) {
@@ -891,9 +891,9 @@ function startHeartbeat() {
     if (!wsConnected) {
       return;
     }
-    const packet = new Uint8Array([UDP_ACTION.HEARTBEAT]);
+    const packet = new Uint8Array([WS_ACTION.HEARTBEAT]);
     heartbeatSendTime = performance.now();
-    sendUDPFireAndForget(packet);
+    sendWSFireAndForget(packet);
   }, HEARTBEAT_INTERVAL_MS);
 
   updateUIState();
@@ -967,19 +967,19 @@ async function sendPingPacket() {
     
     // Build PING packet: 0x44 + 4-byte ID (uint32 LE)
     const packet = new Uint8Array(5);
-    packet[0] = UDP_ACTION.PING;
+    packet[0] = WS_ACTION.PING;
     packet[1] = id & 0xFF;
     packet[2] = (id >> 8) & 0xFF;
     packet[3] = (id >> 16) & 0xFF;
     packet[4] = (id >> 24) & 0xFF;
     
-    // Send UDP packet
-    const response = await sendUDPPacket(packet);
+    // Send WS packet
+    const response = await sendWSPacket(packet);
     const endTime = performance.now();
     const latency = Math.round(endTime - startTime);
     
     // Verify response (should be 5-byte echo)
-    if (response && response.length === 5 && response[0] === UDP_ACTION.PING) {
+    if (response && response.length === 5 && response[0] === WS_ACTION.PING) {
       recordPingResult(latency);
     } else {
       console.warn('Invalid ping response');
@@ -1110,20 +1110,20 @@ function clearPingGraph() {
   showStatus('Ping history cleared', false);
 }
 
-// ── UDP over WebSocket (fire-and-forget + request-response) ──────────────────
+// ── WS over WebSocket (fire-and-forget + request-response) ──────────────────
 
 /**
- * Send UDP packet to bot via WebSocket bridge
+ * Send WS packet to bot via WebSocket bridge
  * 
- * @param {Uint8Array} packet - UDP packet data
+ * @param {Uint8Array} packet - WS packet data
  * @returns {Promise<Uint8Array>} Response packet (received via WebSocket)
  */
-async function sendUDPPacket(packet) {
+async function sendWSPacket(packet) {
   const packetCopy = new Uint8Array(packet);
 
   udpSendChain = udpSendChain
     .catch(() => undefined)
-    .then(() => sendUDPPacketInternal(packetCopy));
+    .then(() => sendWSPacketInternal(packetCopy));
 
   return udpSendChain;
 }
@@ -1131,7 +1131,7 @@ async function sendUDPPacket(packet) {
 let udpSendChain = Promise.resolve();
 
 /**
- * Process a UDP response received over the WebSocket bridge.
+ * Process a WS response received over the WebSocket bridge.
  *
  * Fire-and-forget senders (heartbeat, servo commands from the joystick)
  * never set a pendingResponse, so their replies are handled here as
@@ -1139,16 +1139,16 @@ let udpSendChain = Promise.resolve();
  * unregister, ping) set pendingResponse with an expectedAction byte;
  * only a matching reply resolves that promise.
  */
-function processUDPResponse(response) {
+function processWSResponse(response) {
   // ── Async notification handling (fire-and-forget responses) ──────────
   if (response.length >= 2) {
     const action = response[0];
     const statusByte = response[1];
 
     // Heartbeat response → measure round-trip time
-    if (action === UDP_ACTION.HEARTBEAT) {
-      if (statusByte === UDP_STATUS.DENIED) {
-        console.warn('[UDP] Heartbeat denied - master registration lost');
+    if (action === WS_ACTION.HEARTBEAT) {
+      if (statusByte === WS_STATUS.DENIED) {
+        console.warn('[WS] Heartbeat denied - master registration lost');
         isMasterRegistered = false;
         stopHeartbeat();
         updateUIState();
@@ -1185,12 +1185,12 @@ function processUDPResponse(response) {
 }
 
 /**
- * Send one UDP packet while guaranteeing a single in-flight request.
+ * Send one WS packet while guaranteeing a single in-flight request.
  *
- * @param {Uint8Array} packet - UDP packet data.
+ * @param {Uint8Array} packet - WS packet data.
  * @returns {Promise<Uint8Array>} Response packet.
  */
-async function sendUDPPacketInternal(packet) {
+async function sendWSPacketInternal(packet) {
   const botIp = document.getElementById('botIp').value.trim();
   const port = parseInt(document.getElementById('botPort').value, 10) || WS_PORT;
 
@@ -1198,14 +1198,14 @@ async function sendUDPPacketInternal(packet) {
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 
-  console.log(`[UDP TX] ${hexData} via WebSocket to ${botIp}:${port}`);
+  console.log(`[WS TX] ${hexData} via WebSocket to ${botIp}:${port}`);
 
   if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
     await initializeWebSocket();
   }
 
   if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-    console.error('[UDP] WebSocket not connected');
+    console.error('[WS] WebSocket not connected');
     throw new Error('WebSocket bridge not connected');
   }
 
@@ -1221,8 +1221,8 @@ async function sendUDPPacketInternal(packet) {
 }
 
 /**
- * Send a UDP-like fire-and-forget message over the WebSocket bridge.
- * Mimics real UDP semantics: no response is awaited, the message is
+ * Send a WS-like fire-and-forget message over the WebSocket bridge.
+ * Mimics real WS semantics: no response is awaited, the message is
  * silently dropped when the socket is not open.
  *
  * Use this for latency-sensitive controls (joystick servo commands,
@@ -1230,9 +1230,9 @@ async function sendUDPPacketInternal(packet) {
  *
  * @param {Uint8Array} packet - Binary payload to send.
  */
-function sendUDPFireAndForget(packet) {
+function sendWSFireAndForget(packet) {
   if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-    return; // Silently discard, just like a real UDP send on a down link
+    return; // Silently discard, just like a real WS send on a down link
   }
   ws.send(packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength));
 }

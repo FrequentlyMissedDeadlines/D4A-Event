@@ -127,7 +127,7 @@ public:
     // ---- Configuration (call before start()) ----
 
     /**
-     * @brief Attach a logger for info / error output.
+     * @brief Attach a debugLogger for info / error output.
      * @param log May be nullptr to disable logging.
      */
     void setBotMessageLogger(RollingLogger *log) { logger_ = log; }

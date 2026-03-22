@@ -42,11 +42,6 @@
 namespace MotorServoConsts
 {
     constexpr const char str_service_name[]        PROGMEM = "MotorServo Service";
-    constexpr const char msg_init_ok[]             PROGMEM = "MotorServoService: initialized";
-    constexpr const char msg_init_failed[]         PROGMEM = "MotorServoService: initialization failed";
-    constexpr const char msg_started[]             PROGMEM = "MotorServoService: started";
-    constexpr const char msg_start_failed[]        PROGMEM = "MotorServoService: start failed";
-    constexpr const char msg_stopped[]             PROGMEM = "MotorServoService: stopped";
     constexpr const char msg_board_not_started[]   PROGMEM = "MotorServoService: DFR1216Board not started";
     constexpr const char msg_stopped_all_motors[]  PROGMEM = "MotorServoService: all motors stopped";
     constexpr const char msg_invalid_motor_id[]    PROGMEM = "MotorServoService: invalid motor id (1-4)";
@@ -116,7 +111,7 @@ enum class ServoType : uint8_t
  *   MotorServoService motor_servo(board);
  *
  *   // Startup (after board is started)
- *   motor_servo.setLogger(&debug_logger);
+ *   motor_servo.setDebugLogger(&debug_logger);
  *   motor_servo.initializeService();
  *   motor_servo.startService();
  *

@@ -10,13 +10,13 @@
 <body>
   <nav class="topnav">
     <a href="./index.html" class="active">🧠 Bot</a>
+    <a href="./camera.html">📷 Cam</a>
     <!-- <a href="./ServoService.html">🛵 Moves</a>
-    <a href="./CamService.html">📷 Cam</a>
     <a href="./LogService.html">📖 Logs</a>
     <a href="./MetricService.html">📊 Metrics</a>
     <a href="./MusicService.html">🎵 Music</a>
     <a href="./LedService.html">💡 LEDs</a> -->
-    <a href="./WebSocketJoystick.html" >🕹 Joystick</a>
+    <a href="./WebSocketJoystick.html" >🕹 Play</a>
   </nav>
     <h1 id="pageTitle">🧠 aMaker Bot Control panel.<span id="titleStatus" style="font-size: 0.6em; color: #999;"></span></h1>
 
@@ -35,22 +35,16 @@
         <button id="btn-register" class="btn" onclick="doRegister()">Register as Master</button>
         <button id="btn-unregister" class="btn" onclick="doUnregister()" style="background:#e53935;">Unregister</button>
       </div>
-      <div id="master-feedback" style="mOr argin-top:8px;font-size:12px;min-height:16px;"></div>
+      <div id="master-feedback" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     </div>
 
     <div class="panel" style="flex:1;min-width:220px;">
       <h2>🖥️ K10 Display</h2>
-      <div id="display-status-box" style="padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;background:#f0f0f0;color:#555;">
-        Checking display mode…
+      <div style="padding:8px 12px;border-radius:4px;font-size:13px;background:#f0f0f0;color:#555;line-height:1.6;">
+        Display mode is controlled <strong>locally</strong> on the device.<br>
+        Press <strong>Button A</strong> on the K10 to cycle through screens:<br>
+        Splash → App Info → App Log → Svc Log → Debug Log → ESP Log
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button class="btn" onclick="setDisplayMode('APP_UI')">App UI</button>
-        <button class="btn" onclick="setDisplayMode('APP_LOG')">App Log</button>
-        <button class="btn" onclick="setDisplayMode('DEBUG_LOG')">Debug Log</button>
-        <button class="btn" onclick="setDisplayMode('ESP_LOG')">ESP Log</button>
-        <button class="btn" onclick="cycleDisplayMode()" style="background:#1565c0;">⏭ Next</button>
-      </div>
-      <div id="display-feedback" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     </div>
 
   </div>

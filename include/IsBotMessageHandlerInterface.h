@@ -3,7 +3,7 @@
 #include <IPAddress.h>
 #include <cstdint>
 
-// Forward declaration — include RollingLogger.h in translation units that call setLogger()
+// Forward declaration — include RollingLogger.h in translation units that call setDebugLogger()
 class RollingLogger;
 
 /**
@@ -31,10 +31,10 @@ struct IsBotMessageHandlerInterface
     virtual ~IsBotMessageHandlerInterface() = default;
 
     /**
-     * @brief Attach a logger for debug / error output.
+     * @brief Attach a debugLogger for debug / error output.
      * @param log Pointer to a RollingLogger instance (may be nullptr to disable logging).
      */
-    void setBotMessageLogger(RollingLogger *logger) { message_logger = logger; }
+    void setBotMessageLogger(RollingLogger *debugLogger) { message_logger = debugLogger; }
 
     /**
      * @brief Handle an incoming UDP message.
@@ -57,7 +57,7 @@ struct IsBotMessageHandlerInterface
     
         
 protected:
-    /// Logger instance — set via setLogger(); may be nullptr.
+    /// Logger instance — set via setDebugLogger(); may be nullptr.
     RollingLogger *message_logger = nullptr;
 
 };

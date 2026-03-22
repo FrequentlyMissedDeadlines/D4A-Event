@@ -21,7 +21,7 @@
  *   esp_log_to_rolling_init(&esp_logger);
  * @endcode
  *
- * @note Only one logger can be active at a time. Calling this function again
+ * @note Only one debugLogger can be active at a time. Calling this function again
  *       with a different pointer replaces the previous target.
  *
  * @note The function must not be called from an ISR context.
@@ -35,9 +35,9 @@ class RollingLogger;
  * @brief Initialize ESP-IDF log capture and redirect to a RollingLogger.
  *
  * Installs a custom vprintf handler that forwards all ESP-IDF log output to
- * @p logger.  Must be called from a single-threaded context (e.g. `setup()`).
+ * @p debugLogger.  Must be called from a single-threaded context (e.g. `setup()`).
  *
- * @param logger  Pointer to the target RollingLogger. Must remain valid for
+ * @param debugLogger  Pointer to the target RollingLogger. Must remain valid for
  *                the lifetime of the application. Passing nullptr is a no-op.
  */
-void esp_log_to_rolling_init(RollingLogger *logger);
+void esp_log_to_rolling_init(RollingLogger *debugLogger);

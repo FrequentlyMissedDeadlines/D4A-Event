@@ -38,6 +38,13 @@ inline std::string progmem_to_string(const T &progmemConst)
     return fpstr_to_string(FPSTR(progmemConst));
 }
 
+// GCC 8.x (xtensa-esp32s3-elf-g++ 8.4.0) spuriously fires -Wattributes when
+// an inline free operator+ for std::string is defined in user code, because
+// it incorrectly thinks the implicit inline optimization attribute conflicts
+// with how the libstdc++ std::string operators were compiled.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wattributes"
+
 /**
  * @brief Concatenate std::string + __FlashStringHelper.
  */
@@ -53,3 +60,5 @@ inline std::string operator+(const __FlashStringHelper *lhs, const std::string &
 {
     return fpstr_to_string(lhs) + rhs;
 }
+
+#pragma GCC diagnostic pop

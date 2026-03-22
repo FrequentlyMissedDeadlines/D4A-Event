@@ -45,8 +45,10 @@ bool BotServerUDP::start()
 
         ++rx_count_;
 
-        // dispatch() is lock-free and safe to call from this callback context
-        const std::string response = bot_.dispatch(packet.data(), len);
+        // dispatch() is lock-free and safe to call from this callback context.
+        // Pass the remote IP so CMD_REGISTER can record the master.
+        const std::string senderIP = packet.remoteIP().toString().c_str();
+        const std::string response = bot_.dispatch(packet.data(), len, senderIP);
 
         if (!response.empty())
         {

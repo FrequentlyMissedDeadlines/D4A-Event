@@ -9,7 +9,8 @@
  * Typical usage in main.cpp:
  * @code
  *   bool start_service(IsServiceInterface &svc) {
- *       svc.setLogger(&debug_logger);
+ *       svc.setDebugLogger(&debug_logger);
+ *       svc.setServiceLogger(&svc_logger);
  *       if (!svc.initializeService()) return false;
  *       if (!svc.startService())      return false;
  *       return true;
@@ -65,11 +66,20 @@ enum ServiceStatus
     STOP_FAILED
 };
 
+namespace ServiceConst {
+    constexpr const char PROGMEM msg_init_ok[] PROGMEM = "Initialized.";
+    constexpr const char PROGMEM msg_init_failed[] PROGMEM = "Initialize failed.";
+    constexpr const char PROGMEM msg_start_ok[] PROGMEM = "Started.";
+    constexpr const char PROGMEM msg_start_failed[] PROGMEM = "Start failed.";
+    constexpr const char PROGMEM msg_stop_ok[]  PROGMEM = "Stopped.";
+    constexpr const char PROGMEM msg_stop_failed[]  PROGMEM = "Stop failed.";
+}
 // ---------------------------------------------------------------------------
 // IsServiceInterface
 // ---------------------------------------------------------------------------
 struct IsServiceInterface
 {
+   
 public:
     // ---- Pure virtual: every service must provide a name ----
 
@@ -127,18 +137,32 @@ public:
     // ---- Logger ----
 
     /**
-     * @brief Attach a logger (must be called before initializeService).
+     * @brief Attach a debugLogger (must be called before initializeService).
      * @param rollingLogger Pointer to a RollingLogger; nullptr disables logging.
-     * @return true if logger was set, false if nullptr was passed.
+     * @return true if debugLogger was set, false if nullptr was passed.
      */
-    bool setLogger(RollingLogger *rollingLogger)
+    bool setDebugLogger(RollingLogger *rollingLogger)
     {
         if (!rollingLogger)
             return false;
-        logger = rollingLogger;
+        debugLogger = rollingLogger;
         return true;
     }
-
+    /**
+     * @brief Attach a service-level logger (must be called before initializeService).
+     *
+     * Use this for info/error messages that should appear in the service log
+     * (svc_logger), as opposed to the verbose debugLogger.
+     * @param rollingLogger Pointer to a RollingLogger; nullptr disables logging.
+     * @return true if logger was set, false if nullptr was passed.
+     */
+    bool setServiceLogger(RollingLogger *rollingLogger)
+    {
+        if (!rollingLogger)
+            return false;
+        serviceLogger = rollingLogger;
+        return true;
+    }
     // ---- Downcast helpers (avoids dynamic_cast) ----
 
     /** @return this as IsOpenAPIInterface* if the service implements it, else nullptr. */
@@ -193,8 +217,11 @@ protected:
         status_timestamp_  = millis();
     }
 
-    /// Logger instance — set via setLogger(); may be nullptr.
-    RollingLogger *logger = nullptr;
+    /// Verbose debug logger — set via setDebugLogger(); may be nullptr.
+    RollingLogger *debugLogger = nullptr;
+
+    /// Service-level logger — set via setServiceLogger(); may be nullptr.
+    RollingLogger *serviceLogger = nullptr;
 
     /// Current lifecycle state.
     ServiceStatus  service_status_   = UNINITIALIZED;

@@ -18,7 +18,7 @@ RollingLogger::RollingLogger()
 // log
 // ---------------------------------------------------------------------------
 
-void RollingLogger::log(const std::string &message, LogLevel level)
+void RollingLogger::log(const std::string &message, LogLevel level, const char *source)
 {
     // Drop messages below the current filter threshold.
     // Levels are ordered ERROR(0) < WARNING(1) < INFO(2) < DEBUG(3) < TRACE(4).
@@ -28,7 +28,13 @@ void RollingLogger::log(const std::string &message, LogLevel level)
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    log_rows.push_back({level, millis(), message});
+    LogEntry e;
+    e.level        = level;
+    e.timestamp_ms = millis();
+    e.message      = message;
+    strncpy(e.source, source ? source : "     ", 5);
+    e.source[5]    = '\0';
+    log_rows.push_back(std::move(e));
     ++log_version_;
 
     // Evict oldest entries if the buffer is over capacity
@@ -39,9 +45,9 @@ void RollingLogger::log(const std::string &message, LogLevel level)
     }
 }
 
-void RollingLogger::log(const __FlashStringHelper *message, LogLevel level)
+void RollingLogger::log(const __FlashStringHelper *message, LogLevel level, const char *source)
 {
-    log(fpstr_to_string(message), level);
+    log(fpstr_to_string(message), level, source);
 }
 
 // ---------------------------------------------------------------------------

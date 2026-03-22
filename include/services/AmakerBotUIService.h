@@ -22,7 +22,7 @@
  * @code
  *   AmakerBotUIService ui(unihiker, wifi, amakerbot, udp, ws, motor_servo);
  *   ui.setShownLoggers(&bot_logger, &svc_logger, &debug_logger, nullptr);
- *   ui.setLogger(&debug_logger);   // IsServiceInterface logger
+ *   ui.setDebugLogger(&debug_logger);   // IsServiceInterface logger
  *   ui.initializeService();
  *   ui.startService();
  *
@@ -49,11 +49,9 @@
 namespace AmakerBotUIConsts
 {
     constexpr const char str_service_name[] PROGMEM = "AmakerBot UI";
-    constexpr const char msg_init_ok[]      PROGMEM = "AmakerBotUIService: initialized";
-    constexpr const char msg_started[]      PROGMEM = "AmakerBotUIService: started";
-    constexpr const char msg_stopped[]      PROGMEM = "AmakerBotUIService: stopped";
 
     constexpr unsigned long BTN_A_DEBOUNCE_MS  = 250;  ///< Button A debounce period (ms)
+    constexpr unsigned long SPLASH_MAX_MS       = 10000; ///< Max splash screen duration (ms)
 
     // Log-screen title strings (held in flash)
     constexpr const char scr_name_app_log[]   PROGMEM = "2: App Log";
@@ -174,6 +172,9 @@ private:
     // ---- Navigation state -------------------------------------------
     Screen        current_screen_  = SCREEN_APP_INFO;
     Screen        previous_screen_ = static_cast<Screen>(0xFF); ///< Force clear on first tick
+
+    // ---- Splash timeout ----------------------------------------------
+    unsigned long splash_start_ms_ = 0;   ///< millis() when splash was first shown
 
     // ---- Button A debounce ------------------------------------------
     bool          btn_a_prev_    = false;

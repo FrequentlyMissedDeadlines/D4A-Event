@@ -75,11 +75,12 @@ bool AmakerBotUIService::initializeService()
 
     previous_screen_ = static_cast<Screen>(0xFF);
     current_screen_  = SCREEN_SPLASH;
+
     btn_a_prev_      = false;
     btn_a_last_ms_   = 0;
 
     setServiceStatus(INITIALIZED);
-    logger->info(FPSTR(AmakerBotUIConsts::msg_init_ok));
+    debugLogger->info(getServiceName() + " " + FPSTR(ServiceConst::msg_init_ok));
     return true;
 }
 
@@ -96,7 +97,7 @@ bool AmakerBotUIService::startService()
     tft.fillScreen(UIColors::CLR_BLACK);
 
     setServiceStatus(STARTED);
-    logger->info(FPSTR(AmakerBotUIConsts::msg_started));
+    debugLogger->info(getServiceName() + " " + FPSTR(ServiceConst::msg_start_ok));
     return true;
 }
 
@@ -104,7 +105,7 @@ bool AmakerBotUIService::stopService()
 {
     tft.fillScreen(UIColors::CLR_BLACK);
     setServiceStatus(STOPPED);
-    logger->info(FPSTR(AmakerBotUIConsts::msg_stopped));
+    debugLogger->info(getServiceName() + " " + FPSTR(ServiceConst::msg_stop_ok));
     return true;
 }
 
@@ -116,6 +117,8 @@ void AmakerBotUIService::nextScreen()
 {
     current_screen_ = static_cast<Screen>(
         (static_cast<uint8_t>(current_screen_) + 1) % SCREEN_COUNT);
+    if (current_screen_ == SCREEN_SPLASH)
+        splash_start_ms_ = millis();
 }
 
 void AmakerBotUIService::setScreen(Screen s)
@@ -149,6 +152,13 @@ void AmakerBotUIService::tick()
         return;
 
     pollButtonA();
+
+    // Auto-advance past splash screen after timeout
+    if (current_screen_ == SCREEN_SPLASH &&
+        (millis() - splash_start_ms_ >= AmakerBotUIConsts::SPLASH_MAX_MS))
+    {
+        nextScreen();
+    }
 
     const bool screen_changed = (current_screen_ != previous_screen_);
 

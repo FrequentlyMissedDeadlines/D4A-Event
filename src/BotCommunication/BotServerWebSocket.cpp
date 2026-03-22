@@ -138,8 +138,10 @@ void BotServerWebSocket::attachEventHandler()
 
             ++rx_count_;
 
-            // Dispatch — lock-free, synchronous
-            const std::string response = bot_.dispatch(data, len);
+            // Dispatch — lock-free, synchronous.
+            // Pass the remote IP so CMD_REGISTER can record the master.
+            const std::string senderIP = client->remoteIP().toString().c_str();
+            const std::string response = bot_.dispatch(data, len, senderIP);
 
             if (!response.empty())
                 sendReply(client->id(), response);

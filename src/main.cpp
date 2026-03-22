@@ -199,10 +199,28 @@ void xtask_web_server(void * /*pvParameters*/)
   bot_over_web_.start();
 
   // Initialize camera and register /cam/snapshot + /cam/stream routes
+<<<<<<< HEAD
   static QueueHandle_t cam_queue = xQueueCreate(2, sizeof(camera_fb_t *));
   if (cam_queue) {
     register_camera(PIXFORMAT_RGB565, FRAMESIZE_HVGA, 2, cam_queue);
     esp_log_level_set("cam_hal", ESP_LOG_ERROR); // suppress noisy queue-full warnings
+=======
+  static QueueHandle_t cam_queue = xQueueCreate(3, sizeof(camera_fb_t *));
+  if (cam_queue) {
+    // PIXFORMAT_JPEG: camera outputs JPEG directly, no frame2jpg() conversion needed
+    // FRAMESIZE_QVGA (320x240): smaller frame = faster transfer, still usable quality
+    // fb_count=3: triple-buffering — one capturing, one queued, one being sent
+    register_camera(PIXFORMAT_JPEG, FRAMESIZE_QVGA, 3, cam_queue);
+    esp_log_level_set("cam_hal", ESP_LOG_ERROR); // suppress noisy queue-full warnings
+    // Sensor JPEG quality: 0-63, lower = better quality / larger file
+    // 12 ≈ 6-12 KB/frame at QVGA — good balance of quality and speed
+    sensor_t *cam_sensor = esp_camera_sensor_get();
+    if (cam_sensor) {
+      cam_sensor->set_quality(cam_sensor, 12);
+      cam_sensor->set_saturation(cam_sensor, 0);   // 0 = normal color (range -2..+2)
+      cam_sensor->set_special_effect(cam_sensor, 0); // 0 = no effect (2 = grayscale)
+    }
+>>>>>>> cd4ad93 (we fixes)
     bot_over_web_.registerCameraRoutes(cam_queue);
     debug_logger.info("Camera routes registered (/cam/snapshot, /cam/stream)");
   } else {

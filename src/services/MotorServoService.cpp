@@ -315,8 +315,12 @@ uint8_t MotorServoService::setMotorsSpeed(uint8_t motor_mask, int8_t speed)
         return BotProto::resp_invalid_params;
     if (speed < MotorServoConsts::SPEED_MIN || speed > MotorServoConsts::SPEED_MAX)
     {
+<<<<<<< HEAD
         if (debugLogger)
             debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_speed).c_str());
+=======
+        if (debugLogger) debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_speed).c_str());
+>>>>>>> cd4ad93 (we fixes)
         return BotProto::resp_invalid_values;
     }
     for (uint8_t bit = 0; bit < MotorServoConsts::MOTOR_COUNT; ++bit)
@@ -378,8 +382,12 @@ uint8_t MotorServoService::setServosSpeed(uint8_t servo_mask, int8_t speed)
         return BotProto::resp_invalid_params;
     if (speed < MotorServoConsts::SPEED_MIN || speed > MotorServoConsts::SPEED_MAX)
     {
+<<<<<<< HEAD
         if (debugLogger)
             debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_speed).c_str());
+=======
+        if (debugLogger) debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_speed).c_str());
+>>>>>>> cd4ad93 (we fixes)
         return BotProto::resp_invalid_values;
     }
     // Validate all servo channels before touching any hardware
@@ -389,8 +397,12 @@ uint8_t MotorServoService::setServosSpeed(uint8_t servo_mask, int8_t speed)
         {
             if (servo_types_[bit] != ServoType::CONTINUOUS)
             {
+<<<<<<< HEAD
                 if (debugLogger)
                     debugLogger->error(progmem_to_string(MotorServoConsts::msg_wrong_servo_type).c_str());
+=======
+                if (debugLogger) debugLogger->error(progmem_to_string(MotorServoConsts::msg_wrong_servo_type).c_str());
+>>>>>>> cd4ad93 (we fixes)
                 return BotProto::resp_invalid_params;
             }
         }
@@ -411,8 +423,12 @@ uint8_t MotorServoService::setServosAngle(uint8_t servo_mask, int16_t angle)
         return BotProto::resp_invalid_params;
     if (angle < MotorServoConsts::ANGLE_MIN || angle > MotorServoConsts::ANGLE_MAX)
     {
+<<<<<<< HEAD
         if (debugLogger)
             debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_angle).c_str());
+=======
+        if (debugLogger) debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_angle).c_str());
+>>>>>>> cd4ad93 (we fixes)
         return BotProto::resp_invalid_values;
     }
     // Validate all servo channels before touching any hardware
@@ -422,8 +438,12 @@ uint8_t MotorServoService::setServosAngle(uint8_t servo_mask, int16_t angle)
         {
             if (servo_types_[bit] == ServoType::CONTINUOUS)
             {
+<<<<<<< HEAD
                 if (debugLogger)
                     debugLogger->error(progmem_to_string(MotorServoConsts::msg_wrong_servo_type).c_str());
+=======
+                if (debugLogger) debugLogger->error(progmem_to_string(MotorServoConsts::msg_wrong_servo_type).c_str());
+>>>>>>> cd4ad93 (we fixes)
                 return BotProto::resp_invalid_params;
             }
         }
@@ -447,8 +467,12 @@ uint8_t MotorServoService::incrementServosAngle(uint8_t servo_mask, int16_t delt
         return BotProto::resp_invalid_params;
     if (delta < MotorServoConsts::ANGLE_MIN || delta > MotorServoConsts::ANGLE_MAX)
     {
+<<<<<<< HEAD
         if (debugLogger)
             debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_angle).c_str());
+=======
+        if (debugLogger) debugLogger->error(progmem_to_string(MotorServoConsts::msg_invalid_angle).c_str());
+>>>>>>> cd4ad93 (we fixes)
         return BotProto::resp_invalid_values;
     }
     // Validate all servo channels before touching any hardware
@@ -458,8 +482,12 @@ uint8_t MotorServoService::incrementServosAngle(uint8_t servo_mask, int16_t delt
         {
             if (servo_types_[bit] == ServoType::CONTINUOUS)
             {
+<<<<<<< HEAD
                 if (debugLogger)
                     debugLogger->error(progmem_to_string(MotorServoConsts::msg_wrong_servo_type).c_str());
+=======
+                if (debugLogger) debugLogger->error(progmem_to_string(MotorServoConsts::msg_wrong_servo_type).c_str());
+>>>>>>> cd4ad93 (we fixes)
                 return BotProto::resp_invalid_params;
             }
         }

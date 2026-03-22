@@ -31,7 +31,14 @@ The **WiFiService** is a critical infrastructure service that manages all WiFi c
 ### Public Methods
 
 #### `bool wifi_activation()`
+<<<<<<< HEAD
 Activates WiFi with automatic fallback: tries STA, opens AP on failure. Returns `true` if either mode is active.
+=======
+Activates the WiFi service with automatic fallback logic:
+- Attempts to connect to saved WiFi credentials
+- Falls back to AP mode if connection fails
+- Returns `true` on successful activation (either mode)
+>>>>>>> cd4ad93 (we fixes)
 
 #### `std::string getIP()`
 Returns the current IP address (STA local IP or AP gateway IP).

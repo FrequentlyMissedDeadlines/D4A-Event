@@ -143,7 +143,11 @@ bool WifiService::open_access_point()
 
     if (debugLogger)
         debugLogger->warning(FPSTR(WiFiConsts::msg_ap_created) + full_ap_ssid
+<<<<<<< HEAD
                         + " " + connected_ip_);
+=======
+                        + " " + s_connected_ip);
+>>>>>>> cd4ad93 (we fixes)
     return true;
 }
 
@@ -161,14 +165,24 @@ bool WifiService::connect_to_wifi(const std::string &ssid,
 
     if (ssid.empty())
     {
+<<<<<<< HEAD
         if (serviceLogger)
             serviceLogger->warning(FPSTR(WiFiConsts::msg_missing_ssid));
+=======
+        if (debugLogger)
+            debugLogger->warning(FPSTR(WiFiConsts::msg_missing_ssid));
+>>>>>>> cd4ad93 (we fixes)
         return false;
     }
     if (password.empty())
     {
+<<<<<<< HEAD
         if (serviceLogger)
             serviceLogger->warning(FPSTR(WiFiConsts::msg_missing_password));
+=======
+        if (debugLogger)
+            debugLogger->warning(FPSTR(WiFiConsts::msg_missing_password));
+>>>>>>> cd4ad93 (we fixes)
         return false;
     }
 
@@ -192,10 +206,17 @@ bool WifiService::connect_to_wifi(const std::string &ssid,
 
     if (WiFi.status() == WL_CONNECTED)
     {
+<<<<<<< HEAD
         connected_ip_   = WiFi.localIP().toString().c_str();
         connected_ssid_ = ssid;
         if (debugLogger)
             debugLogger->info(FPSTR(WiFiConsts::msg_connected) + ssid + " " + connected_ip_);
+=======
+        s_connected_ip   = WiFi.localIP().toString().c_str();
+        s_connected_ssid = ssid;
+        if (debugLogger)
+            debugLogger->info(FPSTR(WiFiConsts::msg_connected) + ssid + " " + s_connected_ip);
+>>>>>>> cd4ad93 (we fixes)
         return true;
     }
 
@@ -232,7 +253,13 @@ bool WifiService::connect_and_fallback(const std::string &ssid,
 
     if (connect_to_wifi(ssid, password))
         return true;
+<<<<<<< HEAD
     if(serviceLogger) serviceLogger->warning(FPSTR(WiFiConsts::msg_fallback_ap));
+=======
+
+    if (debugLogger)
+        debugLogger->info(FPSTR(WiFiConsts::msg_fallback_ap));
+>>>>>>> cd4ad93 (we fixes)
 
     return open_access_point();
 }
@@ -279,6 +306,7 @@ bool WifiService::startService()
 
     const bool ok = connect_and_fallback(wifi_ssid_, wifi_password_);
 
+<<<<<<< HEAD
     if (ok)
       {  setServiceStatus( STARTED);}
     else {
@@ -286,6 +314,13 @@ bool WifiService::startService()
          START_FAILED;
     }
      
+=======
+    if (debugLogger)
+        debugLogger->info(ok ? FPSTR(WiFiConsts::msg_start_ok)
+                        : FPSTR(ServiceConst::msg_start_failed));
+
+    setServiceStatus(ok ? STARTED : START_FAILED);
+>>>>>>> cd4ad93 (we fixes)
 
 #ifdef VERBOSE_DEBUG
     if (debugLogger)
@@ -358,8 +393,13 @@ bool WifiService::loadSettings()
     if (debugLogger)
     {
         debugLogger->info(FPSTR(WiFiConsts::msg_settings_loaded));
+<<<<<<< HEAD
         debugLogger->info(std::string("- STA SSID: ")  + wifi_ssid_);
         debugLogger->info(std::string("- AP  SSID: ")  + ap_ssid_ + mac_suffix_);
+=======
+        debugLogger->info(std::string("- STA SSID: ")  + s_wifi_ssid);
+        debugLogger->info(std::string("- AP  SSID: ")  + s_ap_ssid + s_mac_suffix);
+>>>>>>> cd4ad93 (we fixes)
         debugLogger->info(std::string("- Hostname: ")  + getHostname());
     }
     return true;

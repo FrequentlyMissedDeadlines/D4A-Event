@@ -140,6 +140,68 @@ function pollGamepad() {
   animationFrameId = requestAnimationFrame(pollGamepad);
 }
 
+<<<<<<< HEAD
+=======
+/**
+ * Process gamepad button states
+ */
+function processGamepadInput(gamepad) {
+  // LB Button (button 4)
+  handleButton(gamepad, XBOX_BUTTONS.LB, 'LB', () => {
+    setServoAngle(4, +45);
+  }, () => {
+    setServoAngle(4, 0);
+  });
+  
+  // LT Button (button 6)
+  handleButton(gamepad, XBOX_BUTTONS.LT, 'LT', () => {
+    setServoAngle(4, -45);
+  }, () => {
+    setServoAngle(4, 0);
+  });
+  // RB Button (button 5)
+  handleButton(gamepad, XBOX_BUTTONS.RB, 'RB', () => {
+    setServoAngle(5, +45);
+  }, () => {
+    setServoAngle(5, 0);
+  });
+  
+  // RT Button (button 7)
+  handleButton(gamepad, XBOX_BUTTONS.RT, 'RT', () => {
+    setServoAngle(5, -45);
+  }, () => {
+    setServoAngle(5, 0);
+  });
+  
+  // D-Pad Up (button 12)
+  handleButton(gamepad, XBOX_BUTTONS.DPAD_UP, 'UP', () => {
+    _setServoSpeeds([1, 2], [100, 100]);
+  }, () => {
+    _setServoSpeeds([1, 2], [0, 0]);
+  });
+  
+  // D-Pad Down (button 13)
+  handleButton(gamepad, XBOX_BUTTONS.DPAD_DOWN, 'DOWN', () => {
+    _setServoSpeeds([1, 2], [-100, -100]);
+  }, () => {
+    _setServoSpeeds([1, 2], [0, 0]);
+  });
+  
+  // D-Pad Left (button 14)
+  handleButton(gamepad, XBOX_BUTTONS.DPAD_LEFT, 'LEFT', () => {
+    _setServoSpeeds([1, 2], [100, -100]);
+  }, () => {
+    _setServoSpeeds([1, 2], [0, 0]);
+  });
+  
+  // D-Pad Right (button 15)
+  handleButton(gamepad, XBOX_BUTTONS.DPAD_RIGHT, 'RIGHT', () => {
+    _setServoSpeeds([1, 2], [-100, 100]);
+  }, () => {
+    _setServoSpeeds([1, 2], [0, 0]);
+  });
+}
+>>>>>>> cd4ad93 (we fixes)
 
 /**
  * Handle button press/release with callbacks
@@ -169,6 +231,126 @@ function handleButton(gamepad, buttonIndex, buttonName, onPress, onRelease) {
 }
 
 
+<<<<<<< HEAD
+=======
+/**
+ * Handle keyboard key down
+ */
+function onKeyDown(event) {
+  const key = event.key.toLowerCase();
+  
+  // Prevent default for arrow keys to avoid page scrolling
+  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+    event.preventDefault();
+  }
+  
+  // Skip if key already pressed (avoid key repeat)
+  if (keyStates[key]) return;
+  keyStates[key] = true;
+  
+  // Map keys to actions
+  switch (key) {
+    // Arrow keys → D-Pad
+    case 'arrowup':
+      updateButtonIndicator('UP', true);
+      _setServoSpeeds([1, 2], [100, 100]);
+      break;
+      
+    case 'arrowdown':
+      updateButtonIndicator('DOWN', true);
+      _setServoSpeeds([1, 2], [-100, -100]);
+      break;
+      
+    case 'arrowleft':
+      updateButtonIndicator('LEFT', true);
+      _setServoSpeeds([1, 2], [100, -100]);
+      break;
+      
+    case 'arrowright':
+      updateButtonIndicator('RIGHT', true);
+      _setServoSpeeds([1, 2], [-100, 100]);
+      break;
+      
+    // Q → LB
+    case 'q':
+      updateButtonIndicator('LB', true);
+      setServoAngle(4, 45);
+      break;
+    // A → LT
+    case 'a':
+      updateButtonIndicator('LT', true);
+      setServoAngle(4, -45);
+      break;
+      
+    // W → RB
+    case 'w':
+      updateButtonIndicator('RB', true);
+      setServoAngle(5, 45);
+      break;
+      
+    // S → RT
+    case 's':
+      updateButtonIndicator('RT', true);
+      setServoAngle(5, -45);
+      break;
+  }
+}
+
+/**
+ * Handle keyboard key up
+ */
+function onKeyUp(event) {
+  const key = event.key.toLowerCase();
+  keyStates[key] = false;
+  
+  // Map keys to release actions
+  switch (key) {
+    // Arrow keys → Stop servos
+    case 'arrowup':
+      updateButtonIndicator('UP', false);
+      _setServoSpeeds([1, 2], [0, 0]);
+      break;
+      
+    case 'arrowdown':
+      updateButtonIndicator('DOWN', false);
+      _setServoSpeeds([1, 2], [0, 0]);
+      break;
+      
+    case 'arrowleft':
+      updateButtonIndicator('LEFT', false);
+      _setServoSpeeds([1, 2], [0, 0]);
+      break;
+      
+    case 'arrowright':
+      updateButtonIndicator('RIGHT', false);
+      _setServoSpeeds([1, 2], [0, 0]);
+      break;
+      
+    // Q → LB release
+    case 'q':
+      updateButtonIndicator('LB', false);
+      setServoAngle(4, 0);
+      break;
+    // A → LT release
+    case 'a':
+      updateButtonIndicator('LT', false);
+      setServoAngle(4, 0);
+      break;
+      
+    // W → RB release
+    case 'w':
+      updateButtonIndicator('RB', false);
+      setServoAngle(5, 0);
+      break;
+      
+    // S → RT release
+    case 's':
+      updateButtonIndicator('RT', false);
+      setServoAngle(5, 0);
+      break;
+  }
+}
+>>>>>>> cd4ad93 (we fixes)
 
 // ── Servo Control Functions ───────────────────────────────────────────────────
 
@@ -191,6 +373,11 @@ function setServoAngle(channel, angle) {
   const angleLo = angle & 0xFF;
   const packet  = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVOS_ANGLE, mask, angleHi, angleLo]);
 
+<<<<<<< HEAD
+=======
+  const packet = new Uint8Array([0x21, ...angles]);
+
+>>>>>>> cd4ad93 (we fixes)
   // Fire-and-forget (WS-like): no response awaited
   if (typeof sendWSFireAndForget !== 'undefined') {
     sendWSFireAndForget(packet);
@@ -218,11 +405,19 @@ function _setServoSpeeds(channels, speeds) {
     speedMap.set(speed, (speedMap.get(speed) || 0) | (1 << channels[i]));
   }
 
+<<<<<<< HEAD
   if (typeof sendWSFireAndForget !== 'undefined') {
     speedMap.forEach((mask, speed) => {
       const packet = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVOS_SPEED, mask & 0xFF, speed & 0xFF]);
       sendWSFireAndForget(packet);
     });
+=======
+  const packet = new Uint8Array([0x22, mask, ...speedBytes]);
+
+  // Fire-and-forget (WS-like): no response awaited
+  if (typeof sendWSFireAndForget !== 'undefined') {
+    sendWSFireAndForget(packet);
+>>>>>>> cd4ad93 (we fixes)
   }
 }
 

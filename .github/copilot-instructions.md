@@ -8,65 +8,12 @@
 
 ## Architecture Overview
 
-### Core Design Pattern: Service-based Modular Architecture
-All features are implemented as **services** inheriting from [IsServiceInterface.h](src/services/IsServiceInterface.h):
-- **Lifecycle**: `initializeService()` → `startService()` → `stopService()`
-- **Logging**: Each service gets a `RollingLogger` instance via `setLogger()`
-- **Settings**: Optional `saveSettings()` / `loadSettings()` persistence
-- **OpenAPI**: Services expose HTTP routes via [IsOpenAPIInterface.h](src/services/IsOpenAPIInterface.h)
-
-**Example services**: `BoardInfoService`, `CameraService`, `ServoService`, `UDPService`, `HTTPService`, `K10SensorsService`, `SettingsService`, `RollingLoggerService`, `MusicService`
-
-### Service Initialization Pattern (from [main.cpp](src/main.cpp))
-```cpp
-bool start_service(IsServiceInterface &service) {
-    service.setLogger(&debug_logger);           // Attach logger
-    if (!service.initializeService()) return false;
-    if (!service.startService()) return false;
-    
-    // Auto-register OpenAPI routes if implemented
-    IsOpenAPIInterface *openapi = service.asOpenAPIInterface();
-    if (openapi) {
-        openapi->registerRoutes();
-        http_service.registerOpenAPIService(openapi);
-    }
-    return true;
-}
-```
 
 ### FreeRTOS Task Architecture
 **Fixed task allocation** (defined in [main.cpp](src/main.cpp) `setup()`):
 - **Core 0** (real-time critical): `udp_svr_task` - UDP message handling
 - **Core 1** (UI/HTTP): `display_task`, `http_svr_task` - Display updates and web server
 - **DO NOT** introduce new RTOS tasks without explicit justification
-
-### OpenAPI Route Registration Pattern
-All HTTP routes follow this pattern (see [BoardInfoService.cpp](src/services/BoardInfoService.cpp)):
-```cpp
-bool MyService::registerRoutes() {
-    std::string path = getPath("");  // e.g., "/api/myservice/v1"
-    
-    // 1. Define OpenAPI metadata
-    OpenAPIRoute route(path.c_str(), RoutesConsts::method_get, 
-                      "Route description", "Tag", false, {params}, {responses});
-    registerOpenAPIRoute(route);
-    
-    // 2. Register WebServer handler
-    webserver.on(path.c_str(), HTTP_GET, []() {
-        JsonDocument doc;
-        doc["data"] = "value";
-        String output;
-        serializeJson(doc, output);
-        webserver.send(200, RoutesConsts::mime_json, output.c_str());
-    });
-    
-    // 3. Register settings routes (optional)
-    registerSettingsRoutes("Service Name", this);
-    return true;
-}
-```
-
-**CRITICAL**: After changing `registerRoutes()`, update [/data/static_openapi.json](data/static_openapi.json)
 
 ## Coding Conventions
 

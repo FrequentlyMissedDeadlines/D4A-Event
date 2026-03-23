@@ -533,7 +533,7 @@ logger->error("Critical failure occurred");
 
 ```cpp
 #include "IsServiceInterface.h"
-#include "IsOpenAPIInterface.h"  // If exposing HTTP endpoints
+//#include "IsOpenAPIInterface.h"  // If exposing HTTP endpoints
 
 class MyService : public IsServiceInterface, public IsOpenAPIInterface {
 public:
@@ -549,7 +549,7 @@ public:
     
     // Implement OpenAPI interface if exposing HTTP endpoints
     IsOpenAPIInterface* asOpenAPIInterface() override { return this; }
-    bool registerRoutes() override;
+    
     std::string getServiceSubPath() override;
     
 protected:
@@ -707,7 +707,7 @@ service->stopService();
 ## Example Services
 
 Refer to existing service implementations:
-- [BoardInfoService](src/services/BoardInfoService.h) - Simple service exposing system info via OpenAPI
+- [K10Service](src/services/K10Service.h) - Simple service exposing system info via OpenAPI
 - [WiFiService](src/services/WiFiService.h) - Network connectivity
 - [HTTPService](src/services/HTTPService.h) - Web server with OpenAPI aggregation
 - [ServoService](src/services/ServoService.h) - Servo motor control with OpenAPI

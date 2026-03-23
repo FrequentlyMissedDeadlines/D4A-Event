@@ -311,15 +311,17 @@ void BotServerWeb::registerCameraRoutes(QueueHandle_t cam_queue)
             // shared_ptr ensures cleanup on connection close.
             struct StreamState
             {
-                uint8_t *jpg_buf    = nullptr;
-                size_t   jpg_len    = 0;
-                size_t   offset     = 0;
-                char     header[80] = {};
-                size_t   header_len = 0;
+                camera_fb_t *fb_held    = nullptr;  ///< held for JPEG zero-copy path
+                uint8_t     *jpg_buf    = nullptr;  ///< data ptr (owned only in RGB565→JPEG path)
+                size_t       jpg_len    = 0;
+                size_t       offset     = 0;
+                char         header[80] = {};
+                size_t       header_len = 0;
 
                 ~StreamState()
                 {
-                    if (jpg_buf) { free(jpg_buf); jpg_buf = nullptr; }
+                    if (fb_held) { esp_camera_fb_return(fb_held); fb_held = nullptr; }
+                    else if (jpg_buf) { free(jpg_buf); jpg_buf = nullptr; }
                 }
             };
 
@@ -338,11 +340,21 @@ void BotServerWeb::registerCameraRoutes(QueueHandle_t cam_queue)
                         camera_fb_t *fb = nullptr;
                         camera_fb_t *latest = nullptr;
 
-                        // Non-blocking drain — this runs on the AsyncTCP task
+                        // Drain stale frames — keep only the most recent
                         while (xQueueReceive(cam_queue_, &fb, 0) == pdTRUE)
                         {
                             if (latest) esp_camera_fb_return(latest);
                             latest = fb;
+                        }
+
+                        // If queue was empty, block briefly for the next frame.
+                        // RESPONSE_TRY_AGAIN alone cannot reliably restart the
+                        // chunked callback because AsyncTCP only re-triggers on
+                        // TCP ACK — if no data was sent there is no ACK.
+                        if (!latest)
+                        {
+                            xQueueReceive(cam_queue_, &latest,
+                                          pdMS_TO_TICKS(BotServerWebConsts::cam_stream_wait_ms));
                         }
 
                         if (!latest || !latest->buf || latest->len == 0)
@@ -356,14 +368,19 @@ void BotServerWeb::registerCameraRoutes(QueueHandle_t cam_queue)
                                              latest->buf[1] == 0xD8;
                         if (is_jpeg)
                         {
+                            // Copy frame so the DMA buffer is returned to the
+                            // camera task before the next capture cycle.
                             state->jpg_len = latest->len;
-                            state->jpg_buf = static_cast<uint8_t *>(malloc(state->jpg_len));
+                            state->jpg_buf = static_cast<uint8_t *>(ps_malloc(state->jpg_len));
+                            if (!state->jpg_buf)
+                                state->jpg_buf = static_cast<uint8_t *>(malloc(state->jpg_len));
                             if (!state->jpg_buf)
                             {
                                 esp_camera_fb_return(latest);
                                 return RESPONSE_TRY_AGAIN;
                             }
                             memcpy(state->jpg_buf, latest->buf, state->jpg_len);
+                            esp_camera_fb_return(latest); // release DMA buffer immediately
                         }
                         else
                         {
@@ -376,9 +393,8 @@ void BotServerWeb::registerCameraRoutes(QueueHandle_t cam_queue)
                                 esp_camera_fb_return(latest);
                                 return RESPONSE_TRY_AGAIN;
                             }
+                            esp_camera_fb_return(latest);
                         }
-
-                        esp_camera_fb_return(latest);
 
                         state->header_len = snprintf(
                             state->header, sizeof(state->header),
@@ -418,7 +434,8 @@ void BotServerWeb::registerCameraRoutes(QueueHandle_t cam_queue)
 
                     if (state->offset >= total)
                     {
-                        free(state->jpg_buf);
+                        if (state->fb_held) { esp_camera_fb_return(state->fb_held); state->fb_held = nullptr; }
+                        if (state->jpg_buf) { free(state->jpg_buf); }
                         state->jpg_buf    = nullptr;
                         state->jpg_len    = 0;
                         state->header_len = 0;

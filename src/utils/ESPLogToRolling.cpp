@@ -132,8 +132,12 @@ static int esp_log_vprintf_handler(const char *format, va_list args)
 
         if (!clean.empty())
         {
+            // Strip the "S (0000) " prefix — keep only the message part.
+            const auto sep = clean.find(") ");
+            const std::string msg = (sep != std::string::npos) ? clean.substr(sep + 2) : clean;
+
             const RollingLogger::LogLevel lvl = map_level_char(clean[0]);
-            esp_logger_instance->log(clean, lvl);
+            esp_logger_instance->log(msg, lvl,"ESPs3");
         }
     }
 

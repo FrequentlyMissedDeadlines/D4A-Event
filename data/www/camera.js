@@ -29,12 +29,29 @@ function setMode(mode) {
   } else if (mode === 'stream') {
     placeholder.style.display = 'none';
     image.classList.add('visible');
+    let streamLoaded = false;
+    image.onload = () => { streamLoaded = true; };
+    image.onerror = () => {
+      if (currentMode !== 'stream') return;
+      showError('Stream lost. Reconnecting...');
+      setTimeout(() => {
+        if (currentMode === 'stream') {
+          image.src = '/cam/stream?' + new Date().getTime();
+        }
+      }, 2000);
+    };
     image.src = '/cam/stream?' + new Date().getTime();
     controls.style.display = 'none';
+    // Only flag a stall after the stream has successfully delivered at least
+    // one frame AND been idle for 10 s (avoids false positives on slow startup)
     streamCheckInterval = setInterval(() => {
-      if (image.naturalWidth === 0)
-        showError('Stream connection lost. Click Stream again to reconnect.');
-    }, 5000);
+      if (!streamLoaded) return; // not yet loaded — don't flag as lost
+      if (image.naturalWidth === 0 && currentMode === 'stream') {
+        showError('Stream connection lost. Reconnecting...');
+        image.src = '/cam/stream?' + new Date().getTime();
+        streamLoaded = false;
+      }
+    }, 10000);
   }
 }
 async function captureSnapshot() {

@@ -36,12 +36,6 @@ Activates the WiFi service with automatic fallback logic:
 - Falls back to AP mode if connection fails
 - Returns `true` on successful activation (either mode)
 
-#### `bool registerRoutes(AsyncWebServer *webserver)`
-Registers WiFi management HTTP routes (if implemented)
-- WiFi status endpoint
-- Network information endpoint
-- Configuration endpoints
-
 #### `std::string getIP()`
 Returns the current IP address:
 - Station mode: Local IP on the network

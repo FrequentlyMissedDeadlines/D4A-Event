@@ -89,8 +89,9 @@ namespace BotServerWebConsts
     constexpr const char err_cam_not_init[]   PROGMEM = "Camera not initialized";
     constexpr const char err_cam_busy[]       PROGMEM = "Snapshot unavailable during active stream";
     constexpr const char err_cam_capture[]    PROGMEM = "Camera capture failed";
-    constexpr uint8_t    cam_jpeg_quality     = 80;   ///< JPEG quality for RGB565→JPEG conversion
-    constexpr uint32_t   cam_queue_timeout_ms = 100;  ///< Max wait for a frame
+    constexpr uint8_t    cam_jpeg_quality     = 10;   ///< JPEG quality for RGB565→JPEG fallback conversion
+    constexpr uint32_t   cam_queue_timeout_ms = 100;  ///< Max wait for a snapshot frame
+    constexpr uint32_t   cam_stream_wait_ms   = 150;  ///< Blocking wait for next stream frame (ms)
     constexpr uint16_t   default_port         = 80;
 } // namespace BotServerWebConsts
 

@@ -21,5 +21,10 @@
 1. Servos
   1. increase speed for continuous rotation servo
   1. fix the angle conversion for 270 : 90 is in fact 0 and angle should be -135>+135
-   1. fix the angle conversion for 180 : 90 is in fact 0 and angle should be -90>+90
-1. Add tests
+  1. fix the angle conversion for 180 : 90 is in fact 0 and angle should be -90>+90
+1. Add UDP reception of broadcasted UDP message
+  1. on GAME_STOP-> DC and SERVO motors stoped and cannot be started.  
+  1. on GAME_START -> motors can be controlled  
+
+
+  

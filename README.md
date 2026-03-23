@@ -13,7 +13,7 @@ Designed for low-memory and low-CPU optimization with Arduino-style APIs and C++
 - **Async web server** (ESPAsyncWebServer) — non-blocking HTTP on port 80
 - **Master controller registration** — token-based authorization system (`AmakerBotService`)
 - **Camera service** — JPEG snapshot, MJPEG streaming, and WAV audio streaming
-- **LED control** — onboard K10 RGB LEDs (BoardInfoService) and DFR1216 expansion LEDs
+- **LED control** — onboard K10 RGB LEDs (K10Service) and DFR1216 expansion LEDs
 - **Servo & motor control** — DFR0548 (8 servos) + DFR1216 expansion (6 servos, 4 motors)
 - **Sensors** — light, temperature, humidity, microphone, accelerometer
 - **UDP protocol** — binary + text commands on port 24642

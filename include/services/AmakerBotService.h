@@ -3,7 +3,7 @@
 #include "BotCommunication/BotMessageHandler.h"
 #include <freertos/semphr.h>
 #include <functional>
-#include <initializer_list>
+#include <vector>
 #include <string>
 
 /**
@@ -38,7 +38,10 @@ public:
      *                 then each handler in order.  All pointed-to objects must outlive
      *                 this AmakerBotService.
      */
-    explicit AmakerBotService(std::initializer_list<IsBotActionHandlerInterface *> handlers):bot_message_handlers(handlers) {}
+    explicit AmakerBotService(std::initializer_list<IsBotActionHandlerInterface *> handlers)
+    {
+        bot_message_handlers.assign(handlers.begin(), handlers.end());
+    }
     // ---- IsServiceInterface ------------------------------------------
 
     /** @return "AmakerBot Service" */
@@ -103,6 +106,12 @@ public:
 
     /** @return Current bot name (default: "K10-Bot"). */
     std::string getBotName() const;
+
+    /**
+     * @brief Register a new bot message handler.
+     * @param handler Pointer to handler (must outlive this AmakerBotService).
+     */
+    void registerHandler(IsBotActionHandlerInterface *handler);
 
     /**
      * @brief Set the bot name (thread-safe, max 32 chars).
@@ -192,8 +201,28 @@ private:
 
     std::function<void()> heartbeat_timeout_cb_; ///< Called once on timeout
 
-    std::initializer_list<IsBotActionHandlerInterface *> bot_message_handlers;
+    std::vector<IsBotActionHandlerInterface *> bot_message_handlers;
 
     /** @brief Generate a random 5-character alphanumeric token via esp_random(). */
     std::string generateRandomToken();
+
+public:
+    /**
+     * @brief Return the dispatch count for a given action byte.
+     * @param action  The action byte (data[0]) to query.
+     * @return Number of times dispatch() was called with that action byte.
+     */
+    uint32_t getDispatchCount(uint8_t action) const { return dispatch_count_[action]; }
+
+    /**
+     * @brief Return a pointer to the full 256-entry dispatch count table.
+     * @return Const pointer to dispatch_count_[0].
+     */
+    const uint32_t *getDispatchCounts() const { return dispatch_count_; }
+
+    /** @brief Reset all dispatch counters to zero. */
+    void resetDispatchCounts() { memset(dispatch_count_, 0, sizeof(dispatch_count_)); }
+
+private:
+    uint32_t dispatch_count_[256] = {}; ///< Per-action-byte dispatch counter
 };

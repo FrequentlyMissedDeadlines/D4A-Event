@@ -38,6 +38,7 @@
 #include <unihiker_k10.h>
 
 #include "IsServiceInterface.h"
+#include "IsBotMessageHandlerInterface.h"
 #include "RollingLogger.h"
 #include "UI/AppScreen.h"
 #include "UI/LogScreen.h"
@@ -58,6 +59,12 @@ namespace AmakerBotUIConsts
     constexpr const char scr_name_svc_log[]   PROGMEM = "3: Svc Log";
     constexpr const char scr_name_debug_log[] PROGMEM = "4: Debug Log";
     constexpr const char scr_name_esp_log[]   PROGMEM = "5: ESP Log";
+
+    // Bot protocol commands for remote UI control
+    constexpr uint8_t UI_SERVICE_ID      = 0x05;      ///< Service ID for UI commands
+    constexpr uint8_t CMD_NEXT_SCREEN    = 0x01;      ///< Advance to next screen
+    constexpr uint8_t CMD_PREV_SCREEN    = 0x02;      ///< Go back to previous screen
+    constexpr uint8_t CMD_SET_SCREEN     = 0x03;      ///< Set screen to specific index [index]
 } // namespace AmakerBotUIConsts
 
 // ---------------------------------------------------------------------------
@@ -71,7 +78,8 @@ namespace AmakerBotUIConsts
  * Attach RollingLogger instances via setShownLoggers() to enable log screens.
  * Call tick() periodically from a FreeRTOS task (e.g. every 500 ms).
  */
-class AmakerBotUIService : public IsServiceInterface
+class AmakerBotUIService : public IsServiceInterface,
+                         public IsBotActionHandlerInterface
 {
 public:
     // ---- Screen identifiers -----------------------------------------
@@ -135,6 +143,19 @@ public:
 
     /** @brief Clear the screen and mark stopped. */
     bool stopService() override;
+
+    // ---- IsBotActionHandlerInterface --------------------------------
+
+    /** @return Service ID for remote UI control (0x05) */
+    uint8_t getBotServiceId() const override;
+
+    /**
+     * @brief Handle bot protocol messages for UI control.
+     * @param data Raw frame; byte[0] is the action byte
+     * @param len  Frame length in bytes
+     * @return Binary response (empty for all UI commands)
+     */
+    std::string handleBotMessage(const uint8_t *data, size_t len) override;
 
     // ---- Runtime API ------------------------------------------------
 

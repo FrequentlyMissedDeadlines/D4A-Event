@@ -1,6 +1,53 @@
 'use strict';
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ⚠️  ARCHITECTURE: TWO SERVO CONTROL MODES
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// BotScript.js is the infrastructure layer that handles WebSocket communication,
+// heartbeat, master registration, and connection management.
+//
+// 📌 IMPORTANT: Two different servo control modes exist:
+//
+// MODE 1: REQUEST-RESPONSE (BotScript.js - UI Wrapper Functions)
+//   Functions: setServoAnglesUI(), setServoSpeedsUI(), attachServos(), detachServos()
+//   Behavior: Waits for response, shows status feedback, gets values from HTML inputs
+//   Use case: UI buttons, manual control with visual feedback
+//
+// MODE 2: FIRE-AND-FORGET (BotScriptActions.js - Direct Control)
+//   Functions: attachServo(channel, type), setServoAngle(channel, angle),
+//             setServoSpeeds(channels[], speeds[])
+//   Behavior: Returns immediately, no response wait, optimized for real-time
+//   Use case: Gamepad/keyboard control, script automation
+//
+// ✅ USER-FACING FUNCTIONS (available after registerMaster):
+//   - registerMaster(token) — Register as master controller [CALL THIS FIRST]
+//   - unregisterMaster() — Unregister from master
+//   - setBotName(name) — Set bot display name
+//   - getBattery() — Query battery level
+//   - setScreen(screenIndex), nextScreen(), previousScreen() — Screen navigation
+//   - startHeartbeat() / stopHeartbeat() — Connection keepalive (auto-started)
+//   - startPing() / stopPing() — Connection latency monitoring
+//
+// ⚠️  PRIVATE FUNCTIONS (don't call directly):
+//   - sendWSPacket(), processWSResponse(), sendWSFireAndForget()
+//   - Other internal helpers
+//
+// EXECUTION FLOW:
+// 1. Page loads, BotScript.js + BotScriptActions.js initialize
+// 2. User enters token, clicks "Register as Master"
+// 3. Heartbeat auto-starts (40ms keepalive)
+// 4. User can now call servo functions:
+//    - Use BotScriptActions.js fire-and-forget for real-time control
+//    - Use BotScript.js request-response for UI feedback
+//
+// ═════════════════════════════════════════════════════════════════════════════
+
 // ── WebSocket Configuration ───────────────────────────────────────────────────
+
+// Global connection parameters (set by getBotControl or HTML form)
+let gBotIp = '';      // e.g., "192.168.1.178"
+let gBotPort = '';    // e.g., "80"
 
 let ws = null;  // WebSocket connection to bridge
 let wsConnected = false;
@@ -20,7 +67,7 @@ let pingHistory = [];
 let pingSequence = 0;
 const MAX_PING_HISTORY = 100;
 
-const WS_PORT = 80;
+const WS_PORT = 81;
 const WS_TIMEOUT = 500;
 const HEARTBEAT_INTERVAL_MS = 40; // Send every 40ms (well under 50ms deadline)
 
@@ -82,10 +129,20 @@ const DFR1216_ACTION = {
 // ── Page Initialization ───────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Auto-populate bot IP from current location
+  // Auto-populate bot IP from current location and set global
   const currentHost = window.location.hostname;
-  gBotIp = currentHost;  // Update global variable
-  document.getElementById('botIp').value = currentHost;  // Update HTML field for consistency
+  gBotIp = currentHost;
+  const botIpField = document.getElementById('botIp');
+  if (botIpField) {
+    botIpField.value = currentHost;
+  }
+  
+  // Set default port in global and UI
+  gBotPort = '81';
+  const botPortField = document.getElementById('botPort');
+  if (botPortField && !botPortField.value) {
+    botPortField.value = '80';
+  }
   
   // Setup angle sliders
   for (let i = 0; i < 4; i++) {
@@ -163,6 +220,7 @@ function scheduleReconnect() {
 
 /**
  * Initialize WebSocket connection to the bridge at /ws
+ * Uses global gBotIp and gBotPort variables
  */
 function initializeWebSocket() {
   if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
@@ -178,15 +236,14 @@ function initializeWebSocket() {
     wsReconnectTimer = null;
   }
 
-  
-  // Use global variables set by getBotControl() or HTML form
-  const botIp = gBotIp || document.getElementById('botIp').value.trim();
-  const port = gBotPort || document.getElementById('botPort').value.trim();
-  // Only add port if it's explicitly specified (not default)
-  const portStr = port ? `:${port}` : ':80';
-  const wsUrl = `ws://${botIp}${portStr}/ws`;
+  if (!gBotIp) {
+    return Promise.reject(new Error('Bot IP not configured'));
+  }
+
+  const portStr = gBotPort || '80';
+  const wsUrl = `ws://${gBotIp}:${portStr}/ws`;
   wsManualClose = false;
-  console.log('[WS] initializeWebSocket '+wsUrl);
+  console.log('[WS] initializeWebSocket ' + wsUrl);
   console.log(`[WS] Connecting to ${wsUrl}`);
 
   wsConnectPromise = new Promise((resolve, reject) => {
@@ -212,8 +269,8 @@ function initializeWebSocket() {
 
         wsConnected = true;
         wsConnectPromise = null;
-        console.log('[WS] Connected.');
-        showStatus('WebSocket connected', false);
+        console.log(`[WS] Connected to ${gBotIp}:${gBotPort}`);
+        showStatus(`WebSocket connected (${gBotIp}:${gBotPort})`, false);
         updateUIState();
         resolve(socket);
       };
@@ -238,7 +295,8 @@ function initializeWebSocket() {
         wsConnected = false;
         console.error('[WS] Error:', error);
         console.error('[WS] Connection failed. URL:', wsUrl);
-        console.error('[WS] Bot IP:', botIp);
+        console.error('[WS] Bot IP:', gBotIp);
+        console.error('[WS] Port:', gBotPort);
         console.error('[WS] ReadyState:', socket.readyState);
         showStatus('WebSocket bridge error: Check bot IP and firewall', true);
         updateUIState();
@@ -272,15 +330,13 @@ function initializeWebSocket() {
 }
 
 /**
- * Create WebSocket bridge if not already created
- * Now we use the WebSocket bridge instead
+ * Verify WebSocket bridge is properly configured
+ * Uses global gBotIp variable
  */
 function ensureWebSocketBridge() {
-  const botIp = gBotIp || document.getElementById('botIp').value.trim();
-  
-  if (!botIp) {
-    console.error('Bot IP address is required');
-    showStatus('Please enter bot IP address', true);
+  if (!gBotIp) {
+    console.error('Bot IP address not configured');
+    showStatus('Please configure bot IP address', true);
     return false;
   }
   
@@ -319,14 +375,115 @@ function closeWebSocket() {
   updateUIState();
 }
 
+// ── Bot Control Interface ─────────────────────────────────────────────────────
+
+/**
+ * Unified function to connect to WebSocket and register as master
+ * 
+ * @param {string} ip - Bot IP address (e.g., "192.168.1.178")
+ * @param {string|number} port - WebSocket port (e.g., "80" or 80)
+ * @param {string} masterToken - 5-character master token (e.g., "abc12")
+ * @returns {Promise<boolean>} - true if successfully connected and registered, false otherwise
+ * 
+ * @example
+ * // Simple usage - await connection and registration
+ * const success = await getBotControl("192.168.1.178", "80", "abc12");
+ * if (success) {
+ *   _scriptLog('✓ Connected and registered as master');
+ * } else {
+ *   _scriptLog('❌ Failed to connect or register');
+ * }
+ * 
+ * @example
+ * // With error handling
+ * try {
+ *   const connected = await getBotControl("192.168.1.178", 80, "abc12");
+ *   if (connected) {
+ *     // You can now use servo functions
+ *     attachServo(0, SERVO_TYPES.ROTATIONAL);
+ *     setServoSpeeds([0], [100]);
+ *   }
+ * } catch (error) {
+ *   console.error('Connection failed:', error);
+ * }
+ */
+async function getBotControl(ip, port, masterToken) {
+  try {
+    // Validate inputs
+    if (!ip || typeof ip !== 'string') {
+      throw new Error('Bot IP must be a non-empty string');
+    }
+    if (!masterToken || typeof masterToken !== 'string' || masterToken.length !== 5) {
+      throw new Error('Master token must be a 5-character string');
+    }
+
+    // Normalize port to string if it's a number
+    const portStr = String(port);
+    if (!portStr || portStr === '0' || portStr === '') {
+      throw new Error('Port must be a valid port number');
+    }
+
+    console.log(`[getBotControl] Connecting to bot at ${ip}:${portStr} with token: ${masterToken}`);
+    
+    // Step 1: Set global variables (single source of truth)
+    gBotIp = ip;
+    gBotPort = portStr;
+    console.log(`[getBotControl] Set global: gBotIp=${gBotIp}, gBotPort=${gBotPort}`);
+    
+    // Step 1b: Also update HTML form fields for UI consistency
+    const botIpField = document.getElementById('botIp');
+    const botPortField = document.getElementById('botPort');
+    
+    if (botIpField) {
+      botIpField.value = ip;
+    }
+    
+    if (botPortField) {
+      botPortField.value = portStr;
+    }
+    
+    // Step 2: Connect to WebSocket
+    console.log('[getBotControl] Step 2: Initializing WebSocket...');
+    showStatus('Connecting to bot...', false);
+    
+    await initializeWebSocket();
+    
+    if (!wsConnected) {
+      throw new Error('WebSocket connection failed - bot may be offline or unreachable');
+    }
+    
+    console.log('[getBotControl] WebSocket connected successfully');
+    
+    // Step 3: Register as master
+    console.log('[getBotControl] Step 3: Registering as master...');
+    showStatus('Registering as master...', false);
+    
+    await registerMaster(masterToken);
+    
+    if (!isMasterRegistered) {
+      throw new Error('Master registration failed - invalid token or bot rejected registration');
+    }
+    
+    console.log('[getBotControl] Successfully registered as master');
+    showStatus(`✓ Connected and registered as master (${gBotIp}:${gBotPort})`, false);
+    
+    return true;
+
+  } catch (error) {
+    console.error('[getBotControl] Error:', error);
+    showStatus(`❌ Connection failed: ${error.message}`, true);
+    updateLastResponse(`ERROR: ${error.message}`);
+    return false;
+  }
+}
+
 // ── Master Registration ───────────────────────────────────────────────────────
 
 /**
  * Register this client as master controller
  */
-async function registerMaster() {
-  const token = document.getElementById('masterToken').value.trim();
-  
+async function registerMaster(token) {
+    
   if (!token || token.length !== 5) {
     showStatus('Please enter a valid 5-character token', true);
     console.error('Invalid token:', token);
@@ -574,7 +731,6 @@ function getServoMask() {
   }
   return mask;
 }
-
 /**
  * Attach servos with selected type
  */
@@ -592,6 +748,44 @@ async function attachServos() {
   
   const type = parseInt(document.getElementById('servoType').value);
   
+  try {
+    showStatus('Attaching servos...', false);
+    
+    // Build WS packet: SET_SERVO_TYPE [mask] [type]
+    const packet = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVO_TYPE, mask, type]);
+    
+    // Send WS packet
+    const response = await sendWSPacket(packet);
+    
+    // Parse response: 0x22 + resp_code
+    if (response && response.length >= 2) {
+      const respCode = response[1];
+      handleServoAttachResponse(respCode, mask, type);
+    } else {
+      showStatus('Invalid response from bot', true);
+      updateLastResponse('Invalid response');
+    }
+    
+  } catch (error) {
+    console.error('Attach servos failed:', error);
+    showStatus('Failed to attach servos: ' + error.message, true);
+    updateLastResponse('Error: ' + error.message);
+  }
+}
+
+async function attachServo(channel, type) {
+  if (!isMasterRegistered) {
+    showStatus('Must be registered as master to attach servos', true);
+    return;
+  }
+  
+  const mask = (1 << channel);
+  if (mask === 0) {
+    showStatus('Please select at least one servo channel', true);
+    return;
+  }
+  
+ 
   try {
     showStatus('Attaching servos...', false);
     
@@ -683,10 +877,12 @@ function handleServoAttachResponse(respCode, mask, type) {
 // ── Servo Control ─────────────────────────────────────────────────────────────
 
 /**
- * Set servo angles for angular servos (0x24)
+ * Set servo angles for angular servos (0x24) - UI Version
  * Sets all selected servos to the same angle value
+ * Request-response: gets values from HTML sliders, shows status feedback
+ * Use setServoAngle() from BotScriptActions.js for fire-and-forget direct control
  */
-async function setServoAngles() {
+async function setServoAnglesUI() {
   if (!isMasterRegistered) {
     showStatus('Must be registered as master to control servos', true);
     return;
@@ -768,9 +964,11 @@ function centerAllAngles() {
 }
 
 /**
- * Set servo speeds for rotational servos (0x22)
+ * Set servo speeds for rotational servos (0x22) - UI Version
+ * Request-response: gets values from HTML sliders, shows status feedback
+ * Use setServoSpeeds(channels[], speeds[]) from BotScriptActions.js for fire-and-forget direct control
  */
-async function setServoSpeeds() {
+async function setServoSpeedsUI() {
   if (!isMasterRegistered) {
     showStatus('Must be registered as master to control servos', true);
     return;
@@ -906,6 +1104,133 @@ async function stopAllServos() {
     updateLastResponse('Error: ' + error.message);
   }
 }
+
+// ── UI Control ────────────────────────────────────────────────────────────────
+
+// UI Service action bytes (service_id 0x05)
+const UI_ACTION = {
+  NEXT_SCREEN: 0x51,  // Advance to next screen
+  PREV_SCREEN: 0x52,  // Go back to previous screen
+  SET_SCREEN:  0x53   // Set screen to specific index
+};
+
+/**
+ * Advance to the next screen (wraps from last screen back to first)
+ */
+async function nextScreen() {
+  try {
+    showStatus('Going to next screen...', false);
+    
+    // Build packet: NEXT_SCREEN (no payload)
+    const packet = new Uint8Array([UI_ACTION.NEXT_SCREEN]);
+    
+    // Send WS packet
+    const response = await sendWSPacket(packet);
+    
+    // Parse response: 0x51 + resp_code
+    if (response && response.length >= 2) {
+      const respCode = response[1];
+      handleUIScreenResponse(respCode, 'NEXT_SCREEN');
+    } else {
+      showStatus('Invalid response from bot', true);
+      updateLastResponse('Invalid response');
+    }
+    
+  } catch (error) {
+    console.error('Next screen failed:', error);
+    showStatus('Failed to navigate: ' + error.message, true);
+    updateLastResponse('Error: ' + error.message);
+  }
+}
+
+/**
+ * Go back to the previous screen (wraps from first screen to last)
+ */
+async function previousScreen() {
+  try {
+    showStatus('Going to previous screen...', false);
+    
+    // Build packet: PREV_SCREEN (no payload)
+    const packet = new Uint8Array([UI_ACTION.PREV_SCREEN]);
+    
+    // Send WS packet
+    const response = await sendWSPacket(packet);
+    
+    // Parse response: 0x52 + resp_code
+    if (response && response.length >= 2) {
+      const respCode = response[1];
+      handleUIScreenResponse(respCode, 'PREV_SCREEN');
+    } else {
+      showStatus('Invalid response from bot', true);
+      updateLastResponse('Invalid response');
+    }
+    
+  } catch (error) {
+    console.error('Previous screen failed:', error);
+    showStatus('Failed to navigate: ' + error.message, true);
+    updateLastResponse('Error: ' + error.message);
+  }
+}
+
+/**
+ * Jump directly to a specific screen by index
+ * @param {number} screenIndex Screen index (0-5):
+ *   0 = Splash Screen
+ *   1 = App Info / Dashboard
+ *   2 = App Log
+ *   3 = Service Log
+ *   4 = Debug Log
+ *   5 = ESP-IDF Log
+ */
+async function setScreen(screenIndex) {
+  // Validate screen index
+  if (typeof screenIndex !== 'number' || screenIndex < 0 || screenIndex > 5) {
+    showStatus('Invalid screen index (0-5)', true);
+    return;
+  }
+  
+  try {
+    const screenNames = ['Splash', 'App Info', 'App Log', 'Service Log', 'Debug Log', 'ESP Log'];
+    showStatus(`Going to screen ${screenIndex} (${screenNames[screenIndex]})...`, false);
+    
+    // Build packet: SET_SCREEN [screen_index]
+    const packet = new Uint8Array([UI_ACTION.SET_SCREEN, screenIndex]);
+    
+    // Send WS packet
+    const response = await sendWSPacket(packet);
+    
+    // Parse response: 0x53 + resp_code
+    if (response && response.length >= 2) {
+      const respCode = response[1];
+      handleUIScreenResponse(respCode, `SET_SCREEN (${screenNames[screenIndex]})`);
+    } else {
+      showStatus('Invalid response from bot', true);
+      updateLastResponse('Invalid response');
+    }
+    
+  } catch (error) {
+    console.error('Set screen failed:', error);
+    showStatus('Failed to navigate: ' + error.message, true);
+    updateLastResponse('Error: ' + error.message);
+  }
+}
+
+/**
+ * Handle UI screen navigation response
+ */
+function handleUIScreenResponse(respCode, command) {
+  const respName = BOT_RESP_NAMES[respCode] || `0x${respCode.toString(16)}`;
+  updateLastResponse(`${command}: ${respName}`);
+  
+  if (respCode === BOT_RESP.OK) {
+    showStatus('✓ Screen changed', false);
+  } else if (respCode === BOT_RESP.INVALID_VALUES) {
+    showStatus('Invalid screen index', true);
+  } else {
+    showStatus(`Failed: ${respName}`, true);
+  }
+}
+
 // ── Heartbeat Management ──────────────────────────────────────────────────────
 
 /**
@@ -966,9 +1291,8 @@ function startPing() {
     return;
   }
   
-  const botIp = gBotIp || document.getElementById('botIp').value.trim();
-  if (!botIp) {
-    showStatus('Please enter bot IP address', true);
+  if (!gBotIp) {
+    showStatus('Please configure bot IP address', true);
     return;
   }
   
@@ -1026,12 +1350,12 @@ async function sendPingPacket() {
  */
 function recordPingResult(latency) {
   // Add to history
-  pingHistory.push(latency);
   if (pingHistory.length > MAX_PING_HISTORY) {
     pingHistory.shift();
   }
   
   // Calculate statistics
+  pingHistory.push(latency);
   const current = latency;
   const avg = Math.round(pingHistory.reduce((a, b) => a + b, 0) / pingHistory.length);
   const min = Math.min(...pingHistory);
@@ -1222,14 +1546,11 @@ function processWSResponse(response) {
  * @returns {Promise<Uint8Array>} Response packet.
  */
 async function sendWSPacketInternal(packet) {
-  const botIp = gBotIp || document.getElementById('botIp').value.trim();
-  const port = gBotPort || parseInt(document.getElementById('botPort').value, 10) || WS_PORT;
-
   const hexData = Array.from(packet)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 
-  console.log(`[WS TX] ${hexData} via WebSocket to ${botIp}:${port}`);
+  console.log(`[WS TX] ${hexData} via WebSocket to ${gBotIp}:${gBotPort}`);
 
   if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
     await initializeWebSocket();
@@ -1275,7 +1596,6 @@ function sendWSFireAndForget(packet) {
  */
 function updateUIState() {
   // Connection status
-  const botIp = gBotIp || document.getElementById('botIp').value.trim();
   const connStatus = document.getElementById('connectionStatus');
   if (wsConnected) {
     connStatus.textContent = 'Connected';
@@ -1283,7 +1603,7 @@ function updateUIState() {
   } else if (wsConnectPromise) {
     connStatus.textContent = 'Connecting';
     connStatus.className = 'status-badge status-warning';
-  } else if (botIp) {
+  } else if (gBotIp) {
     connStatus.textContent = 'Configured';
     connStatus.className = 'status-badge status-warning';
   } else {
@@ -1358,3 +1678,167 @@ function togglePanelExclusive(thisSectionId, thisBtnId, otherSectionId, otherBtn
     thisBtn.classList.add('collapsed');
   }
 }
+
+// ── Script Engine ─────────────────────────────────────────────────────────────
+
+const SCRIPT_STORAGE_KEY = 'botScripts';
+let _scriptAbortController = null;
+
+/**
+ * Promise-based delay helper, respects abort signal.
+ * @param {number} ms - Milliseconds to wait
+ */
+function delay(ms) {
+  return new Promise((resolve, reject) => {
+    if (_scriptAbortController && _scriptAbortController.signal.aborted) {
+      return reject(new Error('Script stopped'));
+    }
+    const t = setTimeout(resolve, ms);
+    if (_scriptAbortController) {
+      _scriptAbortController.signal.addEventListener('abort', () => {
+        clearTimeout(t);
+        reject(new Error('Script stopped'));
+      });
+    }
+  });
+}
+
+/** Append a line to the script output console */
+function _scriptLog(msg, isError) {
+  const out = document.getElementById('scriptOutput');
+  if (!out) return;
+  const line = document.createElement('div');
+  line.style.color = isError ? '#f66' : '#aaa';
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  out.appendChild(line);
+  out.scrollTop = out.scrollHeight;
+}
+
+/** Run the script currently in the textarea */
+async function runScript() {
+  stopScript(); // cancel any previously running script
+  _scriptAbortController = new AbortController();
+
+  const code = document.getElementById('scriptEditor').value.trim();
+  if (!code) { _scriptLog('Script is empty.', true); return; }
+
+  const out = document.getElementById('scriptOutput');
+  if (out) out.innerHTML = '';
+  _scriptLog('▶ Running…', false);
+
+  try {
+    // Wrap in an async IIFE so top-level await works
+    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+    const fn = new AsyncFunction('delay', code);
+    await fn(delay);
+    _scriptLog('✔ Done.', false);
+  } catch (e) {
+    if (e.message !== 'Script stopped') {
+      _scriptLog('✖ ' + e.message, true);
+    } else {
+      _scriptLog('⏹ Stopped.', false);
+    }
+  } finally {
+    _scriptAbortController = null;
+  }
+}
+
+/** Abort a running script */
+function stopScript() {
+  if (_scriptAbortController) {
+    _scriptAbortController.abort();
+    _scriptAbortController = null;
+  }
+}
+
+// ── localStorage persistence ──────────────────────────────────────────────────
+
+/** Load the scripts map from localStorage */
+function _loadScriptsMap() {
+  try { return JSON.parse(localStorage.getItem(SCRIPT_STORAGE_KEY)) || {}; }
+  catch { return {}; }
+}
+
+/** Persist the scripts map to localStorage */
+function _saveScriptsMap(map) {
+  localStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(map));
+}
+
+/** Refresh the slot <select> from localStorage */
+function _refreshSlotList() {
+  const select = document.getElementById('scriptSlot');
+  if (!select) return;
+  const map = _loadScriptsMap();
+  const current = select.value;
+  select.innerHTML = '<option value="">— saved scripts —</option>';
+  Object.keys(map).sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+  if (current && map[current]) select.value = current;
+}
+
+/** Save current editor content under the given name */
+function saveScript() {
+  const name = document.getElementById('scriptName').value.trim() || 'script-' + Date.now();
+  const code = document.getElementById('scriptEditor').value;
+  const map  = _loadScriptsMap();
+  map[name]  = code;
+  _saveScriptsMap(map);
+  _refreshSlotList();
+  document.getElementById('scriptSlot').value = name;
+  _scriptLog(`💾 Saved as "${name}"`, false);
+}
+
+/** Load selected slot into editor */
+function loadScriptFromSlot() {
+  const name = document.getElementById('scriptSlot').value;
+  if (!name) return;
+  const map = _loadScriptsMap();
+  if (map[name] !== undefined) {
+    document.getElementById('scriptEditor').value = map[name];
+    document.getElementById('scriptName').value = name;
+    _scriptLog(`📂 Loaded "${name}"`, false);
+  }
+}
+
+/** Delete the currently selected slot */
+function deleteScript() {
+  const name = document.getElementById('scriptSlot').value;
+  if (!name) { _scriptLog('No script selected.', true); return; }
+  const map = _loadScriptsMap();
+  delete map[name];
+  _saveScriptsMap(map);
+  _refreshSlotList();
+  _scriptLog(`🗑️ Deleted "${name}"`, false);
+}
+
+/** Download editor content as a .js file */
+function exportScript() {
+  const name = (document.getElementById('scriptName').value.trim() || 'botscript') + '.js';
+  const blob = new Blob([document.getElementById('scriptEditor').value], { type: 'text/javascript' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/** Import a .js / .txt file into the editor */
+function importScript(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('scriptEditor').value = e.target.result;
+    document.getElementById('scriptName').value = file.name.replace(/\.[^.]+$/, '');
+    _scriptLog(`⬆️ Imported "${file.name}"`, false);
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// Populate slot list on load
+document.addEventListener('DOMContentLoaded', _refreshSlotList);

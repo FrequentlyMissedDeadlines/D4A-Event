@@ -275,6 +275,9 @@ void setup()
   ui_service.initializeService();
   ui_service.startService();
 
+  // Register UI service as a bot message handler for remote screen control
+  amaker_bot_.registerHandler(&ui_service);
+
   // Initialize DFR1216 board as a full service before MotorServoService
   // (MotorServoService::initializeService() requires board.getStatus() == STARTED)
   start_service(board);

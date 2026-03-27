@@ -45,7 +45,7 @@ namespace AmakerBotConsts
     constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 50;  ///< ms without heartbeat → emergency stop
 } // namespace AmakerBotConsts
 
-char svccode[6] = "core ";
+char svccode[6] = "proxy";
 // ---------------------------------------------------------------------------
 // IsServiceInterface
 // ---------------------------------------------------------------------------
@@ -276,6 +276,12 @@ void AmakerBotService::setBotName(const std::string &name)
     debugLogger->info(progmem_to_string(AmakerBotConsts::msg_name_changed) + name);
 }
 
+void AmakerBotService::registerHandler(IsBotActionHandlerInterface *handler)
+{
+    if (handler)
+        bot_message_handlers.push_back(handler);
+}
+
 bool AmakerBotService::setMasterIfTokenValid(const std::string &ip, const std::string &token)
 {
     if (token != server_token_)
@@ -359,11 +365,26 @@ std::string AmakerBotService::dispatch(const uint8_t *data, size_t len,
             debugLogger->debug(FPSTR(BotMessageHandlerConsts::msg_empty_message));
         return {};
     }
+    
+    ++dispatch_count_[data[0]]; // count every call by action byte
     if ((data[0]>>4) == getBotServiceId())
         return handleBotMessage(data, len, senderIP);
+    else {
 
+
+        
+    }
     for (IsBotActionHandlerInterface *handler : bot_message_handlers) {
         if (handler && (data[0]>>4) == handler->getBotServiceId()) {
+                    // Convert data to hex string format
+        std::string hex_data;
+        for (size_t i = 0; i < len; ++i) {
+            char buf[3];
+            snprintf(buf, sizeof(buf), "%02X", data[i]);
+            // if (i > 0) hex_data += " ";
+            hex_data += buf;
+        }
+            serviceLogger->info(("RX " + hex_data).c_str(), svccode);
             return handler->handleBotMessage(data, len);
         }
     }

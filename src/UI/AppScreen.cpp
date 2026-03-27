@@ -9,6 +9,7 @@
 #include <string>
 
 extern TFT_eSPI tft;
+extern DFR1216_I2C board;
 
 
 // ---------------------------------------------------------------------------
@@ -67,6 +68,7 @@ void AppScreen::initScreen()
     drawServoTable(true);
     drawMotorTable(true);
     drawESPInfo(true);
+    drawBatteryInfo(true);
 }
 
 void AppScreen::updateScreen()
@@ -82,6 +84,7 @@ void AppScreen::updateScreen()
     drawServoTable(false);
     drawMotorTable(false);
     drawESPInfo(false);
+    drawBatteryInfo(false);
 }
 
 // ---------------------------------------------------------------------------
@@ -543,7 +546,95 @@ void AppScreen::drawMotorTable(bool chrome_only)
     }
 }
 
+/**
+ * @brief Draw a battery-shape icon to the right of the DC motors table.
+ *
+ * The icon sits in the dead space between the motor table right border (x=198)
+ * and the right screen edge (x=239), vertically aligned with the servo table
+ * (y=160–238, the taller of the two tables).
+ *
+ * Shape: a tall body rectangle with a small terminal nub on top, both outlined
+ * in white.  The interior is filled bottom-up proportional to the battery
+ * percentage.  Fill colour is green ≥50 %, yellow 20–49 %, red <20 %.
+ *
+ * @param chrome_only  true  → draw the static white outline only (called once
+ *                             from initScreen).
+ *                     false → repaint the fill only (called every tick from
+ *                             updateScreen).
+ */
+void AppScreen::drawBatteryInfo(bool chrome_only)
+{
+    // ── Geometry ────────────────────────────────────────────────────────────
+    // Servo table (tallest) spans y = 160 → 238 (SERVO_COUNT=6).
+    // Motor table right border is at x = 126 + 12*6 = 198.
+    // Remaining horizontal space: x = 199 → 239 (41 px).
 
+    const int lh = AppScreenConstants::line_height;   // 8
+    const int vp = AppScreenConstants::v_pad;          // 3
+
+    // Vertical extents: match the servo table
+    const int y0          = AppScreenConstants::table_servo_line;                          // 160
+    const int y_bot_table = y0 + (3 + MotorServoConsts::SERVO_COUNT) * lh + 2 * vp;      // 238
+
+    // Horizontal centre of the available band
+    const int motor_xr  = AppScreenConstants::table_motor_column
+                          + 12 * AppScreenConstants::char_width;                           // 198
+    const int center_x  = motor_xr + (240 - motor_xr) / 2;                               // 219
+
+    // Battery body rectangle
+    constexpr int batt_w = 22;  ///< body width  (px)
+    constexpr int nub_w  = 10;  ///< terminal nub width  (px)
+    constexpr int nub_h  = 5;   ///< terminal nub height (px)
+    constexpr int margin = 2;   ///< gap from table borders (px)
+
+    const int body_x     = center_x - batt_w / 2;            // 208
+    const int nub_x      = center_x - nub_w  / 2;            // 214
+
+    const int nub_y_top  = y0          + margin;              // 162  — top of nub
+    const int body_y_top = nub_y_top   + nub_h;              // 167  — top of body
+    const int body_y_bot = y_bot_table - margin;              // 236  — bottom of body
+
+    // Interior fill region (1 px inside the body outline)
+    const int fill_x     = body_x      + 1;
+    const int fill_w     = batt_w      - 2;
+    const int fill_y_top = body_y_top  + 1;
+    const int fill_y_bot = body_y_bot  - 1;
+    const int fill_h     = fill_y_bot  - fill_y_top + 1;     // ≈ 68 px
+
+    if (chrome_only)
+    {
+        // ── Static white outline ─────────────────────────────────────────
+        tft.drawRect(body_x, body_y_top,
+                     batt_w, body_y_bot - body_y_top + 1,
+                     TFT_WHITE);                                 // body
+        tft.drawFastHLine(nub_x,              nub_y_top, nub_w, TFT_WHITE); // nub top
+        tft.drawFastVLine(nub_x,              nub_y_top, nub_h, TFT_WHITE); // nub left
+        tft.drawFastVLine(nub_x + nub_w - 1, nub_y_top, nub_h, TFT_WHITE); // nub right
+    }
+    else
+    {
+        // ── Dynamic fill ─────────────────────────────────────────────────
+        // Clamp to [0,100] in case board.getBattery() returns a raw value > 100.
+        const int batt_pct = min(static_cast<int>(board.getBattery()), 100);
+        const int filled_h = min((batt_pct * fill_h + 50) / 100, fill_h);
+        const int empty_h  = fill_h - filled_h;
+
+        // Pick fill colour by charge level
+        uint16_t fill_color;
+        if      (batt_pct >= 65) fill_color = TFT_GREEN;
+        else if (batt_pct >= 35) fill_color = TFT_YELLOW;
+        else if (batt_pct >= 20) fill_color = TFT_ORANGE;
+        else                     fill_color = TFT_RED;
+
+        // Erase the empty (top) portion
+        if (empty_h  > 0)
+            tft.fillRect(fill_x, fill_y_top,               fill_w, empty_h,  TFT_BLACK);
+
+        // Paint the filled (bottom) portion
+        if (filled_h > 0)
+            tft.fillRect(fill_x, fill_y_bot - filled_h + 1, fill_w, filled_h, fill_color);
+    }
+}
 void AppScreen::drawESPInfo(bool chrome_only)
 {
     // Column layout:  | 20-char label | 17-char value |
@@ -596,8 +687,9 @@ void AppScreen::drawESPInfo(bool chrome_only)
         tft.setCursor(x0 + cw,      y0 + 3 * lh); tft.print(lbuf);
         snprintf(lbuf, sizeof(lbuf), "%-20s", "Free PSRAM");
         tft.setCursor(x0 + cw, y0 + 4 * lh); tft.print(lbuf);
-        snprintf(lbuf, sizeof(lbuf), "%-20s", "Sketch size");
-        tft.setCursor(x0 + cw, y0 + 5 * lh); tft.print(lbuf);
+        
+        snprintf(lbuf, sizeof(lbuf), "%-20s", "Battery %");
+        tft.setCursor(x0 + cw, y0 + 6 * lh); tft.print(lbuf);
         
 
 
@@ -617,5 +709,9 @@ void AppScreen::drawESPInfo(bool chrome_only)
         if (psram_pct > 99) psram_pct = 99;
         snprintf(rbuf, sizeof(rbuf), "%02u %% %11s", psram_pct, formatThousands(ESP.getFreePsram()).c_str());
         tft.setCursor(x0 + 22 * cw, y0 + 4 * lh); tft.print(rbuf);
+
+        
+        snprintf(rbuf, sizeof(rbuf), "%02u %%", board.getBattery());
+        tft.setCursor(x0 + 22 * cw, y0 + 6 * lh); tft.print(rbuf);
     }
 }

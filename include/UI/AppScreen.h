@@ -93,7 +93,7 @@ private:
      * @param chrome_only true → static rows (chip, fixed sizes); false → heap/PSRAM free.
      */
     void drawESPInfo(bool chrome_only);
-
+    void drawBatteryInfo(bool chrome_only);
     /**
      * @brief Map a ServiceStatus to foreground/background TFT colours.
      * @param status  Service state
@@ -115,4 +115,6 @@ private:
      * @return std::string formatted with space-separated digit groups of three.
      */
     static std::string formatThousands(uint32_t value);
+
+    uint8_t battery_level_ = 0; ///< Last battery reading (0–100 %) from DFR1216Board
 };

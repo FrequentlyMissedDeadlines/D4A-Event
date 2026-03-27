@@ -8,11 +8,16 @@ const IDX_ACTION = {
   PING:       0x44    // CMD_PING       (0x04 << 4 | 0x04)
 };
 
+// Status codes — must match BotProto constants in BotMessageHandler.h
 const IDX_STATUS = {
-  OK:      0x01,
-  IGNORED: 0x02,
-  DENIED:  0x03,
-  ERROR:   0x04
+  OK:               0x00, // BotProto::resp_ok
+  INVALID_PARAMS:   0x01, // BotProto::resp_invalid_params
+  INVALID_VALUES:   0x02, // BotProto::resp_invalid_values
+  OPERATION_FAILED: 0x03, // BotProto::resp_operation_failed (another master active)
+  NOT_STARTED:      0x04, // BotProto::resp_not_started
+  UNKNOWN_SERVICE:  0x05, // BotProto::resp_unknown_service
+  UNKNOWN_CMD:      0x06, // BotProto::resp_unknown_cmd
+  NOT_MASTER:       0x07, // BotProto::resp_not_master (invalid token / caller not master)
 };
 
 const WS_TIMEOUT_MS = 2000;
@@ -184,10 +189,10 @@ async function doRegister() {
       _registered = true;
       renderMasterStatus('registered');
       setFeedback('Registered successfully.', true);
-    } else if (statusByte === IDX_STATUS.IGNORED) {
+    } else if (statusByte === IDX_STATUS.OPERATION_FAILED) {
       renderMasterStatus('unregistered');
       setFeedback('Ignored — another master is already registered.', false);
-    } else if (statusByte === IDX_STATUS.DENIED) {
+    } else if (statusByte === IDX_STATUS.NOT_MASTER) {
       renderMasterStatus('unregistered');
       setFeedback('Denied — invalid token.', false);
     } else {

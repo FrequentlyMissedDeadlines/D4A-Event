@@ -225,9 +225,18 @@ public:
   uint8_t getBotServiceId() const override;
 
   /**
-   * @brief Dispatch an incoming binary bot frame to the appropriate LED command.
+   * @brief Dispatch an incoming binary bot frame to the appropriate DFR1216 command.
    *        Returns the binary response; the caller (UDP/WebSocket/Web) is
    *        responsible for sending it.
+   *
+   * | Action | Cmd  | Payload                               | Reply                          |
+   * |--------|------|---------------------------------------|--------------------------------|
+   * | 0x31   | 0x01 | [led:u8][r:u8][g:u8][b:u8][bright:u8]| [0x31][resp_ok or error]       |
+   * | 0x32   | 0x02 | [led:u8]                              | [0x32][resp_ok or error]       |
+   * | 0x33   | 0x03 | (none)                                | [0x33][resp_ok or error]       |
+   * | 0x34   | 0x04 | (none)                                | [0x34][resp_ok][JSON]          |
+   * | 0x35   | 0x05 | (none)                                | [0x35][resp_ok][level:u8 0-100]|
+   *
    * @param data Pointer to the raw binary frame (byte[0] is the action byte)
    * @param len  Frame length in bytes
    * @return Binary response string; empty means no reply

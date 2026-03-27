@@ -8,6 +8,7 @@
 
 #include "services/AmakerBotUIService.h"
 #include "FlashStringHelper.h"
+#include "BotCommunication/BotServerUDP.h"
 #include <TFT_eSPI.h>
 
 extern TFT_eSPI tft;
@@ -221,3 +222,63 @@ void AmakerBotUIService::pollButtonA()
     btn_a_prev_ = pressed;
 }
 
+// ---------------------------------------------------------------------------
+// IsBotActionHandlerInterface
+// ---------------------------------------------------------------------------
+
+uint8_t AmakerBotUIService::getBotServiceId() const
+{
+    return AmakerBotUIConsts::UI_SERVICE_ID;
+}
+
+std::string AmakerBotUIService::handleBotMessage(const uint8_t *data, size_t len)
+{
+    if (!data || len < 1)
+        return BotProto::make_ack(0x00, BotProto::resp_invalid_params);
+
+    const uint8_t action = data[0];
+    const uint8_t cmd    = BotProto::command(action);
+
+    // ---- CMD_NEXT_SCREEN 0x01 : advance to next screen ----
+    if (cmd == AmakerBotUIConsts::CMD_NEXT_SCREEN)
+    {
+        nextScreen();
+        if (debugLogger)
+            debugLogger->debug(getServiceName() + " next screen");
+        return BotProto::make_ack(action, BotProto::resp_ok);
+    }
+
+    // ---- CMD_PREV_SCREEN 0x02 : go back to previous screen ----
+    if (cmd == AmakerBotUIConsts::CMD_PREV_SCREEN)
+    {
+        // Go back: equivalent to nextScreen() SCREEN_COUNT-1 times
+        current_screen_ = static_cast<Screen>(
+            (static_cast<uint8_t>(current_screen_) + SCREEN_COUNT - 1) % SCREEN_COUNT);
+        if (current_screen_ == SCREEN_SPLASH)
+            splash_start_ms_ = millis();
+        if (debugLogger)
+            debugLogger->debug(getServiceName() + " previous screen");
+        return BotProto::make_ack(action, BotProto::resp_ok);
+    }
+
+    // ---- CMD_SET_SCREEN 0x03 : [screen_index] ----
+    if (cmd == AmakerBotUIConsts::CMD_SET_SCREEN)
+    {
+        if (len < 2)
+            return BotProto::make_ack(action, BotProto::resp_invalid_params);
+
+        const uint8_t screen_idx = data[1];
+        if (screen_idx >= SCREEN_COUNT)
+            return BotProto::make_ack(action, BotProto::resp_invalid_values);
+
+        setScreen(static_cast<Screen>(screen_idx));
+        if (current_screen_ == SCREEN_SPLASH)
+            splash_start_ms_ = millis();
+        if (debugLogger)
+            debugLogger->debug(getServiceName() + " set screen: " +
+                             std::to_string(screen_idx));
+        return BotProto::make_ack(action, BotProto::resp_ok);
+    }
+
+    return BotProto::make_ack(action, BotProto::resp_unknown_cmd);
+}

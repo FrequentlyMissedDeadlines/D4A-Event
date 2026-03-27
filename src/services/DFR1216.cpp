@@ -79,7 +79,8 @@ namespace DFR1216Consts
     constexpr uint8_t udp_action_turn_off_led = (udp_service_id << 4) | 0x02;  ///< [led:1B]
     constexpr uint8_t udp_action_turn_off_all_leds = (udp_service_id << 4) | 0x03;  ///< (no params)
     constexpr uint8_t udp_action_get_led_status = (udp_service_id << 4) | 0x04;  ///< (no params) → [action][ok][JSON]
-    constexpr uint8_t udp_action_max = (udp_service_id << 4) | 0x04;  ///< highest valid action code
+    constexpr uint8_t udp_action_get_battery     = (udp_service_id << 4) | 0x05;  ///< (no params) → [action][ok][level:u8  0-100]
+    constexpr uint8_t udp_action_max = (udp_service_id << 4) | 0x05;  ///< highest valid action code
 
     /// Number of WS2812 LEDs on the DFR1216 board (on-board module, indices 0–1).
     constexpr uint8_t DFR1216_WS2812_LED_COUNT = 2;
@@ -279,6 +280,7 @@ uint8_t DFR1216Board::getBotServiceId() const
  *  0x02: TURN_OFF_LED    [led:1B]
  *  0x03: TURN_OFF_ALL    (no params)
  *  0x04: GET_LED_STATUS  (no params) → [action][ok][JSON]
+ *  0x05: GET_BATTERY     (no params) → [action][ok][level:u8  0-100]
  */
 std::string DFR1216Board::handleBotMessage(const uint8_t *data, size_t len)
 {
@@ -356,6 +358,17 @@ std::string DFR1216Board::handleBotMessage(const uint8_t *data, size_t len)
         std::string json_str;
         serializeJson(doc, json_str);
         resp += json_str;
+        return resp;
+    }
+
+    // 0x05 GET_BATTERY → [action][resp_ok][level:u8  0-100]
+    case 0x05:
+    {
+        const uint8_t level = getBattery();
+        std::string resp;
+        resp += static_cast<char>(action);
+        resp += static_cast<char>(BotProto::resp_ok);
+        resp += static_cast<char>(level);
         return resp;
     }
 

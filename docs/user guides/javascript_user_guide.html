@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript User Guide - K10 Bot Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 100vh;
+            position: sticky;
+            top: 0;
+        }
+        
+        .sidebar h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar ul ul {
+            margin-left: 15px;
+            margin-top: 5px;
+        }
+        
+        .sidebar li {
+            margin: 8px 0;
+        }
+        
+        .sidebar a {
+            color: #3498db;
+            text-decoration: none;
+            font-size: 0.95em;
+            transition: color 0.3s;
+            display: block;
+            padding: 5px 0;
+        }
+        
+        .sidebar a:hover {
+            color: #2980b9;
+            text-decoration: underline;
+        }
+        
+        .content {
+            flex: 1;
+            padding: 40px;
+            background: white;
+            margin: 20px;
+            border-radius: 8px;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            margin-top: 40px;
+        }
+        
+        h1:first-child {
+            margin-top: 0;
+        }
+        
+        h2 {
+            color: #34495e;
+            font-size: 1.8em;
+            margin: 30px 0 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        h3 {
+            color: #7f8c8d;
+            font-size: 1.3em;
+            margin: 20px 0 15px;
+        }
+        
+        h4 {
+            color: #95a5a6;
+            font-size: 1.1em;
+            margin: 15px 0 10px;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #c7254e;
+        }
+        
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            line-height: 1.4;
+            font-size: 0.9em;
+        }
+        
+        pre code {
+            color: inherit;
+            background: none;
+            padding: 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        th {
+            background: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        tr:hover {
+            background: #f0f8ff;
+        }
+        
+        ul, ol {
+            margin: 15px 0 15px 30px;
+        }
+        
+        li {
+            margin: 8px 0;
+        }
+        
+        blockquote {
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+            margin: 20px 0;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        
+        .danger {
+            background: #f8d7da;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #dc3545;
+            margin: 15px 0;
+        }
+        
+        .success {
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+            margin: 15px 0;
+        }
+        
+        .copy-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.85em;
+            float: right;
+            margin: 5px;
+        }
+        
+        .copy-btn:hover {
+            background: #229954;
+        }
+        
+        .toc {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .toc h3 {
+            margin-top: 0;
+        }
+        
+        .toc ul {
+            margin: 10px 0 0 20px;
+        }
+        
+        hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(to right, #3498db, transparent);
+            margin: 40px 0;
+        }
+        
+        .step-box {
+            background: #e8f4f8;
+            border: 1px solid #b3d9e8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        
+        .command {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                max-height: none;
+                position: static;
+                border-right: none;
+                border-bottom: 1px solid #ddd;
+            }
+            
+            .content {
+                margin: 10px;
+                padding: 20px;
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>📚 Table of Contents</h2>
+            <ul>
+                <li><a href="#quick-start">🚀 Quick Start</a></li>
+                <li><a href="#programmatic">💻 Programmatic Connection</a>
+                    <ul>
+                        <li><a href="#getbotcontrol">getBotControl()</a></li>
+                        <li><a href="#usage-examples">Usage Examples</a></li>
+                    </ul>
+                </li>
+                <li><a href="#basics">🔰 Basics</a></li>
+                <li><a href="#troubleshooting">❓ Troubleshooting</a></li>
+                <li><a href="#reference">📖 Reference</a>
+                    <ul>
+                        <li><a href="#function-reference">Function Quick Reference</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="content">
+            <h1>📖 How to Script Your K10 Bot Controller</h1>
+            
+            <section id="quick-start">
+                <h2>🚀 Quick Start (5 minutes)</h2>
+                <p><strong>Just want to move a servo right now?</strong> This section gets you there in 5 steps.</p>
+                
+                <h3>Step 1: Open the Script Editor</h3>
+                <ol>
+                    <li>Navigate to <strong>📝 Script</strong> tab in the web interface</li>
+                    <li>You'll see a text editor with example code</li>
+                </ol>
+                
+                <h3>Step 2: Register as Master</h3>
+                
+                <h4>Option A: Via Web UI (Easiest for Manual Control)</h4>
+                <ol>
+                    <li>Go to <strong>Control Panel</strong> (top of the page)</li>
+                    <li>Enter a <strong>Master Token</strong> (any 5 characters like <code>abc12</code>)</li>
+                    <li>Click <strong>🔐 Register as Master</strong></li>
+                    <li>Wait for status to change to "Registered: Yes"</li>
+                </ol>
+                
+                <h4>Option B: Programmatic (Easiest for Scripts)</h4>
+                <p>In your code, use the <code>getBotControl()</code> function to connect and register in one call:</p>
+                <pre><code>// Connect to bot and register as master - all in one line!
+await getBotControl('192.168.1.178', '80', 'mytoken');
+_scriptLog('✓ Connected and registered!');</code></pre>
+                
+                <p><strong>Why?</strong> You must register before controlling servos. This prevents accidental commands.</p>
+            </section>
+            
+            <hr>
+            
+            <section id="programmatic">
+                <h2>💻 Programmatic Connection with getBotControl()</h2>
+                <p><strong>Don't want to click buttons on the web UI?</strong> You can connect and register as master programmatically using the <code>getBotControl()</code> function. Perfect for scripts, automation, and headless operation.</p>
+                
+                <h3>One-Line Connection</h3>
+                <p>Instead of clicking the Control Panel buttons, call this function:</p>
+                <pre><code>// Connect to bot, set IP/port, and register as master - all at once!
+await getBotControl('192.168.1.178', '80', 'mytoken');
+
+// Now you can immediately control servos without any UI clicks
+attachServo(0, SERVO_TYPES.ROTATIONAL);
+setServoSpeeds([0], [100]);
+_scriptLog('✓ Connected and controlling servo!');</code></pre>
+                
+                <h3>What getBotControl() Does</h3>
+                <p><code>getBotControl()</code> is a convenience function that:</p>
+                <ol>
+                    <li><strong>Sets global connection parameters</strong> - Stores IP and port so all functions use them</li>
+                    <li><strong>Initializes WebSocket</strong> - Connects to the bot via WebSocket</li>
+                    <li><strong>Registers as Master</strong> - Authenticates with your token</li>
+                    <li><strong>Sets UI fields</strong> - Updates HTML form fields for consistency (optional for headless)</li>
+                </ol>
+                
+                <div id="getbotcontrol">
+                    <h3>Function Signature</h3>
+                    <pre><code>/**
+ * Connect to bot and register as master (programmatic approach)
+ * @param {string} ip - Bot IP address (e.g., "192.168.1.178")
+ * @param {string} port - WebSocket port (e.g., "80", "81")
+ * @param {string} masterToken - Master authentication token (e.g., "abc12")
+ * @returns {Promise&lt;void&gt;} - Resolves when connected and registered
+ * @throws {Error} - If connection or registration fails
+ */
+async function getBotControl(ip, port, masterToken)</code></pre>
+                </div>
+                
+                <div id="usage-examples">
+                    <h3>Usage Examples</h3>
+                    
+                    <h4>Simple Connection</h4>
+                    <pre><code>// Basic usage - connect to bot and register
+await getBotControl('192.168.1.178', '80', 'abc12');
+_scriptLog('✓ Ready to control!');</code></pre>
+                    
+                    <h4>With Error Handling</h4>
+                    <pre><code>try {
+  await getBotControl('192.168.1.178', '80', 'mytoken');
+  _scriptLog('✓ Connected successfully');
+  
+  // Now control servos
+  attachServo(0, SERVO_TYPES.ROTATIONAL);
+  setServoSpeeds([0], [100]);
+} catch (error) {
+  _scriptLog('❌ Connection failed: ' + error.message);
+  // Handle error - maybe retry or use fallback
+}</code></pre>
+                    
+                    <h4>Dynamic IP from Variable</h4>
+                    <pre><code>const botIp = '192.168.1.178';  // Could come from config, user input, etc.
+const botPort = '80';
+const token = 'mytoken';
+
+await getBotControl(botIp, botPort, token);
+_scriptLog('✓ Connected to ' + botIp);</code></pre>
+                </div>
+                
+                <h3>When to Use</h3>
+                
+                <div class="success">
+                    <strong>✅ Use getBotControl() When:</strong>
+                    <ul>
+                        <li>You're writing <strong>scripts</strong> (not interactive web UI)</li>
+                        <li>You want to <strong>skip manual UI clicks</strong></li>
+                        <li>You need <strong>programmatic control</strong> of connection parameters</li>
+                        <li>You're testing or <strong>automating</strong> bot operations</li>
+                        <li>You want <strong>headless operation</strong> (no web UI needed)</li>
+                        <li>You need to <strong>reconnect dynamically</strong> to different bots</li>
+                    </ul>
+                </div>
+                
+                <div class="highlight">
+                    <strong>❌ Use Web UI When:</strong>
+                    <ul>
+                        <li>You want <strong>interactive manual control</strong> (clicking buttons)</li>
+                        <li>Non-technical users need to <strong>operate the bot</strong></li>
+                        <li>You prefer <strong>visual feedback</strong> on buttons</li>
+                        <li>You want <strong>persistent connection</strong> through UI session</li>
+                    </ul>
+                </div>
+                
+                <h3>Comparison: UI vs Programmatic</h3>
+                <table>
+                    <tr>
+                        <th>Aspect</th>
+                        <th>Web UI</th>
+                        <th>getBotControl()</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Method</strong></td>
+                        <td>Click buttons, fill forms</td>
+                        <td>Call function</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Connection</strong></td>
+                        <td>Manual with Control Panel</td>
+                        <td>Automatic, one call</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Setup Time</strong></td>
+                        <td>3-4 clicks</td>
+                        <td>1 line of code</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Best For</strong></td>
+                        <td>Interactive use</td>
+                        <td>Scripts & automation</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Error Feedback</strong></td>
+                        <td>Visual status panel</td>
+                        <td>try/catch error handling</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Headless</strong></td>
+                        <td>Requires browser</td>
+                        <td>Works without UI</td>
+                    </tr>
+                </table>
+                
+                <h3>Global Variables</h3>
+                <p><code>getBotControl()</code> sets these globals that all other functions use:</p>
+                <pre><code>gBotIp = '192.168.1.178'    // Bot IP address
+gBotPort = '80'               // WebSocket port</code></pre>
+                <p>All subsequent calls to functions like <code>setServoSpeeds()</code>, <code>attachServo()</code>, etc. will use these globals automatically. No need to pass IP/port around.</p>
+            </section>
+            
+            <hr>
+            
+            <section id="basics">
+                <h2>🔰 Basics (15 minutes)</h2>
+                <p>Start here after the Quick Start. You'll learn to attach multiple servos and control them.</p>
+                
+                <h3>Getting Started</h3>
+                <p>Your bot runs two JavaScript files that work together:</p>
+                
+                <h4>BotScript.js (Infrastructure Layer)</h4>
+                <p>Handles all low-level communication and heartbeat management:</p>
+                <ul>
+                    <li><strong>Heartbeat protocol</strong>: Sends heartbeat command every 40ms to keep the bot alive</li>
+                    <li><strong>Watchdog safety</strong>: Bot automatically stops all servos if heartbeat is missing for >50ms</li>
+                    <li><strong>WebSocket management</strong>: Establishes and maintains connection to the bot</li>
+                    <li><strong>Fire-and-forget messaging</strong>: Ensures rapid control commands aren't delayed</li>
+                </ul>
+                
+                <h4>BotScriptActions.js (Servo Control Layer)</h4>
+                <p>Contains the servo control functions you call:</p>
+                <ul>
+                    <li><strong>attachServo()</strong>: Register a servo before moving it</li>
+                    <li><strong>setServoSpeeds()</strong>: Move rotational servos (wheels)</li>
+                    <li><strong>setServoAngle()</strong>: Move angular servos (arms)</li>
+                </ul>
+            </section>
+            
+            <hr>
+            
+            <section id="troubleshooting">
+                <h2>❓ Troubleshooting</h2>
+                
+                <h3>Common Issues</h3>
+                
+                <div class="danger">
+                    <strong>🔴 Bot Says "Not Registered" or Won't Connect</strong>
+                    <p><strong>Solution:</strong></p>
+                    <ol>
+                        <li>✅ Fill in Bot IP → Default: <code>192.168.1.178</code></li>
+                        <li>✅ Fill in WebSocket Port → Default: <code>81</code></li>
+                        <li>✅ Enter Master Token → Any 5 letters/numbers (e.g., <code>abc12</code>)</li>
+                        <li>✅ Click "Register as Master" → Wait for status change</li>
+                    </ol>
+                    <p>If still not connecting:</p>
+                    <ul>
+                        <li>Is bot WiFi on?</li>
+                        <li>Are you on the same WiFi as the bot?</li>
+                        <li>Is IP address correct?</li>
+                    </ul>
+                </div>
+                
+                <div class="danger">
+                    <strong>🔴 Servo Attached but Doesn't Move</strong>
+                    <p><strong>Checklist:</strong></p>
+                    <ol>
+                        <li>✅ <strong>Did you register as Master first?</strong> (REQUIRED)</li>
+                        <li>✅ <strong>Check Bot Status Panel</strong> - All should show "Yes" or "Active"</li>
+                        <li>✅ <strong>Check Servo Channel</strong> - Valid: 0-5</li>
+                        <li>✅ <strong>Check Servo Type</strong> - ROTATIONAL vs ANGULAR_270</li>
+                        <li>✅ <strong>Check Speed Values</strong> - Must be -100 to +100</li>
+                    </ol>
+                </div>
+            </section>
+            
+            <hr>
+            
+            <section id="reference">
+                <h2>📖 Reference</h2>
+                
+                <h3 id="function-reference">Function Quick Reference</h3>
+                
+                <h4>Connection & Setup</h4>
+                <table>
+                    <tr>
+                        <th>Function</th>
+                        <th>Call When</th>
+                        <th>Example</th>
+                        <th>Returns</th>
+                    </tr>
+                    <tr>
+                        <td><code>getBotControl(ip, port, token)</code></td>
+                        <td><strong>Easiest way to connect programmatically</strong></td>
+                        <td><code>await getBotControl('192.168.1.178', '80', 'abc12')</code></td>
+                        <td>Promise</td>
+                    </tr>
+                    <tr>
+                        <td><code>registerMaster(token)</code></td>
+                        <td><strong>FIRST</strong> - before anything (alternative)</td>
+                        <td><code>registerMaster("abc12")</code></td>
+                        <td>Promise</td>
+                    </tr>
+                    <tr>
+                        <td><code>unregisterMaster()</code></td>
+                        <td>Cleanup, when done</td>
+                        <td><code>unregisterMaster()</code></td>
+                        <td>Promise</td>
+                    </tr>
+                    <tr>
+                        <td><code>attachServo(channel, type)</code></td>
+                        <td>Setup, before moving</td>
+                        <td><code>attachServo(0, SERVO_TYPES.ROTATIONAL)</code></td>
+                        <td>void</td>
+                    </tr>
+                </table>
+                
+                <h4>Servo Control (Fire-and-Forget) ⚡</h4>
+                <table>
+                    <tr>
+                        <th>Function</th>
+                        <th>Use Case</th>
+                        <th>Example</th>
+                        <th>Returns</th>
+                    </tr>
+                    <tr>
+                        <td><code>setServoSpeeds(channels[], speeds[])</code></td>
+                        <td>Move rotational servos immediately</td>
+                        <td><code>setServoSpeeds([0,1], [100,-100])</code></td>
+                        <td>void</td>
+                    </tr>
+                    <tr>
+                        <td><code>setServoAngle(channel, angle)</code></td>
+                        <td>Move angular servos immediately</td>
+                        <td><code>setServoAngle(2, 90)</code></td>
+                        <td>void</td>
+                    </tr>
+                </table>
+            </section>
+            
+            <hr>
+            
+            <p style="text-align: center; color: #7f8c8d; margin-top: 50px;">
+                <strong>K10 Bot JavaScript Guide</strong> | Last Updated: March 2026
+            </p>
+        </div>
+    </div>
+</body>
+</html>

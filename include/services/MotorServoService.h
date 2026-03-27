@@ -26,6 +26,7 @@
  * | 0x26   | 0x06 | [motor_mask:u8]                                            | [motor_mask:u8][speed₀..speedₙ:i8]        |
  * | 0x27   | 0x07 | [servo_mask:u8]                                            | [servo_mask:u8][ang₀_hi][ang₀_lo]… (i16)  |
  * | 0x28   | 0x08 | (none)                                                     | —                                          |
+ * | 0x29   | 0x09 | (none)                                                     | [level:u8  0–100]                          |
  */
 #pragma once
 
@@ -75,6 +76,7 @@ namespace MotorServoConsts
     constexpr uint8_t  CMD_GET_MOTORS_SPEED       = 0x06; ///< Query cached motor speeds
     constexpr uint8_t  CMD_GET_SERVOS_ANGLE       = 0x07; ///< Query cached servo angles
     constexpr uint8_t  CMD_STOP_ALL_MOTORS        = 0x08; ///< Emergency-stop all motors
+    constexpr uint8_t  CMD_GET_BATTERY            = 0x09; ///< Read board battery level (0–100 %)
 } // namespace MotorServoConsts
 
 // ---------------------------------------------------------------------------

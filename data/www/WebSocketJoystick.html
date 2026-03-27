@@ -15,7 +15,9 @@
     <a href="./MetricService.html">📊 Metrics</a>
     <a href="./MusicService.html">🎵 Music</a>
     <a href="./LedService.html">💡 LEDs</a> -->
-    <a href="./WebSocketJoystick.html" class="active">🕹 Play</a>
+    
+    <a href="./WebSocketJoystick.html"class="active">🕹 Default Play</a>
+    <a href="./BotScript.html">🕹 Custom Play</a>
   </nav>
   <h1 id="pageTitle">📡 aMaker Bot Remote Control <span id="titleStatus" style="font-size: 0.6em; color: #999;"></span></h1>
   
@@ -23,13 +25,13 @@
   <div class="horizontal-panels">
     <!-- Connection Section -->
     <div class="panel" id="controlPanel">
-    
+        <a href="./WebSocketJoystick.html" >🕹 Play</a>
         <div class="collapsible-header" onclick="toggleSection('controlSection', 'controlBtnArrow')">
   <h1>Control panel</h1>
       <button class="collapse-btn" id="controlBtnArrow" title="Collapse/Expand">▼</button>
     </div>
     <div class="collapsible-body" id="controlSection" style="display: inline-flexbox;">
-    <div id="controlPanelCommunication" class="control-group" >
+    <div id="controlPanelCommunication" >
     <h3 class="subsection-title">Target aMaker bot: </h3>
       <div class="info-row">
         <label class="control-label" for="botIp">Bot IP:</label>
@@ -37,7 +39,7 @@
       </div>
       <div class="info-row">
         <label class="control-label" for="botPort">WebSocket Port:</label>
-        <input type="text" id="botPort" class="input-field" placeholder="80" value="80">
+        <input type="text" id="botPort" class="input-field" placeholder="WebSocket Port (default: 81)" value="81">
       </div>
         <label class="control-label" for="masterToken">Master Token (5 a-z0-9 chars):</label>
         <input type="text" id="masterToken" class="input-field" placeholder="e.g., a1b2c" maxlength="5">
@@ -112,10 +114,9 @@
 
         <label class="control-label">Servo Connection Type:</label>
         <select id="servoType" class="input-field">
-          <option value="0">Not Connected (Detach)</option>
-          <option value="1">Rotational (Continuous)</option>
-          <option value="2" selected>Angular 180° (Positional)</option>
-          <option value="3">Angular 270° (Positional)</option>
+          <option value="0">180° Angular (Positional)</option>
+          <option value="1" selected>270° Angular (Positional)</option>
+          <option value="2">Continuous (Rotational)</option>
         </select>
         
         <div class="button-group">
@@ -241,7 +242,7 @@
     </div>
   </div>
 
-  <!-- Denmo Section -->
+  <!-- Demo Section -->
   <div class="panel" hidden>
     <div class="collapsible-header" onclick="toggleSection('usageSection', 'usageBtnArrow')">
         <h3 class="subsection-title">Usage demo</h3>
@@ -338,6 +339,57 @@
         <p><em>Enable checkbox: include this channel in the command. Disabled channels are skipped (angle) or set to 0 (speed).</em></p>
       </div>
     </div>
+  </div>
+<div class="collapsible-header" onclick="toggleSection('helperSection', 'helperBtnArrow')" title="You may need to trace websocket messages exchanges: this is a reminder of codes in use.">
+    <h1>Web console helper</h1>
+    <button class="collapse-btn" id="helperBtnArrow" title="Collapse/Expand">▼</button>
+  </div>
+  <div class="collapsible-body" id="helperSection" style="display: inline-flexbox;">
+    <div class="info-box" style="font-family: 'Courier New', Courier, monospace;">
+      <h4>📖 Communication Protocol</h4>
+  All messages are echoed in web console as [WS TX] and [WS RX] in hex format. Commands are sent as binary packets with the following structure:   
+<table ><caption> Message Codes (0x..) and Usage</caption>
+  <col><col><col><col>
+<thead> 
+<tr><th>Code</th><th>Name/Usage</th><th>Description / When Sent</th><th>Expected Response?</th></tr>
+</thead><tbody>
+<tr><td>0x21</td><td>Set Servo Angles</td><td>Set angular servo positions</td><td>Yes: 0x21 + resp_code</td></tr>
+<tr><td>0x22</td><td>Set Servo Speeds</td><td>Set rotational servo speeds</td><td>Yes: 0x22 + resp_code</td></tr>
+<tr><td>0x23</td><td>Stop All Servos</td><td>Stop all servos (mask=0xFF)</td><td>Yes: 0x23 + resp_code</td></tr>
+<tr><td>0x24</td><td>Attach/Detach Servos</td><td>Attach/detach servos (mask, type)</td><td>Yes: 0x24 + resp_code</td></tr>
+<tr><td>0x41</td><td>MASTER_REGISTER</td><td>Register as master (plus 5-char token)</td><td>Yes: echo + status byte</td></tr>
+<tr><td>0x42</td><td>MASTER_UNREGISTER</td><td>Unregister as master</td><td>Yes: 0x42 + status byte</td></tr>
+<tr><td>0x43</td><td>HEARTBEAT</td><td>Heartbeat (keep-alive, every 40ms)</td><td>Yes: 0x43 + status byte</td></tr>
+<tr><td>0x44</td><td>PING</td><td>Ping (plus 4-byte ID)</td><td>Yes: echo (0x44 + 4B id)</td></tr>
+</tbody>
+</table>
+<table><caption>Response Codes (0x..) for Control Commands</caption>
+<thead>
+<tr><th>Code</th><th>Meaning</th><th>Notes/When Used</th></tr>
+</thead><tbody>
+<tr><td>0x00</td><td>OK</td><td>Success</td></tr>
+<tr><td>0x01</td><td>INVALID_PARAMS</td><td>Bad/missing parameters</td></tr>
+<tr><td>0x02</td><td>INVALID_VALUES</td><td>Out-of-range or invalid values</td></tr>
+<tr><td>0x03</td><td>OPERATION_FAILED</td><td>Operation failed (hardware, etc.)</td></tr>
+<tr><td></td>0x04</td><td>NOT_STARTED</td><td>Service not started</td></tr>
+<tr><td>0x05</td><td>UNKNOWN_CMD</td><td>Unknown command</td></tr>
+<tr><td></td>0x06</td><td>NOT_MASTER</td><td>Not authorized/not master</td></tr>
+</tbody>
+</table>
+<table><caption>Response Codes (0x..) for Heartbeat and PING</caption>
+<thead>
+<tr><th>Code</th><th>Meaning</th><th>Notes/When Used</th></tr>
+</thead><tbody>
+<tr><td></td>0x01</td><td>SUCCESS</td><td>Success</td></tr>
+<tr><td>0x02</td><td>IGNORED</td><td>Ignored</td></tr>
+<tr><td>0x03</td><td>DENIED</td><td>Denied</td></tr>
+<tr><td>0x04</td><td>ERROR</td><td>Error</td></tr>
+<tr><th colspan="3">For heartbeat:</th></tr>
+<tr><td>0x43 + 0x03</td><td>DENIED</td><td>Master registration lost</td></tr>
+<tr><th colspan="3">For PING:</th></tr>
+<tr><td>0x44 + 4-byte ID</td><td>Echo response</td><td>Echoes 0x44 + 4-byte ID</td></tr>
+</tbody>
+</table></div>
   </div>
 
   <script src="./common.js"></script>

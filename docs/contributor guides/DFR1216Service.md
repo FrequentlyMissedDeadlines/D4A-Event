@@ -32,7 +32,7 @@ The **DFR1216Service** provides integration with the DFRobot Unihiker Expansion 
 
 ### Servo Control
 - **6 Independent Channels**: Control up to 6 standard RC servos
-- **Angle Control**: 0–180° for standard servos
+- **Angle Control**: 0–270° for standard servos
 - **PWM Generation**: Hardware PWM via PCA9685 chip
 - **Precise Positioning**: High-resolution angle control
 
@@ -70,7 +70,7 @@ Content-Type: application/json
 
 **Parameters:**
 - `channel` (0–5): Servo channel number
-- `angle` (0–180): Target angle in degrees
+- `angle` (0–270): Target angle in degrees
 
 **Response:**
 ```json
@@ -169,7 +169,7 @@ GET /api/DFR1216/v1/loadSettings
 #### `bool setServoAngle(uint8_t channel, uint16_t angle)`
 Sets a servo to a specific angle:
 - **channel**: Servo channel (0–5)
-- **angle**: Target angle (0–180)
+- **angle**: Target angle (0–270)
 - **Returns**: `true` on success, `false` on error
 
 #### `bool setMotorSpeed(uint8_t motor, int8_t speed)`
@@ -239,11 +239,9 @@ void setup() {
 // Center servo 0
 expansion_service.setServoAngle(0, 90);
 
-// Rotate servo 3 to 180 degrees
-expansion_service.setServoAngle(3, 180);
+// Rotate servo 3 to 270 degrees
+expansion_service.setServoAngle(3, 270);
 
-// Continuous rotation servo full speed
-expansion_service.setServoAngle(5, 0);  // or 180, depending on direction
 ```
 
 ### Direct Motor Control
@@ -399,8 +397,8 @@ set_led(0, 0, 255, 0)
 Configure safe angle limits per servo type:
 ```cpp
 constexpr uint16_t STANDARD_SERVO_MIN = 0;
-constexpr uint16_t STANDARD_SERVO_MAX = 180;
-constexpr uint16_t CONTINUOUS_SERVO_STOP = 90;
+constexpr uint16_t STANDARD_SERVO_MAX = 270;
+constexpr uint16_t CONTINUOUS_SERVO_STOP = 0;
 ```
 
 ### Motor Speed Mapping

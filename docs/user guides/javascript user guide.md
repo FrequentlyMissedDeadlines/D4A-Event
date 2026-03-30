@@ -36,7 +36,16 @@
 
 # 🚀 Quick Start (5 minutes)
 
-**Just want to move a servo right now?** This section gets you there in 5 steps.
+**Just want to move a servo right now?** This section gets you there in 6 steps.
+## Step 0: Connect to your Wifi access point
+At boot time, the board will try to connect to store Wifi access point.
+If there's none, or if connection fails, your board will start its own access point wich name is displayed in UI.
+In this case, connect to this access point `amaker-xxxxxx`, and open the [board home page at 192.168.4.1](http://192.168.4.1) to define the Wifi SSID and pasword to connect to : 
+1. register as master
+2. update and save wifi settings.
+3. reboot the board.
+
+
 
 ## Step 1: Open the Script Editor
 1. Navigate to **📝 Script** tab in the web interface
@@ -49,7 +58,7 @@
 In your code, use the `getBotControl(ip, port )` function to connect and register in one call:
 ```javascript
 // Connect to bot and register as master - all in one line!
-await getBotControl('192.168.1.178', '80', 'mytoken');
+await getBotControl('192.168.1.178', '81', 'mytoken');
 _scriptLog('✓ Connected and registered!');
 ```
 
@@ -73,7 +82,7 @@ Replace the code with:
 
 ```javascript
 // Move servo 0 forward at full speed
-setServoSpeeds([0], [100]);
+setServoSpeeds([[0, 100]]);
 _scriptLog('→ Servo 0 moving forward');
 ```
 
@@ -89,7 +98,7 @@ Replace the code with:
 
 ```javascript
 // Stop servo 0
-setServoSpeeds([0], [0]);
+setServoSpeeds([[0, 0]]);
 _scriptLog('⏸ Servo 0 stopped');
 ```
 
@@ -113,7 +122,7 @@ You've just controlled your bot! You learned:
 ```javascript
 attachServo(0, SERVO_TYPES.ROTATIONAL);   // Left wheel
 attachServo(1, SERVO_TYPES.ROTATIONAL);   // Right wheel
-setServoSpeeds([0, 1], [100, -100]);      // Turn left
+setServoSpeeds([[0, 100], [1, -100]]);      // Turn left
 _scriptLog('↙ Turning left');
 ```
 
@@ -174,8 +183,8 @@ This guide is organized by **complexity level** with time estimates. Pick where 
 2. ✅ **Check for Syntax Errors**
    ```javascript
    // Common mistakes:
-   setServoSpeeds[0] [100];    // ❌ Wrong: missing parentheses
-   setServoSpeeds([0], [100]   // ❌ Wrong: missing closing )
+   setServoSpeeds[0][100];       // ❌ Wrong: missing parentheses
+   setServoSpeeds([[0, 100]]    // ❌ Wrong: missing closing )
    const x = { a: 1 b: 2 };    // ❌ Wrong: missing comma
    ```
    **Fix**: Check browser console for red errors, fix typos
@@ -239,9 +248,9 @@ This guide is organized by **complexity level** with time estimates. Pick where 
 
 5. ✅ **Check Speed Values** (Valid: -100 to +100)
    ```javascript
-   setServoSpeeds([0], [100]);    // ✅ Valid
-   setServoSpeeds([0], [-100]);   // ✅ Valid
-   setServoSpeeds([0], [150]);    // ❌ Too high
+   setServoSpeeds([[0, 100]]);    // ✅ Valid
+   setServoSpeeds([[0, -100]]);   // ✅ Valid
+   setServoSpeeds([[0, 150]]);    // ❌ Too high
    ```
 
 ---
@@ -309,7 +318,7 @@ This guide is organized by **complexity level** with time estimates. Pick where 
 
 ### Mode 1: Fire-and-Forget ⚡ (Real-Time)
 ```javascript
-setServoSpeeds([0], [100]);  // Returns immediately
+setServoSpeeds([[0, 100]]);  // Returns immediately
 // Use in: Gamepad/keyboard loops (needs speed)
 ```
 
@@ -384,11 +393,11 @@ Instead of clicking the Control Panel buttons, call this function:
 
 ```javascript
 // Connect to bot, set IP/port, and register as master - all at once!
-await getBotControl('192.168.1.178', '80', 'mytoken');
+await getBotControl('192.168.1.178', '81', 'mytoken');
 
 // Now you can immediately control servos without any UI clicks
 attachServo(0, SERVO_TYPES.ROTATIONAL);
-setServoSpeeds([0], [100]);
+setServoSpeeds([[0, 100]]);
 _scriptLog('✓ Connected and controlling servo!');
 ```
 
@@ -406,10 +415,10 @@ _scriptLog('✓ Connected and controlling servo!');
 // Step 1: Set connection parameters programmatically
 // (Instead of reading from HTML form)
 gBotIp = '192.168.1.178';
-gBotPort = '80';
+gBotPort = '81';
 
 // Step 2: Initialize WebSocket connection
-// (Establishes ws://192.168.1.178:80/ws)
+// (Establishes ws://192.168.1.178:81/ws)
 await initializeWebSocket();
 
 // Step 3: Register as Master
@@ -425,7 +434,7 @@ await registerMaster('mytoken');
 /**
  * Connect to bot and register as master (programmatic approach)
  * @param {string} ip - Bot IP address (e.g., "192.168.1.178")
- * @param {string} port - WebSocket port (e.g., "80", "81")
+ * @param {string} port - WebSocket port (e.g., "81")
  * @param {string} masterToken - Master authentication token (e.g., "abc12")
  * @returns {Promise<void>} - Resolves when connected and registered
  * @throws {Error} - If connection or registration fails
@@ -438,19 +447,19 @@ async function getBotControl(ip, port, masterToken)
 ### Simple Connection
 ```javascript
 // Basic usage - connect to bot and register
-await getBotControl('192.168.1.178', '80', 'abc12');
+await getBotControl('192.168.1.178', '81', 'abc12');
 _scriptLog('✓ Ready to control!');
 ```
 
 ### With Error Handling
 ```javascript
 try {
-  await getBotControl('192.168.1.178', '80', 'mytoken');
+  await getBotControl('192.168.1.178', '81', 'mytoken');
   _scriptLog('✓ Connected successfully');
   
   // Now control servos
   attachServo(0, SERVO_TYPES.ROTATIONAL);
-  setServoSpeeds([0], [100]);
+  setServoSpeeds([[0, 100]]);
 } catch (error) {
   _scriptLog('❌ Connection failed: ' + error.message);
   // Handle error - maybe retry or use fallback
@@ -460,7 +469,7 @@ try {
 ### Dynamic IP from Variable
 ```javascript
 const botIp = '192.168.1.178';  // Could come from config, user input, etc.
-const botPort = '80';
+const botPort = '81';
 const token = 'mytoken';
 
 await getBotControl(botIp, botPort, token);
@@ -470,13 +479,13 @@ _scriptLog('✓ Connected to ' + botIp);
 ### Multiple Bots (Sequential)
 ```javascript
 // Control bot 1
-await getBotControl('192.168.1.178', '80', 'bot1token');
-setServoSpeeds([0], [100]);
+await getBotControl('192.168.1.178', '81', 'bot1token');
+setServoSpeeds([[0, 100]]);
 await delay(2000);
 
 // Switch to bot 2
-await getBotControl('192.168.1.179', '80', 'bot2token');
-setServoSpeeds([1], [50]);
+await getBotControl('192.168.1.179', '81', 'bot2token');
+setServoSpeeds([[1, 50]]);
 ```
 
 ## When to Use
@@ -513,7 +522,7 @@ setServoSpeeds([1], [50]);
 
 ```javascript
 gBotIp = '192.168.1.178'    // Bot IP address
-gBotPort = '80'               // WebSocket port
+gBotPort = '81'               // WebSocket port
 ```
 
 All subsequent calls to functions like `setServoSpeeds()`, `attachServo()`, etc. will use these globals automatically. No need to pass IP/port around.
@@ -540,7 +549,7 @@ attachServo(0, SERVO_TYPES.ROTATIONAL);
 _scriptLog('Servo 0 attached');
 
 _scriptLog('Moving servo 0...');
-setServoSpeeds([0], [100]);
+setServoSpeeds([[0, 100]]);
 _scriptLog('Command sent');
 ```
 
@@ -566,7 +575,7 @@ _scriptLog('Speed value: ' + speed);
 
 // 3. Confirm servo commands
 _scriptLog('Setting servo 0 to speed ' + speed);
-setServoSpeeds([0], [speed]);
+setServoSpeeds([[0, speed]]);
 
 // 4. Check connection status
 _scriptLog('Is master registered: ' + isMasterRegistered);
@@ -590,7 +599,7 @@ _scriptLog('🔍 Debug: checking gamepad state');
 ```javascript
 function moveForward() {
   _scriptLog('✓ moveForward() called');  // Add this line
-  setServoSpeeds([0, 1], [100, 100]);
+  setServoSpeeds([[0, 100], [1, 100]]);
 }
 
 // Call the function
@@ -612,11 +621,9 @@ if (isMasterRegistered) {
 
 **Check array values:**
 ```javascript
-const channels = [0, 1];
-const speeds = [100, -100];
-_scriptLog('Channels: ' + channels);
-_scriptLog('Speeds: ' + speeds);
-setServoSpeeds(channels, speeds);
+const pairs = [[0, 100], [1, -100]];
+_scriptLog('Pairs: ' + JSON.stringify(pairs));
+setServoSpeeds(pairs);
 ```
 
 **Track gamepad input:**
@@ -634,6 +641,16 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 ```
 
 ### Troubleshooting Checklist
+
+**Unable to connect**
+1. ✅ **Ensure you use http, not https**
+   - there is no https on the board.
+   - some browser option may force https : ensure it's not your case.
+2. ✅ **Verify the network name** 
+   - Ensure you're connected on same network
+3. ✅ **Verify the IP of board** 
+   - Ensure you're using the correct IP
+
 
 **If "nothing happens" when you click Run:**
 
@@ -665,14 +682,14 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 5. ✅ **Check if Servo Command was Sent**
    ```javascript
    _scriptLog('Before: about to move servo');
-   setServoSpeeds([0], [100]);
+   setServoSpeeds([[0, 100]]);
    _scriptLog('After: command sent (no response expected - fire-and-forget)');
    ```
 
 6. ✅ **Check Servo Channel Number**
    ```javascript
    _scriptLog('Moving servo on channel 0');
-   setServoSpeeds([0], [100]);  // Channel 0 should exist
+   setServoSpeeds([[0, 100]]);  // Channel 0 should exist
    // Valid channels: 0, 1, 2, 3, 4, 5
    ```
 
@@ -683,7 +700,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
    if (speed < -100 || speed > 100) {
      _scriptLog('❌ ERROR: Speed out of range!');
    } else {
-     setServoSpeeds([0], [speed]);
+     setServoSpeeds([[0, speed]]);
    }
    ```
 
@@ -723,7 +740,7 @@ try {
 
 try {
   _scriptLog('Moving servo 0...');
-  setServoSpeeds([0], [100]);
+  setServoSpeeds([[0, 100]]);
   _scriptLog('✓ Movement command sent');
 } catch (error) {
   _scriptLog('❌ Error moving servo: ' + error.message);
@@ -738,7 +755,7 @@ try {
 // ❌ BAD - logs 50 times per second
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   _scriptLog('Gamepad polled');  // Too much spam!
-  setServoSpeeds([0, 1], [gamepad.axes[0] * 100, gamepad.axes[1] * 100]);
+  setServoSpeeds([[0, gamepad.axes[0] * 100], [1, gamepad.axes[1] * 100]]);
 };
 
 // ✅ GOOD - only log when button pressed
@@ -764,7 +781,7 @@ Quick lookup tables and reference material. Use when you need to find something 
 
 | Function | Call When | Module | Example | Returns |
 |----------|-----------|--------|---------|---------|
-| `getBotControl(ip, port, token)` | **Easiest way to connect programmatically** | BotScript.js | `await getBotControl('192.168.1.178', '80', 'abc12')` | Promise |
+| `getBotControl(ip, port, token)` | **Easiest way to connect programmatically** | BotScript.js | `await getBotControl('192.168.1.178', '81', 'abc12')` | Promise |
 | `registerMaster(token)` | **FIRST** - before anything (alternative to getBotControl) | BotScript.js | `registerMaster("abc12")` | Promise |
 | `unregisterMaster()` | Cleanup, when done | BotScript.js | `unregisterMaster()` | Promise |
 | `attachServo(channel, type)` | Setup, before moving | BotScriptActions.js | `attachServo(0, SERVO_TYPES.ROTATIONAL)` | void |
@@ -774,7 +791,7 @@ Quick lookup tables and reference material. Use when you need to find something 
 
 | Function | Use Case | Module | Example | Returns |
 |----------|----------|--------|---------|---------|
-| `setServoSpeeds(channels[], speeds[])` | Move rotational servos immediately | BotScriptActions.js | `setServoSpeeds([0,1], [100,-100])` | void |
+| `setServoSpeeds(pairs[])` | Move rotational servos immediately | BotScriptActions.js | `setServoSpeeds([[0,100],[1,-100]])` | void |
 | `setServoAngle(channel, angle)` | Move angular servos immediately | BotScriptActions.js | `setServoAngle(2, 90)` | void |
 
 ### Servo Control (Request-Response with Feedback) 📊
@@ -810,7 +827,7 @@ Quick lookup tables and reference material. Use when you need to find something 
 
 | Constant | Purpose | Values | Module |
 |----------|---------|--------|--------|
-| `SERVO_TYPES` | Servo type identifier | `ANGULAR_180`, `ANGULAR_270`, `ROTATIONAL` | BotScriptActions.js |
+| `SERVO_TYPES` | Servo type identifier |  `ANGULAR_270`, `ROTATIONAL` | BotScriptActions.js |
 | `XBOX_BUTTONS` | Xbox button identifier | `A`, `B`, `X`, `Y`, `DPAD_UP`, `DPAD_DOWN`, etc. | BotScriptActions.js |
 | `STICK_AXES` | Xbox stick axis | `LEFT_X`, `LEFT_Y`, `RIGHT_X`, `RIGHT_Y` | BotScriptActions.js |
 | `PLAYSTATION_BUTTONS` | PlayStation button identifier | `X`, `CIRCLE`, `SQUARE`, `TRIANGLE`, etc. | BotScriptActions.js |
@@ -865,7 +882,7 @@ This can confuse beginners. This section explains when each happens.
 ```
 Your Code                   Bot
 ═════════════════════════════════════════════════════════════
-setServoSpeeds([0], [100])
+setServoSpeeds([[0, 100]])
 │
 ├─ Send command packet to bot (WiFi)     ────────────────→
 │                                         (~50-200ms over network)
@@ -882,7 +899,7 @@ setServoSpeeds([0], [100])
 **Execution flow in your code:**
 ```javascript
 _scriptLog('Before call');
-setServoSpeeds([0], [100]);  // Returns immediately!
+setServoSpeeds([[0, 100]]);  // Returns immediately!
 _scriptLog('After call');    // Prints RIGHT AWAY
 
 // Output:
@@ -902,7 +919,7 @@ _scriptLog('After call');    // Prints RIGHT AWAY
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   // This runs 20 times per second
   // Fire-and-forget is critical for smooth control!
-  setServoSpeeds([0, 1], [gamepad.axes[0] * 100, gamepad.axes[1] * 100]);
+  setServoSpeeds([[0, gamepad.axes[0] * 100], [1, gamepad.axes[1] * 100]]);
   // Returns immediately - next gamepad poll won't be blocked
 };
 ```
@@ -993,7 +1010,7 @@ async function onApplyButtonClicked() {
 
 **❌ Mistake 1: Expecting fire-and-forget to confirm**
 ```javascript
-setServoSpeeds([0], [100]);
+setServoSpeeds([[0, 100]]);
 _scriptLog('Servo is now at speed 100');  // Wrong!
 // The servo might not have started moving yet
 // Fire-and-forget doesn't confirm
@@ -1001,7 +1018,7 @@ _scriptLog('Servo is now at speed 100');  // Wrong!
 
 **✅ Correct:**
 ```javascript
-setServoSpeeds([0], [100]);
+setServoSpeeds([[0, 100]]);
 _scriptLog('Speed command sent (will apply asynchronously)');
 ```
 
@@ -1020,7 +1037,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 ```javascript
 // Use fire-and-forget in loops
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  setServoSpeeds([0, 1], [gamepad.axes[0] * 100, gamepad.axes[1] * 100]);
+  setServoSpeeds([[0, gamepad.axes[0] * 100], [1, gamepad.axes[1] * 100]]);
   // Returns immediately, loop stays fast
 };
 ```
@@ -1081,7 +1098,7 @@ async function setupBot() {
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   // No async, no await needed
   // Just send commands fire-and-forget
-  setServoSpeeds([0, 1], [leftSpeed, rightSpeed]);
+  setServoSpeeds([[0, leftSpeed], [1, rightSpeed]]);
 };
 ```
 
@@ -1153,7 +1170,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   const rightSpeed = gamepad.axes[STICK_AXES.RIGHT_Y] * 100;
   
   // Fire-and-forget - returns immediately
-  setServoSpeeds([0, 1], [leftSpeed, rightSpeed]);
+  setServoSpeeds([[0, leftSpeed], [1, rightSpeed]]);
   // Doesn't block, gamepad loop stays responsive
 };
 ```
@@ -1203,7 +1220,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 ```javascript
 // ❌ BAD - exceeds maximum command rate
 for (let i = 0; i < 100; i++) {
-  setServoSpeeds([0], [100]);  // 100 commands instantly
+  setServoSpeeds([[0, 100]]);  // 100 commands instantly
   // Bot can only handle ~20/second
   // Commands get dropped or cause lag
 }
@@ -1219,9 +1236,9 @@ for (let i = 0; i < 100; i++) {
 // ✅ GOOD - respects 50ms minimum
 async function quickTest() {
   for (let i = 0; i < 5; i++) {
-    setServoSpeeds([0], [100]);
+    setServoSpeeds([[0, 100]]);
     await delay(50);  // Wait 50ms between commands
-    setServoSpeeds([0], [0]);
+    setServoSpeeds([[0, 0]]);
     await delay(50);
   }
 }
@@ -1241,7 +1258,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   
   // Avoid sending identical commands
   if (leftSpeed !== lastLeftSpeed) {
-    setServoSpeeds([0], [leftSpeed]);
+    setServoSpeeds([[0, leftSpeed]]);
     lastLeftSpeed = leftSpeed;
   }
 };
@@ -1258,7 +1275,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   _scriptLog('Axis: ' + gamepad.axes[0]);      // Logs 20 times/second!
   _scriptLog('Button pressed: ' + button);     // Spam in console
-  setServoSpeeds([0], [speed]);
+  setServoSpeeds([[0, speed]]);
 };
 ```
 
@@ -1320,23 +1337,23 @@ Display Update (16ms)
 **Reduce Network Latency (slightly)**
 ```javascript
 // ❌ BAD - sends every tiny movement
-setServoSpeeds([0], [99.999]);  // Different every millisecond
-setServoSpeeds([0], [99.998]);
-setServoSpeeds([0], [99.997]);  // Each is separate network packet
+setServoSpeeds([[0, 99.999]]);  // Different every millisecond
+setServoSpeeds([[0, 99.998]]);
+setServoSpeeds([[0, 99.997]]);  // Each is separate network packet
 
 // ✅ GOOD - round to reduce changes
 const speed = Math.round(gamepad.axes[0] * 100);  // Round to integer
-setServoSpeeds([0], [speed]);  // Only send when value actually changes
+setServoSpeeds([[0, speed]]);  // Only send when value actually changes
 ```
 
 **Reduce Command Overhead**
 ```javascript
-// ❌ BAD - multiple calls per frame
-setServoSpeeds([0], [speed0]);
-setServoSpeeds([1], [speed1]);  // Two network packets
+// ❌ Less efficient - multiple calls per frame
+setServoSpeeds([[0, speed0]]);
+setServoSpeeds([[1, speed1]]);  // Two network packets
 
 // ✅ GOOD - combine into one call
-setServoSpeeds([0, 1], [speed0, speed1]);  // One network packet
+setServoSpeeds([[0, speed0], [1, speed1]]);  // One network packet
 ```
 
 **Batch Setup Operations**
@@ -1349,7 +1366,7 @@ await delay(100);
 // Takes 200ms+ just for delays
 
 // ✅ GOOD - do independent operations together
-setServoSpeeds([0], [100]);     // Fire-and-forget
+setServoSpeeds([[0, 100]]);     // Fire-and-forget
 setServoAngle(2, 90);           // Fire-and-forget
 // Both sent, completes in <1ms
 ```
@@ -1397,27 +1414,27 @@ const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;
 
 function moveForward() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]);
   _scriptLog('→ Moving forward');
 }
 
 function moveBackward() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [-100, -100]);
+  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, -100]]);
   _scriptLog('← Moving backward');
 }
 
 function turnLeft() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [-100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, 100]]);
   _scriptLog('↙ Turning left');
 }
 
 function turnRight() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, -100]);
+  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, -100]]);
   _scriptLog('↘ Turning right');
 }
 
 function stop() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [0, 0]);
+  setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]);
   _scriptLog('⏸ Stopped');
 }
 
@@ -1457,7 +1474,7 @@ const RIGHT_WHEEL = 1;
 const DEADZONE = 0.15;  // Prevent stick drift (adjust if needed)
 
 function setSpeed(leftSpeed, rightSpeed) {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [leftSpeed, rightSpeed]);
+  setServoSpeeds([[LEFT_WHEEL, leftSpeed], [RIGHT_WHEEL, rightSpeed]]);
 }
 
 // Attach servos
@@ -1527,7 +1544,7 @@ function updateMovement() {
     rightSpeed -= 50;
   }
   
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [leftSpeed, rightSpeed]);
+  setServoSpeeds([[LEFT_WHEEL, leftSpeed], [RIGHT_WHEEL, rightSpeed]]);
 }
 
 // Attach servos
@@ -1567,11 +1584,11 @@ const RIGHT_ARM = 3;
 let armState = 'resting';
 
 function moveForward() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]);
 }
 
 function stop() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [0, 0]);
+  setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]);
 }
 
 function armUp() {
@@ -1683,11 +1700,11 @@ async function returnHome() {
   _scriptLog('Returning home...');
   
   // Turn around
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [-100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, 100]]);
   await delay(1000);
   
   // Move back
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [-100, -100]);
+  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, -100]]);
   await delay(2000);
   
   stop();
@@ -1702,11 +1719,11 @@ attachServo(ARM, SERVO_TYPES.ANGULAR_270);
 _scriptLog('✓ State machine ready');
 
 function moveForward() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]);
 }
 
 function stop() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [0, 0]);
+  setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]);
 }
 
 // Gamepad control state transitions
@@ -1744,9 +1761,9 @@ Use this for clean button press/release detection without boilerplate.
 const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;
 
-function moveForward() { setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, 100]); }
-function moveBackward() { setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [-100, -100]); }
-function stop() { setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [0, 0]); }
+function moveForward() { setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]); }
+function moveBackward() { setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, -100]]); }
+function stop() { setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]); }
 
 // Attach servos
 attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
@@ -1813,27 +1830,27 @@ Setting speed in a function becomes very handy when you realize you did not take
 
 const moveForward = () => {
   // Move both wheels forward at full speed
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [100, 100]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, 100]]);
 }
 
 const moveBackward = () => {
   // Move both wheels backward at full speed
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [-100, -100]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, -100], [myServos.RIGHT_WHEEL, -100]]);
 }
 
 const rotateClockwise = () => {
   // Rotate the bot clockwise (left forward, right backward)
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [100, -100]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, -100]]);
 }
 
 const rotateCounterClockwise = () => {
   // Rotate the bot counter-clockwise (left backward, right forward)
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [-100, 100]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, -100], [myServos.RIGHT_WHEEL, 100]]);
 }
 
 const stop = () => {
   // Stop both wheels
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [0, 0]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, 0], [myServos.RIGHT_WHEEL, 0]]);
 }
 
 const shoot = () => {
@@ -1935,7 +1952,7 @@ CUSTOMCONTROL.processGamepadInput = ffunction (gamepad) {
   const rightSpeedClamped = Math.max(-100, Math.min(100, rightSpeed));
   
   // Send to bot
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [leftSpeedClamped, rightSpeedClamped]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, leftSpeedClamped], [myServos.RIGHT_WHEEL, rightSpeedClamped]]);
 }
 ```
 
@@ -2026,7 +2043,6 @@ Learn how to debug your code when things don't work, and optimize for performanc
 ```javascript  
 // Servo types
 const SERVO_TYPES={
-  ANGULAR_180: 0,
   ANGULAR_270: 1,    // grey servo
   ROTATIONAL: 2      // green servo
 }
@@ -2128,35 +2144,35 @@ const ARM_2_POSITIONS = {
  * Move forward at full speed
  */
 const moveForwardFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [100, 100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, 100], [botServos.RIGHT_TRACK, 100]]);
 };
 
 /**
  * Move backward at full speed
  */
 const moveBackwardFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [-100, -100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, -100], [botServos.RIGHT_TRACK, -100]]);
 };
 
 /**
  * Rotate clockwise at full speed (left forward, right backward)
  */
 const rotateClockwiseFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [100, -100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, 100], [botServos.RIGHT_TRACK, -100]]);
 };
 
 /**
  * Rotate counter-clockwise at full speed (left backward, right forward)
  */
 const rotateCounterClockwiseFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [-100, 100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, -100], [botServos.RIGHT_TRACK, 100]]);
 };
 
 /**
  * Stop all track movement
  */
 const stopTracks = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [0, 0]);
+  setServoSpeeds([[botServos.LEFT_TRACK, 0], [botServos.RIGHT_TRACK, 0]]);
 };
 
 // ── Arm 1 Control ───────────────────────────────────────────────────────────
@@ -2260,7 +2276,7 @@ function processGamepadInput(gamepad) {
     const leftSpeedClamped = Math.max(-100, Math.min(100, leftSpeed));
     const rightSpeedClamped = Math.max(-100, Math.min(100, rightSpeed));
 
-    setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [leftSpeedClamped, rightSpeedClamped]);
+    setServoSpeeds([[botServos.LEFT_TRACK, leftSpeedClamped], [botServos.RIGHT_TRACK, rightSpeedClamped]]);
   }
 
   // ── Left Triggers/Bumpers: Arm 1 ──

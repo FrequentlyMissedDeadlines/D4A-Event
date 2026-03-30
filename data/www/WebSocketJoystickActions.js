@@ -178,7 +178,7 @@ function handleButton(gamepad, buttonIndex, buttonName, onPress, onRelease) {
  * joystick inputs are never queued behind a pending response.
  *
  * @param {number} channel - Servo channel (0-5)
- * @param {number} angle - Angle in degrees (0 to 180, or 0 to 270 depending on type)
+ * @param {number} angle - Angle in degrees ( 0 to 270 depending on type)
  */
 function setServoAngle(channel, angle) {
   if (typeof isMasterRegistered !== 'undefined' && !isMasterRegistered) {

@@ -134,6 +134,12 @@ public:
      */
     virtual bool loadSettings() { return false; }
 
+    /**
+     * @brief Reset settings to compile-time defaults and clear NVS.
+     * @return true on success. Default: no-op, returns false.
+     */
+    virtual bool resetSettings() { return false; }
+
     // ---- Logger ----
 
     /**

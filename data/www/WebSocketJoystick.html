@@ -114,7 +114,6 @@
 
         <label class="control-label">Servo Connection Type:</label>
         <select id="servoType" class="input-field">
-          <option value="0">180° Angular (Positional)</option>
           <option value="1" selected>270° Angular (Positional)</option>
           <option value="2">Continuous (Rotational)</option>
         </select>
@@ -254,7 +253,7 @@
       <!-- Angular Servo Control -->
       <div class="control-group">
         <h3 class="subsection-title">Angular Servo Position Control</h3>
-        <p class="subsection-description">Set angle for positional servos (180° or 270°). Angles are center-zero.</p>
+        <p class="subsection-description">Set angle for positional servos (0-270°). Angles are center-zero.</p>
         
         <div class="servo-sliders">
           <div class="slider-row">
@@ -332,7 +331,7 @@
       <div class="info-box" hidden>
         <h4>📖 Control Commands</h4>
         <ul>
-          <li><strong>SET_SERVO_ANGLE (0x21):</strong> Set position for angular servos. Range: ±90° (180°) or ±135° (270°)</li>
+          <li><strong>SET_SERVO_ANGLE (0x21):</strong> Set position for angular servos. Range: 0°-270°</li>
           <li><strong>SET_SERVO_SPEED (0x22):</strong> Set speed for rotational servos. Range: -100 (full reverse) to +100 (full forward)</li>
           <li><strong>STOP_SERVOS (0x23):</strong> Stop all rotational servos</li>
         </ul>

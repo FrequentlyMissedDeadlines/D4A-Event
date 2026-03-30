@@ -25,9 +25,9 @@
 namespace WiFiConsts
 {
     // ---- Compile-time default credentials (development only) ----
-    /// @warning Do NOT commit real credentials to source control.
-    constexpr const char default_wifi_ssid[]     = "Freebox-A35871";
-    constexpr const char default_wifi_password[] = "azerQSDF1234";
+    /// @warning Do NOT commit real credentials to source control :)
+    constexpr const char default_wifi_ssid[]     = "No default SSID";  // <-- REPLACE BEFORE COMMITTING
+    constexpr const char default_wifi_password[] = "No default password";  // <-- REPLACE BEFORE COMMITTING
     constexpr const char default_ap_ssid[]       = "aMaker-";
     constexpr const char default_ap_password[]   = "amaker-club";
     constexpr const char default_hostname[]      = "amakerbot-";
@@ -52,6 +52,7 @@ namespace WiFiConsts
     constexpr const char msg_start_ok[]         PROGMEM = "WiFi started successfully.";
     constexpr const char msg_settings_loaded[]  PROGMEM = "WiFi settings loaded.";
     constexpr const char msg_settings_saved[]   PROGMEM = "WiFi settings saved.";
+    constexpr const char msg_settings_reset[]   PROGMEM = "WiFi settings reset to defaults.";
     constexpr const char msg_prefs_open_fail[]  PROGMEM = "WiFi: Preferences open failed.";
 
     // NVS keys — plain C strings (Preferences uses them directly)
@@ -64,42 +65,40 @@ namespace WiFiConsts
 }
 
 // ---------------------------------------------------------------------------
-// Module-level state (scoped to this translation unit)
+// Module-level state — credentials are WifiService member variables
 // ---------------------------------------------------------------------------
-static std::string s_wifi_ssid    = WiFiConsts::default_wifi_ssid;
-static std::string s_wifi_pwd     = WiFiConsts::default_wifi_password;
-static std::string s_ap_ssid      = WiFiConsts::default_ap_ssid;
-static std::string s_ap_password  = WiFiConsts::default_ap_password;
-static std::string s_hostname     = WiFiConsts::default_hostname;
-
-static std::string s_connected_ip;
-static std::string s_connected_ssid;
-static std::string s_mac_suffix;   ///< 6-char uppercase hex suffix derived from MAC
 
 // ---------------------------------------------------------------------------
 // Accessors
 // ---------------------------------------------------------------------------
 WifiService::WifiService()
 {
-     // Build a 6-char uppercase hex suffix from the upper 3 bytes of the ESP32 MAC
+    // Initialise member variables with compile-time defaults
+    wifi_ssid_     = WiFiConsts::default_wifi_ssid;
+    wifi_password_ = WiFiConsts::default_wifi_password;
+    ap_ssid_       = WiFiConsts::default_ap_ssid;
+    ap_password_   = WiFiConsts::default_ap_password;
+    hostname_      = WiFiConsts::default_hostname;
+
+    // Build a 6-char uppercase hex suffix from the upper 3 bytes of the ESP32 MAC
     char mac_buf[8];
     snprintf(mac_buf, sizeof(mac_buf), "%06X",
              static_cast<uint32_t>(ESP.getEfuseMac() >> 24));
-    s_mac_suffix = std::string(mac_buf);
+    mac_suffix_ = std::string(mac_buf);
 }
 std::string WifiService::getIP()
 {
-    return s_connected_ip;
+    return connected_ip_;
 }
 
 std::string WifiService::getSSID()
 {
-    return s_connected_ssid;
+    return connected_ssid_;
 }
 
 std::string WifiService::getHostname()
 {
-    return s_hostname + s_mac_suffix;
+    return hostname_ + mac_suffix_;
 }
 
 std::string WifiService::getServiceName()
@@ -117,7 +116,7 @@ std::string WifiService::getServiceName()
  */
 bool WifiService::open_access_point()
 {
-    const std::string full_ap_ssid = s_ap_ssid + s_mac_suffix;
+    const std::string full_ap_ssid = ap_ssid_ + mac_suffix_;
 
     if (debugLogger)
     {
@@ -132,19 +131,19 @@ bool WifiService::open_access_point()
     WiFi.mode(WIFI_AP_STA);
     WiFi.setHostname(getHostname().c_str());
 
-    if (!WiFi.softAP(full_ap_ssid.c_str(), s_ap_password.c_str()))
+    if (!WiFi.softAP(full_ap_ssid.c_str(), ap_password_.c_str()))
     {
         if (debugLogger)
             debugLogger->error(FPSTR(WiFiConsts::msg_ap_failed) + full_ap_ssid);
         return false;
     }
 
-    s_connected_ip   = WiFi.softAPIP().toString().c_str();
-    s_connected_ssid = full_ap_ssid;
+    connected_ip_   = WiFi.softAPIP().toString().c_str();
+    connected_ssid_ = full_ap_ssid;
 
     if (debugLogger)
         debugLogger->warning(FPSTR(WiFiConsts::msg_ap_created) + full_ap_ssid
-                        + " " + s_connected_ip);
+                        + " " + connected_ip_);
     return true;
 }
 
@@ -159,16 +158,17 @@ bool WifiService::open_access_point()
 bool WifiService::connect_to_wifi(const std::string &ssid,
                                   const std::string &password)
 {
+
     if (ssid.empty())
     {
-        if (debugLogger)
-            debugLogger->warning(FPSTR(WiFiConsts::msg_missing_ssid));
+        if (serviceLogger)
+            serviceLogger->warning(FPSTR(WiFiConsts::msg_missing_ssid));
         return false;
     }
     if (password.empty())
     {
-        if (debugLogger)
-            debugLogger->warning(FPSTR(WiFiConsts::msg_missing_password));
+        if (serviceLogger)
+            serviceLogger->warning(FPSTR(WiFiConsts::msg_missing_password));
         return false;
     }
 
@@ -192,10 +192,10 @@ bool WifiService::connect_to_wifi(const std::string &ssid,
 
     if (WiFi.status() == WL_CONNECTED)
     {
-        s_connected_ip   = WiFi.localIP().toString().c_str();
-        s_connected_ssid = ssid;
+        connected_ip_   = WiFi.localIP().toString().c_str();
+        connected_ssid_ = ssid;
         if (debugLogger)
-            debugLogger->info(FPSTR(WiFiConsts::msg_connected) + ssid + " " + s_connected_ip);
+            debugLogger->info(FPSTR(WiFiConsts::msg_connected) + ssid + " " + connected_ip_);
         return true;
     }
 
@@ -212,8 +212,8 @@ bool WifiService::disconnect_from_wifi()
 {
     WiFi.disconnect(true);
     delay(100);
-    s_connected_ip.clear();
-    s_connected_ssid.clear();
+    connected_ip_.clear();
+    connected_ssid_.clear();
     return true;
 }
 
@@ -232,9 +232,7 @@ bool WifiService::connect_and_fallback(const std::string &ssid,
 
     if (connect_to_wifi(ssid, password))
         return true;
-
-    if (debugLogger)
-        debugLogger->info(FPSTR(WiFiConsts::msg_fallback_ap));
+    if(serviceLogger) serviceLogger->warning(FPSTR(WiFiConsts::msg_fallback_ap));
 
     return open_access_point();
 }
@@ -245,7 +243,7 @@ bool WifiService::connect_and_fallback(const std::string &ssid,
 
 bool WifiService::wifi_activation()
 {
-    return connect_and_fallback(s_wifi_ssid, s_wifi_pwd);
+    return connect_and_fallback(wifi_ssid_, wifi_password_);
 }
 
 // ---------------------------------------------------------------------------
@@ -279,13 +277,15 @@ bool WifiService::startService()
         debugLogger->info(FPSTR(WiFiConsts::msg_starting));
 #endif
 
-    const bool ok = connect_and_fallback(s_wifi_ssid, s_wifi_pwd);
+    const bool ok = connect_and_fallback(wifi_ssid_, wifi_password_);
 
-    if (debugLogger)
-        debugLogger->info(ok ? FPSTR(WiFiConsts::msg_start_ok)
-                        : FPSTR(ServiceConst::msg_start_failed));
-
-    setServiceStatus(ok ? STARTED : START_FAILED);
+    if (ok)
+      {  setServiceStatus( STARTED);}
+    else {
+         if (serviceLogger) serviceLogger->warning(FPSTR(ServiceConst::msg_start_failed)); 
+         START_FAILED;
+    }
+     
 
 #ifdef VERBOSE_DEBUG
     if (debugLogger)
@@ -323,11 +323,11 @@ bool WifiService::saveSettings()
         return false;
     }
 
-    prefs.putString(WiFiConsts::nvs_ssid,        s_wifi_ssid.c_str());
-    prefs.putString(WiFiConsts::nvs_password,     s_wifi_pwd.c_str());
-    prefs.putString(WiFiConsts::nvs_ap_ssid,      s_ap_ssid.c_str());
-    prefs.putString(WiFiConsts::nvs_ap_password,  s_ap_password.c_str());
-    prefs.putString(WiFiConsts::nvs_hostname,     s_hostname.c_str());
+    prefs.putString(WiFiConsts::nvs_ssid,        wifi_ssid_.c_str());
+    prefs.putString(WiFiConsts::nvs_password,     wifi_password_.c_str());
+    prefs.putString(WiFiConsts::nvs_ap_ssid,      ap_ssid_.c_str());
+    prefs.putString(WiFiConsts::nvs_ap_password,  ap_password_.c_str());
+    prefs.putString(WiFiConsts::nvs_hostname,     hostname_.c_str());
     prefs.end();
 
     if (debugLogger)
@@ -348,19 +348,91 @@ bool WifiService::loadSettings()
         return false;
     }
 
-    s_wifi_ssid   = prefs.getString(WiFiConsts::nvs_ssid,        WiFiConsts::default_wifi_ssid).c_str();
-    s_wifi_pwd    = prefs.getString(WiFiConsts::nvs_password,     WiFiConsts::default_wifi_password).c_str();
-    s_ap_ssid     = prefs.getString(WiFiConsts::nvs_ap_ssid,      WiFiConsts::default_ap_ssid).c_str();
-    s_ap_password = prefs.getString(WiFiConsts::nvs_ap_password,  WiFiConsts::default_ap_password).c_str();
-    s_hostname    = prefs.getString(WiFiConsts::nvs_hostname,     WiFiConsts::default_hostname).c_str();
+    wifi_ssid_     = prefs.getString(WiFiConsts::nvs_ssid,        WiFiConsts::default_wifi_ssid).c_str();
+    wifi_password_ = prefs.getString(WiFiConsts::nvs_password,     WiFiConsts::default_wifi_password).c_str();
+    ap_ssid_       = prefs.getString(WiFiConsts::nvs_ap_ssid,      WiFiConsts::default_ap_ssid).c_str();
+    ap_password_   = prefs.getString(WiFiConsts::nvs_ap_password,  WiFiConsts::default_ap_password).c_str();
+    hostname_      = prefs.getString(WiFiConsts::nvs_hostname,     WiFiConsts::default_hostname).c_str();
     prefs.end();
 
     if (debugLogger)
     {
         debugLogger->info(FPSTR(WiFiConsts::msg_settings_loaded));
-        debugLogger->info(std::string("- STA SSID: ")  + s_wifi_ssid);
-        debugLogger->info(std::string("- AP  SSID: ")  + s_ap_ssid + s_mac_suffix);
+        debugLogger->info(std::string("- STA SSID: ")  + wifi_ssid_);
+        debugLogger->info(std::string("- AP  SSID: ")  + ap_ssid_ + mac_suffix_);
         debugLogger->info(std::string("- Hostname: ")  + getHostname());
     }
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Settings accessors & mutators
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Return the configured STA SSID.
+ */
+std::string WifiService::getWifiSsid() const
+{
+    return wifi_ssid_;
+}
+
+/**
+ * @brief Return the configured STA password.
+ */
+std::string WifiService::getWifiPassword() const
+{
+    return wifi_password_;
+}
+
+/**
+ * @brief Update the STA credentials in memory (does NOT write to NVS).
+ *        Call saveSettings() to persist, or applySettings() to reconnect.
+ */
+void WifiService::setWifiCredentials(const std::string &ssid, const std::string &password)
+{
+    wifi_ssid_     = ssid;
+    wifi_password_ = password;
+}
+
+// ---------------------------------------------------------------------------
+// resetSettings  — wipe NVS namespace and restore compile-time defaults
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Clear the NVS "wifi" namespace and restore compile-time defaults.
+ * @return true always (NVS absence is treated as a no-op, not an error).
+ */
+bool WifiService::resetSettings()
+{
+    Preferences prefs;
+    if (prefs.begin(WiFiConsts::nvs_namespace, /* readOnly= */ false))
+    {
+        prefs.clear();
+        prefs.end();
+    }
+
+    wifi_ssid_     = WiFiConsts::default_wifi_ssid;
+    wifi_password_ = WiFiConsts::default_wifi_password;
+    ap_ssid_       = WiFiConsts::default_ap_ssid;
+    ap_password_   = WiFiConsts::default_ap_password;
+    hostname_      = WiFiConsts::default_hostname;
+
+    if (debugLogger)
+        debugLogger->info(FPSTR(WiFiConsts::msg_settings_reset));
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// applySettings  — reconnect with current in-memory credentials
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Disconnect and reconnect using the current in-memory credentials.
+ *        Intended to be called after setWifiCredentials() + saveSettings().
+ * @return true if either STA or AP mode is active.
+ */
+bool WifiService::applySettings()
+{
+    return connect_and_fallback(wifi_ssid_, wifi_password_);
 }

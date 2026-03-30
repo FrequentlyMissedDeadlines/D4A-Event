@@ -3,9 +3,12 @@
 // ── Bot protocol constants (service 0x04, AmakerBot) ─────────────────────────
 // Action byte = (service_id << 4) | cmd
 const IDX_ACTION = {
-  REGISTER:   0x41,   // CMD_REGISTER   (0x04 << 4 | 0x01)
-  UNREGISTER: 0x42,   // CMD_UNREGISTER (0x04 << 4 | 0x02)
-  PING:       0x44    // CMD_PING       (0x04 << 4 | 0x04)
+  REGISTER:    0x41,   // CMD_REGISTER   (0x04 << 4 | 0x01)
+  UNREGISTER:  0x42,   // CMD_UNREGISTER (0x04 << 4 | 0x02)
+  PING:        0x44,   // CMD_PING       (0x04 << 4 | 0x04)
+  GET_WIFI:    0x47,   // CMD_GET_WIFI   (0x04 << 4 | 0x07)
+  SET_WIFI:    0x48,   // CMD_SET_WIFI   (0x04 << 4 | 0x08)
+  RESET_WIFI:  0x49    // CMD_RESET_WIFI (0x04 << 4 | 0x09)
 };
 
 // Status codes — must match BotProto constants in BotMessageHandler.h
@@ -38,6 +41,18 @@ let _registered      = false;
  */
 function setFeedback(msg, ok) {
   const el = document.getElementById('master-feedback');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? '#388e3c' : '#c62828';
+}
+
+/**
+ * Show a feedback message in the #settings-feedback element.
+ * @param {string}  msg
+ * @param {boolean} ok  - true → green, false → red
+ */
+function setSettingsFeedback(msg, ok) {
+  const el = document.getElementById('settings-feedback');
   if (!el) return;
   el.textContent = msg;
   el.style.color = ok ? '#388e3c' : '#c62828';
@@ -91,7 +106,7 @@ function ensureWebSocket() {
     return _wsConnectPromise;
   }
 
-  const wsUrl = 'ws://' + window.location.hostname + ':' + (window.location.port || '80') + '/ws';
+  const wsUrl = 'ws://' + window.location.hostname + ':' + (window.location.port || '81') + '/ws';
 
   _wsConnectPromise = new Promise((resolve, reject) => {
     const socket = new WebSocket(wsUrl);
@@ -231,6 +246,109 @@ async function doUnregister() {
   } catch (e) {
     renderMasterStatus('error', e.message);
     setFeedback('Request failed: ' + e.message, false);
+  }
+}
+
+// ── WiFi settings ─────────────────────────────────────────────────────────────
+
+/**
+ * Load WiFi credentials from the device via CMD_GET_WIFI (0x47).
+ * No master token required — read is always allowed.
+ * Response: [action][resp_ok][ssid_len:1B][ssid…][pass_len:1B][pass…]
+ */
+async function loadSettings() {
+  setSettingsFeedback('Loading…', true);
+  try {
+    const packet   = new Uint8Array([IDX_ACTION.GET_WIFI]);
+    const response = await sendPacket(packet);
+    const status   = response.length >= 2 ? response[1] : 0xFF;
+    if (status !== IDX_STATUS.OK) {
+      setSettingsFeedback('Load failed (0x' + status.toString(16) + ').', false);
+      return;
+    }
+    if (response.length < 3) { setSettingsFeedback('Malformed response.', false); return; }
+    const ssidLen = response[2];
+    if (response.length < 3 + ssidLen + 1) { setSettingsFeedback('Malformed response.', false); return; }
+    const ssid    = new TextDecoder().decode(response.slice(3, 3 + ssidLen));
+    const passLen = response[3 + ssidLen];
+    const pass    = new TextDecoder().decode(response.slice(4 + ssidLen, 4 + ssidLen + passLen));
+    document.getElementById('wifi-ssid-input').value     = ssid;
+    document.getElementById('wifi-password-input').value = pass;
+    setSettingsFeedback('Settings loaded.', true);
+  } catch (e) {
+    setSettingsFeedback('Load failed: ' + e.message, false);
+  }
+}
+
+/**
+ * Save WiFi credentials to the device via CMD_SET_WIFI (0x48).
+ * Master registration required.
+ * Payload: [action][ssid_len:1B][ssid…][pass_len:1B][pass…]
+ */
+async function saveSettings() {
+  if (!_registered) { setSettingsFeedback('Register as master first.', false); return; }
+  const ssid = document.getElementById('wifi-ssid-input').value.trim();
+  const pass = document.getElementById('wifi-password-input').value;
+  if (!ssid) { setSettingsFeedback('SSID cannot be empty.', false); return; }
+
+  // Encode to UTF-8 bytes first — length validation must be on byte count,
+  // not character count, because the 802.11 SSID limit is 32 *bytes* and
+  // the C++ size() check is also byte-based.
+  const enc       = new TextEncoder();
+  const ssidBytes = enc.encode(ssid);
+  const passBytes = enc.encode(pass);
+  if (ssidBytes.length > 32) { setSettingsFeedback('SSID too long (max 32 bytes UTF-8).', false); return; }
+  if (passBytes.length > 64) { setSettingsFeedback('Password too long (max 64 bytes UTF-8).', false); return; }
+
+  setSettingsFeedback('Saving…', true);
+  try {
+    const packet    = new Uint8Array(1 + 1 + ssidBytes.length + 1 + passBytes.length);
+    let   off       = 0;
+    packet[off++]   = IDX_ACTION.SET_WIFI;
+    packet[off++]   = ssidBytes.length;
+    packet.set(ssidBytes, off); off += ssidBytes.length;
+    packet[off++]   = passBytes.length;
+    packet.set(passBytes, off);
+
+    const response   = await sendPacket(packet);
+    const statusByte = response.length >= 2 ? response[1] : 0xFF;
+    if (statusByte === IDX_STATUS.OK) {
+      setSettingsFeedback('Saved. Reconnect if SSID changed.', true);
+    } else if (statusByte === IDX_STATUS.NOT_MASTER) {
+      setSettingsFeedback('Denied — not the current master.', false);
+    } else if (statusByte === IDX_STATUS.INVALID_VALUES) {
+      setSettingsFeedback('Invalid values (SSID/password out of range).', false);
+    } else {
+      setSettingsFeedback('Save failed (0x' + statusByte.toString(16) + ').', false);
+    }
+  } catch (e) {
+    setSettingsFeedback('Save failed: ' + e.message, false);
+  }
+}
+
+/**
+ * Reset WiFi settings to factory defaults via CMD_RESET_WIFI (0x49).
+ * Master registration required. Reloads inputs after success.
+ */
+async function resetDefaultSettings() {
+  if (!_registered) { setSettingsFeedback('Register as master first.', false); return; }
+  if (!confirm('Reset WiFi settings to factory defaults?')) return;
+
+  setSettingsFeedback('Resetting…', true);
+  try {
+    const packet     = new Uint8Array([IDX_ACTION.RESET_WIFI]);
+    const response   = await sendPacket(packet);
+    const statusByte = response.length >= 2 ? response[1] : 0xFF;
+    if (statusByte === IDX_STATUS.OK) {
+      setSettingsFeedback('Reset to defaults.', true);
+      await loadSettings(); // refresh inputs from device
+    } else if (statusByte === IDX_STATUS.NOT_MASTER) {
+      setSettingsFeedback('Denied — not the current master.', false);
+    } else {
+      setSettingsFeedback('Reset failed (0x' + statusByte.toString(16) + ').', false);
+    }
+  } catch (e) {
+    setSettingsFeedback('Reset failed: ' + e.message, false);
   }
 }
 

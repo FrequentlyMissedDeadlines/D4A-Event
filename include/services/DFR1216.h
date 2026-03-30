@@ -151,15 +151,11 @@ constexpr uint16_t SERVO360_STOP_US         = 1500; ///< Neutral / stop pulse wi
 constexpr uint16_t SERVO360_FORWARD_MIN_US  = 500; ///< Full-speed forward pulse width
 constexpr uint16_t SERVO360_BACKWARD_MAX_US = 2500; ///< Full-speed backward pulse width
 
-/// Standard 180° Servo calibration (microseconds)
-constexpr uint16_t SERVO180_MIN_US    = 500;
-constexpr uint16_t SERVO180_MIDDLE_US = 1500;
-constexpr uint16_t SERVO180_MAX_US    = 2500;
 
 /// Wide 270° Servo calibration (microseconds)
 constexpr uint16_t SERVO270_MIN_US    = 500;
-constexpr uint16_t SERVO270_MIDDLE_US = 2250;
-constexpr uint16_t SERVO270_MAX_US    = 3900;
+constexpr uint16_t SERVO270_MIDDLE_US = 1500; //2250;
+constexpr uint16_t SERVO270_MAX_US    = 2500;//3900;
 
 /// Per-LED colour/brightness state cache (3 on-board WS2812 LEDs).
 struct LedState
@@ -360,7 +356,9 @@ public:
    * @return: NULL
    */
   void setServoAngle(eServoNumber_t number, uint16_t angle);
-  
+
+  bool setServo270Position(eServoNumber_t number, uint16_t position);
+
   void setServoAngle(eServoNumber_t number, uint16_t angle, uint16_t maxAngle);
 
   /**

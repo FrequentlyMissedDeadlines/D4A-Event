@@ -17,7 +17,7 @@
 
   
   <!-- Connection Panel -->
-  <div class="panel" id="controlPanel">
+  <div class="panel" id="controlPanel" hidden>
     <div class="collapsible-header" onclick="toggleSection('controlSection', 'controlBtnArrow')">
       <h1>Control panel</h1>
       <button class="collapse-btn" id="controlBtnArrow" title="Collapse/Expand">▼</button>
@@ -100,13 +100,7 @@
         <!-- Right: Script Editor Controls -->
         <div style="flex: 1;">
           <div id="scriptPanelManagement" class="control-group" style="background: #2a2a2a;">
-            <h3 class="subsection-title">Script Management</h3>
 
-            <p style="font-size: 12px; color: #999; margin: 10px 0 6px 0;">Script name and slot:</p>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input type="text" id="scriptName" class="input-field" placeholder="my-script" style="flex: 1; min-width: 150px;">
-              <select id="scriptSlot" class="input-field" style="flex: 1; min-width: 150px;" onchange="loadScriptFromSlot()" title="Load saved script"></select>
-            </div>
 
             <p style="font-size: 12px; color: #999; margin: 10px 0 6px 0;">Code editor:</p>
             <textarea id="scriptEditor"
@@ -114,118 +108,43 @@
                      background: #0d0d0d; color: #e0e0e0; border: 1px solid #333; padding: 8px;
                      box-sizing: border-box; resize: vertical;"
               
-            >// ═══════════════════════════════════════════════════════════════════════════════
-// 📝 THIS IS YOUR CODE ENTRY POINT
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// ✅ WHERE TO PUT YOUR CODE:
-//    → Everything in this textarea is YOUR CODE ONLY
-//    → BotScript.js and BotScriptActions.js are auto-loaded infrastructure
-//    → This textarea runs when you click "▶️ Run"
-//    → Refresh page to run the code again
-//
-// 📌 YOUR WORKFLOW:
-//    1. Define servo channel constants
-//    2. Define your action functions
-//    3. Attach servos (one time setup)
-//    4. Call functions to move servos
-//    5. Use CUSTOMCONTROL hooks for gamepad/keyboard input (see Step 3 below)
-//
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 1: Name your servo channels (REQUIRED)
-// ─────────────────────────────────────────────────────────────────────────────
-const MyServos = {
-  LEFT_WHEEL: 0,          // Green servo (continuous rotation)
-  RIGHT_WHEEL: 1,         // Green servo (continuous rotation)
-  ARM: 2,                 // Grey servo (angular 270°)
-  DIRECTION_WHEEL: 3      // Grey servo (angular 270°)
-  // Can have up to 6 servos (channels 0-5)
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 2: Define your action functions
-// ─────────────────────────────────────────────────────────────────────────────
-function moveForward() {
-  setServoSpeeds([MyServos.LEFT_WHEEL, MyServos.RIGHT_WHEEL], [100, 100]);
-  _scriptLog('→ Moving forward');
-}
-
-function moveBackward() {
-  setServoSpeeds([MyServos.LEFT_WHEEL, MyServos.RIGHT_WHEEL], [-100, -100]);
-  _scriptLog('← Moving backward');
-}
-
-function rotateLeft() {
-  setServoSpeeds([MyServos.LEFT_WHEEL, MyServos.RIGHT_WHEEL], [-100, 100]);
-  _scriptLog('↙ Rotating left');
-}
-
-function rotateRight() {
-  setServoSpeeds([MyServos.LEFT_WHEEL, MyServos.RIGHT_WHEEL], [100, -100]);
-  _scriptLog('↘ Rotating right');
-}
-
-function stop() {
-  setServoSpeeds([MyServos.LEFT_WHEEL, MyServos.RIGHT_WHEEL], [0, 0]);
-  _scriptLog('⏸ Stopped');
-}
-
-function armUp() {
-  setServoAngle(MyServos.ARM, 90);
-  _scriptLog('↑ Arm up');
-}
-
-function armDown() {
-  setServoAngle(MyServos.ARM, -90);
-  _scriptLog('↓ Arm down');
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 3: Setup code (runs once when you click "▶️ Run")
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Attach all servos
-attachServo(MyServos.LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
-attachServo(MyServos.RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
-attachServo(MyServos.ARM, SERVO_TYPES.ANGULAR_270);
-attachServo(MyServos.DIRECTION_WHEEL, SERVO_TYPES.ANGULAR_270);
-_scriptLog('✓ All servos attached and ready!');
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 4: Test your functions (optional - delete these lines when done)
-// ─────────────────────────────────────────────────────────────────────────────
-await delay(500);
-moveForward();
-await delay(1000);
-stop();
-await delay(500);
-armUp();
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 5: Add gamepad/keyboard hooks (see Full Guide for details)
-// ─────────────────────────────────────────────────────────────────────────────
-// To use gamepad or keyboard, override CUSTOMCONTROL in a separate setup:
-//
-// CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-//   if (gamepad.buttons[XBOX_BUTTONS.DPAD_UP].pressed) moveForward();
-//   else if (gamepad.buttons[XBOX_BUTTONS.DPAD_DOWN].pressed) moveBackward();
-//   else stop();
-// };
-//
-// See "Full Coding Guide" → "Step 3: Handle Events" for complete examples
-
-
+            >
           </textarea>
 
             <div class="button-group" style="margin-top: 8px;">
               <button onclick="runScript()" class="btn btn-primary">▶️ Run</button>
               <button onclick="stopScript()" class="btn btn-danger">⏹️ Stop</button>
+              
+              <button onclick="exportScript()" class="btn btn-primary">⬇️ Download</button>
+              <label class="btn btn-primary" style="text-align: center;">⬆️ Upload<input type="file" accept=".js,.txt" style="display: none;" onchange="importScript(event)" ></label>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <label class="control-label" for="scriptName">Script Name:</label>
+            <input type="text" id="scriptName" class="input-field" placeholder="my-script" style="flex: 1; min-width: 150px;">
+            </div>
+            <h3 class="subsection-title">Persistence:</h3>
+
+            
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <label class="control-label" for="scriptSlot">Browser FS</label>  
+              <select id="scriptSlot" class="input-field" style="flex: 1; min-width: 150px;" onchange="loadScriptFromSlot()" title="Load saved script"></select>
               <button onclick="saveScript()" class="btn btn-primary">💾 Save</button>
               <button onclick="deleteScript()" class="btn btn-danger">🗑️ Delete</button>
-              <button onclick="exportScript()" class="btn btn-primary">⬇️ Export</button>
-              <label class="btn btn-primary">⬆️ Import <input type="file" accept=".js,.txt" style="display: none;" onchange="importScript(event)"></label>
+            </div>
+            <!-- Board filesystem panel -->
+            <div id="scriptPanelBoard" >
+              
+                
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <label class="control-label" for="boardScriptSlot">ESP32 FS</label>
+                <select id="boardScriptSlot" class="input-field" style="flex: 1; min-width: 150px;"
+                        onchange="loadScriptFromBoardSlot()" title="Load script from board"></select>
+                <button onclick="boardListScripts()" class="btn btn-primary" title="Refresh list from board">🔄 Refresh</button>
+              
+                <button onclick="boardLoadScript()" class="btn btn-primary">📥 Load</button>
+                <button onclick="boardSaveScript()" class="btn btn-primary">📤 Save</button>
+                <button onclick="boardDeleteScript()" class="btn btn-danger">🗑️ Delete</button>
+              </div>
             </div>
 
             <p style="font-size: 12px; color: #999; margin: 10px 0 6px 0;">Output console:</p>

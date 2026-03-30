@@ -563,7 +563,7 @@ _scriptLog('✓ Servo 0 attached and ready to move!');</code></pre>
         <h2>Step 4: Move the Servo</h2>
         <p>Replace the code with:</p>
         <pre><code>// Move servo 0 forward at full speed
-setServoSpeeds([0], [100]);
+setServoSpeeds([[0, 100]]);
 _scriptLog('→ Servo 0 moving forward');</code></pre>
         <p>Click <strong>▶️ Run</strong>. Your servo should move!</p>
 
@@ -579,7 +579,7 @@ _scriptLog('→ Servo 0 moving forward');</code></pre>
         <h2>Step 5: Stop the Servo</h2>
         <p>Replace the code with:</p>
         <pre><code>// Stop servo 0
-setServoSpeeds([0], [0]);
+setServoSpeeds([[0, 0]]);
 _scriptLog('⏸ Servo 0 stopped');</code></pre>
         <p>Click <strong>▶️ Run</strong>. The servo stops.</p>
 
@@ -596,7 +596,7 @@ _scriptLog('⏸ Servo 0 stopped');</code></pre>
         <p><strong>Want to add a second servo?</strong></p>
         <pre><code>attachServo(0, SERVO_TYPES.ROTATIONAL);   // Left wheel
 attachServo(1, SERVO_TYPES.ROTATIONAL);   // Right wheel
-setServoSpeeds([0, 1], [100, -100]);      // Turn left
+setServoSpeeds([[0, 100], [1, -100]]);      // Turn left
 _scriptLog('↙ Turning left');</code></pre>
 
         <p><strong>Want to use gamepad/keyboard control?</strong> → See the full <strong>Input Control</strong> section
@@ -697,8 +697,8 @@ _scriptLog('↙ Turning left');</code></pre>
           </li>
           <li><strong>Check for Syntax Errors</strong>
             <pre><code>// Common mistakes:
-setServoSpeeds[0] [100];    // ❌ Wrong: missing parentheses
-setServoSpeeds([0], [100]   // ❌ Wrong: missing closing )
+setServoSpeeds[0][100];       // ❌ Wrong: missing parentheses
+setServoSpeeds([[0, 100]]    // ❌ Wrong: missing closing )
 const x = { a: 1 b: 2 };    // ❌ Wrong: missing comma</code></pre>
             <p><strong>Fix:</strong> Check browser console for red errors, fix typos</p>
           </li>
@@ -757,9 +757,9 @@ attachServo(0, SERVO_TYPES.ROTATIONAL);   ✅
 attachServo(2, SERVO_TYPES.ANGULAR_270);  ✅</code></pre>
           </li>
           <li><strong>Check Speed Values</strong> (Valid: -100 to +100)
-            <pre><code>setServoSpeeds([0], [100]);    // ✅ Valid
-setServoSpeeds([0], [-100]);   // ✅ Valid
-setServoSpeeds([0], [150]);    // ❌ Too high</code></pre>
+            <pre><code>setServoSpeeds([[0, 100]]);    // ✅ Valid
+setServoSpeeds([[0, -100]]);   // ✅ Valid
+setServoSpeeds([[0, 150]]);    // ❌ Too high</code></pre>
           </li>
         </ol>
 
@@ -853,7 +853,7 @@ setServoSpeeds([0], [150]);    // ❌ Too high</code></pre>
         <h3>Answer: Two Different Modes Exist:</h3>
 
         <h4>Mode 1: Fire-and-Forget ⚡ (Real-Time)</h4>
-        <pre><code>setServoSpeeds([0], [100]);  // Returns immediately
+        <pre><code>setServoSpeeds([[0, 100]]);  // Returns immediately
 // Use in: Gamepad/keyboard loops (needs speed)</code></pre>
 
         <h4>Mode 2: Request-Response 📊 (Feedback)</h4>
@@ -935,22 +935,22 @@ attachServo(myServos.DIRECTION, SERVO_TYPES.ANGULAR_270);</code></pre>
         <p>Use lambda functions or regular functions to define actions:</p>
         <pre><code>const moveForward = () => {
   // Move both wheels forward at full speed
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [100, 100]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, 100]]);
 }
 
 const moveBackward = () => {
   // Move both wheels backward at full speed
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [-100, -100]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, -100], [myServos.RIGHT_WHEEL, -100]]);
 }
 
 const rotateClockwise = () => {
   // Rotate the bot clockwise (left forward, right backward)
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [100, -100]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, -100]]);
 }
 
 const stop = () => {
   // Stop both wheels
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [0, 0]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, 0], [myServos.RIGHT_WHEEL, 0]]);
 }
 
 const shoot = () => {
@@ -1039,7 +1039,7 @@ showGamepad(false);</code></pre>
   const rightSpeedClamped = Math.max(-100, Math.min(100, rightSpeed));
   
   // Send to bot
-  setServoSpeeds([myServos.LEFT_WHEEL, myServos.RIGHT_WHEEL], [leftSpeedClamped, rightSpeedClamped]);
+  setServoSpeeds([[myServos.LEFT_WHEEL, leftSpeedClamped], [myServos.RIGHT_WHEEL, rightSpeedClamped]]);
 }</code></pre>
 
         <h2 id="keyboard-events">Keyboard Events</h2>
@@ -1112,7 +1112,7 @@ attachServo(0, SERVO_TYPES.ROTATIONAL);
 _scriptLog('Servo 0 attached');
 
 _scriptLog('Moving servo 0...');
-setServoSpeeds([0], [100]);
+setServoSpeeds([[0, 100]]);
 _scriptLog('Command sent');</code></pre>
 
         <h3>What to Log</h3>
@@ -1125,7 +1125,7 @@ _scriptLog('Speed value: ' + speed);
 
 // 3. Confirm servo commands
 _scriptLog('Setting servo 0 to speed ' + speed);
-setServoSpeeds([0], [speed]);
+setServoSpeeds([[0, speed]]);
 
 // 4. Check connection status
 _scriptLog('Is master registered: ' + isMasterRegistered);
@@ -1144,7 +1144,7 @@ _scriptLog('⚠️ Warning: speed out of range');</code></pre>
         <pre><code>// Check if a function is being called
 function moveForward() {
   _scriptLog('✓ moveForward() called');
-  setServoSpeeds([0, 1], [100, 100]);
+  setServoSpeeds([[0, 100], [1, 100]]);
 }
 
 // Check if a condition is true
@@ -1173,7 +1173,7 @@ if (isMasterRegistered) {
 
         <p>The function sends a packet and <strong>returns immediately</strong> without waiting for response.</p>
         <pre><code>_scriptLog('Before call');
-setServoSpeeds([0], [100]);  // Returns immediately!
+setServoSpeeds([[0, 100]]);  // Returns immediately!
 _scriptLog('After call');    // Prints RIGHT AWAY
 
 // Output:
@@ -1305,7 +1305,7 @@ _scriptLog('After call');    // Prints AFTER response arrives
   const rightSpeed = gamepad.axes[STICK_AXES.RIGHT_Y] * 100;
   
   // Fire-and-forget - returns immediately
-  setServoSpeeds([0, 1], [leftSpeed, rightSpeed]);
+  setServoSpeeds([[0, leftSpeed], [1, rightSpeed]]);
   // Doesn't block, gamepad loop stays responsive
 };</code></pre>
 
@@ -1337,7 +1337,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   
   // Avoid sending identical commands
   if (leftSpeed !== lastLeftSpeed) {
-    setServoSpeeds([0], [leftSpeed]);
+    setServoSpeeds([[0, leftSpeed]]);
     lastLeftSpeed = leftSpeed;
   }
 };</code></pre>
@@ -1347,7 +1347,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   _scriptLog('Axis: ' + gamepad.axes[0]);      // Too much spam!
   _scriptLog('Button pressed: ' + button);
-  setServoSpeeds([0], [speed]);
+  setServoSpeeds([[0, speed]]);
 };</code></pre>
 
         <h3>✅ DO: Log Selectively</h3>
@@ -1374,27 +1374,27 @@ const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;
 
 function moveForward() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]);
   _scriptLog('→ Moving forward');
 }
 
 function moveBackward() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [-100, -100]);
+  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, -100]]);
   _scriptLog('← Moving backward');
 }
 
 function turnLeft() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [-100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, 100]]);
   _scriptLog('↙ Turning left');
 }
 
 function turnRight() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, -100]);
+  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, -100]]);
   _scriptLog('↘ Turning right');
 }
 
 function stop() {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [0, 0]);
+  setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]);
   _scriptLog('⏸ Stopped');
 }
 
@@ -1425,7 +1425,7 @@ const RIGHT_WHEEL = 1;
 const DEADZONE = 0.15;  // Prevent stick drift
 
 function setSpeed(leftSpeed, rightSpeed) {
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [leftSpeed, rightSpeed]);
+  setServoSpeeds([[LEFT_WHEEL, leftSpeed], [RIGHT_WHEEL, rightSpeed]]);
 }
 
 // Attach servos
@@ -1473,7 +1473,7 @@ function updateMovement() {
   if (a) { leftSpeed -= 50; rightSpeed += 50; }
   if (d) { leftSpeed += 50; rightSpeed -= 50; }
   
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [leftSpeed, rightSpeed]);
+  setServoSpeeds([[LEFT_WHEEL, leftSpeed], [RIGHT_WHEEL, rightSpeed]]);
 }
 
 // Attach servos
@@ -1511,11 +1511,11 @@ async function explore() {
   if (currentState !== 'explore') return;
   _scriptLog('Exploring...');
   
-  setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [100, 100]);
+  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]);
   await delay(2000);
   
   if (currentState === 'explore') {
-    setServoSpeeds([LEFT_WHEEL, RIGHT_WHEEL], [0, 0]);
+    setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]);
     setState('idle');
   }
 }
@@ -1594,7 +1594,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
             <tr>
               <td><code>setServoSpeeds(channels[], speeds[])</code></td>
               <td>Move rotational servos immediately</td>
-              <td><code>setServoSpeeds([0,1], [100,-100])</code></td>
+              <td><code>setServoSpeeds([[0,100],[1,-100]])</code></td>
               <td>void</td>
             </tr>
             <tr>
@@ -1685,7 +1685,6 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
         <h2 id="constants">Constants (Ready to Use)</h2>
         <pre><code>// Servo types
 const SERVO_TYPES = {
-  ANGULAR_180: 0,
   ANGULAR_270: 1,    // grey servo
   ROTATIONAL: 2      // green servo
 }
@@ -1752,23 +1751,23 @@ const ARM_2_POSITIONS = { UP: 100, DOWN: -40, NEUTRAL: 0 };
 // ── Movement Functions ───────────────────────────────────────
 
 const moveForwardFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [100, 100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, 100], [botServos.RIGHT_TRACK, 100]]);
 };
 
 const moveBackwardFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [-100, -100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, -100], [botServos.RIGHT_TRACK, -100]]);
 };
 
 const rotateClockwiseFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [100, -100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, 100], [botServos.RIGHT_TRACK, -100]]);
 };
 
 const rotateCounterClockwiseFull = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [-100, 100]);
+  setServoSpeeds([[botServos.LEFT_TRACK, -100], [botServos.RIGHT_TRACK, 100]]);
 };
 
 const stopTracks = () => {
-  setServoSpeeds([botServos.LEFT_TRACK, botServos.RIGHT_TRACK], [0, 0]);
+  setServoSpeeds([[botServos.LEFT_TRACK, 0], [botServos.RIGHT_TRACK, 0]]);
 };
 
 // ── Arm Control ──────────────────────────────────────────────

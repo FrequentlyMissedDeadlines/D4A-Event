@@ -16,7 +16,7 @@
 //
 // MODE 2: FIRE-AND-FORGET (BotScriptActions.js - Direct Control)
 //   Functions: attachServo(channel, type), setServoAngle(channel, angle),
-//             setServoSpeeds(channels[], speeds[])
+//             setServoSpeeds(pairs[])
 //   Behavior: Returns immediately, no response wait, optimized for real-time
 //   Use case: Gamepad/keyboard control, script automation
 //
@@ -113,7 +113,8 @@ const MOTOR_SERVO_ACTION = {
   GET_MOTORS_SPEED:       0x26, // MotorServoConsts::CMD_GET_MOTORS_SPEED
   GET_SERVOS_ANGLE:       0x27, // MotorServoConsts::CMD_GET_SERVOS_ANGLE
   STOP_ALL_MOTORS:        0x28, // MotorServoConsts::CMD_STOP_ALL_MOTORS
-  GET_BATTERY:            0x29  // MotorServoConsts::CMD_GET_BATTERY
+  GET_BATTERY:            0x29, // MotorServoConsts::CMD_GET_BATTERY
+  SET_SERVO270_ANGLE:     0x2A  // MotorServoConsts::CMD_SET_SERVO270_ANGLE
 };
 
 // DFR1216 action bytes — DFR1216Board (service_id 0x03)
@@ -141,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
   gBotPort = '81';
   const botPortField = document.getElementById('botPort');
   if (botPortField && !botPortField.value) {
-    botPortField.value = '80';
+    botPortField.value = '81';
   }
   
   // Setup angle sliders
@@ -240,7 +241,7 @@ function initializeWebSocket() {
     return Promise.reject(new Error('Bot IP not configured'));
   }
 
-  const portStr = gBotPort || '80';
+  const portStr = gBotPort || '81';
   const wsUrl = `ws://${gBotIp}:${portStr}/ws`;
   wsManualClose = false;
   console.log('[WS] initializeWebSocket ' + wsUrl);
@@ -401,7 +402,7 @@ function closeWebSocket() {
  *   if (connected) {
  *     // You can now use servo functions
  *     attachServo(0, SERVO_TYPES.ROTATIONAL);
- *     setServoSpeeds([0], [100]);
+ *     setServoSpeeds([[0, 100]]);
  *   }
  * } catch (error) {
  *   console.error('Connection failed:', error);
@@ -855,7 +856,7 @@ async function detachServos() {
  * Handle servo attach/detach response
  */
 function handleServoAttachResponse(respCode, mask, type) {
-  const typeNames = ['180° Angular', '270° Angular', 'Continuous'];
+  const typeNames = ['Detached', '270° Angular', 'Continuous'];
   const typeName = typeNames[type] || `Type ${type}`;
   
   const respName = BOT_RESP_NAMES[respCode] || `0x${respCode.toString(16)}`;
@@ -966,7 +967,7 @@ function centerAllAngles() {
 /**
  * Set servo speeds for rotational servos (0x22) - UI Version
  * Request-response: gets values from HTML sliders, shows status feedback
- * Use setServoSpeeds(channels[], speeds[]) from BotScriptActions.js for fire-and-forget direct control
+ * Use setServoSpeeds(pairs[]) from BotScriptActions.js for fire-and-forget direct control
  */
 async function setServoSpeedsUI() {
   if (!isMasterRegistered) {
@@ -1734,6 +1735,7 @@ async function runScript() {
     _scriptLog('✔ Done.', false);
   } catch (e) {
     if (e.message !== 'Script stopped') {
+      console.error(e);
       _scriptLog('✖ ' + e.message, true);
     } else {
       _scriptLog('⏹ Stopped.', false);
@@ -1840,5 +1842,115 @@ function importScript(event) {
   event.target.value = '';
 }
 
+// ── Board filesystem (ESP32 LittleFS /scripts/) ──────────────────────────────
+
+const SCRIPT_BOARD_BASE = '/scripts';
+
+/**
+ * Refresh the board slot <select> by listing scripts from the board.
+ */
+async function boardListScripts() {
+  try {
+    const res = await fetch(SCRIPT_BOARD_BASE);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const names = await res.json(); // string[]
+    _refreshBoardSlotList(names);
+    _scriptLog(`🔄 Board: ${names.length} script(s)`, false);
+  } catch (e) {
+    _scriptLog(`❌ Board list failed: ${e.message}`, true);
+    showStatus('Board list failed: ' + e.message, true);
+  }
+}
+
+/** Populate the board slot <select> */
+function _refreshBoardSlotList(names) {
+  const select = document.getElementById('boardScriptSlot');
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = '<option value="">— board scripts —</option>';
+  (names || []).sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+  if (current && (names || []).includes(current)) select.value = current;
+}
+
+/** onchange handler for the board slot <select> */
+function loadScriptFromBoardSlot() {
+  const name = document.getElementById('boardScriptSlot').value;
+  if (!name) return;
+  boardLoadScript(name);
+}
+
+/**
+ * Load a script from the board into the editor.
+ * @param {string} [nameArg] Override; defaults to the board slot selection.
+ */
+async function boardLoadScript(nameArg) {
+  const name = nameArg || document.getElementById('boardScriptSlot').value;
+  if (!name) { _scriptLog('No board script selected.', true); return; }
+  try {
+    const res = await fetch(`${SCRIPT_BOARD_BASE}/${encodeURIComponent(name)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const code = await res.text();
+    document.getElementById('scriptEditor').value = code;
+    document.getElementById('scriptName').value = name;
+    document.getElementById('boardScriptSlot').value = name;
+    _scriptLog(`📥 Loaded "${name}" from board`, false);
+    showStatus(`📥 Loaded "${name}" from board`, false);
+  } catch (e) {
+    _scriptLog(`❌ Board load failed: ${e.message}`, true);
+    showStatus('Board load failed: ' + e.message, true);
+  }
+}
+
+/**
+ * Save the current editor content to the board under the script name.
+ */
+async function boardSaveScript() {
+  const name = document.getElementById('scriptName').value.trim() || 'script-' + Date.now();
+  const code = document.getElementById('scriptEditor').value;
+  try {
+    const res = await fetch(`${SCRIPT_BOARD_BASE}/${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: code
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    _scriptLog(`📤 Saved "${name}" to board`, false);
+    showStatus(`📤 Saved "${name}" to board`, false);
+    await boardListScripts();
+    const sel = document.getElementById('boardScriptSlot');
+    if (sel) sel.value = name;
+  } catch (e) {
+    _scriptLog(`❌ Board save failed: ${e.message}`, true);
+    showStatus('Board save failed: ' + e.message, true);
+  }
+}
+
+/**
+ * Delete the currently selected board script.
+ */
+async function boardDeleteScript() {
+  const name = document.getElementById('boardScriptSlot').value;
+  if (!name) { _scriptLog('No board script selected.', true); return; }
+  if (!confirm(`Delete "${name}" from the board?`)) return;
+  try {
+    const res = await fetch(`${SCRIPT_BOARD_BASE}/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    _scriptLog(`🗑️ Deleted "${name}" from board`, false);
+    showStatus(`🗑️ Deleted "${name}" from board`, false);
+    await boardListScripts();
+  } catch (e) {
+    _scriptLog(`❌ Board delete failed: ${e.message}`, true);
+    showStatus('Board delete failed: ' + e.message, true);
+  }
+}
+
 // Populate slot list on load
 document.addEventListener('DOMContentLoaded', _refreshSlotList);
+document.addEventListener('DOMContentLoaded', boardListScripts);

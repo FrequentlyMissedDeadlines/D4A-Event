@@ -77,6 +77,7 @@ namespace MotorServoConsts
     constexpr uint8_t  CMD_GET_SERVOS_ANGLE       = 0x07; ///< Query cached servo angles
     constexpr uint8_t  CMD_STOP_ALL_MOTORS        = 0x08; ///< Emergency-stop all motors
     constexpr uint8_t  CMD_GET_BATTERY            = 0x09; ///< Read board battery level (0–100 %)
+    constexpr uint8_t  CMD_SET_SERVO270_ANGLE     = 0x0A; ///< Set calibrated 270° servo angle (uses SERVO270_CAL_MIN/MAX_US)
 } // namespace MotorServoConsts
 
 // ---------------------------------------------------------------------------
@@ -227,6 +228,18 @@ public:
     uint8_t setServosAngle(uint8_t servo_mask, int16_t angle);
 
     /**
+     * @brief Set the same absolute angle for one or more 270° servo channels using
+     *        calibrated PWM endpoints (SERVO270_CAL_MIN_US / SERVO270_CAL_MAX_US).
+     *        Provides accurate 1:1 degree mapping. Works on any non-CONTINUOUS channel.
+     * @param servo_mask Bitmask selecting servo channels (bit N → servo N; bits 0–5 = servos 0–5)
+     * @param angle      Target angle 0–270°
+     * @return BotProto::resp_* status code
+     */
+    uint8_t setServos270Angle(uint8_t servo_mask, uint16_t angle);
+
+
+    
+    /**
      * @brief Increment the current angle of one or more positional servo channels.
      *        The resulting angle is clamped to the servo's valid range.
      *        Returns resp_invalid_params if any targeted channel is CONTINUOUS.
@@ -282,6 +295,13 @@ private:
      * @param speed    Speed percentage (−100 to +100)
      */
     void applyServoSpeed(uint8_t servo_id, int8_t speed);
+
+    /**
+     * @brief Write a calibrated 270° angle to one servo via board.setServo270() and update cache.
+     * @param servo_id 0-based servo channel (0–5)
+     * @param angle    Already-validated angle 0–270
+     */
+    void applyServo270Angle(uint8_t servo_id, uint16_t angle);
 
     /**
      * @brief Clamp an angle to the physical range of the given servo type.

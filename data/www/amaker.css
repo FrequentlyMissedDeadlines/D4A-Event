@@ -32,7 +32,10 @@ h2 {
 	margin-top: 14px;
 	font-size: 1em;
 }
-
+label {
+	
+	color: black;
+}
 /* Layout containers */
 .container {
 	max-width: 800px;

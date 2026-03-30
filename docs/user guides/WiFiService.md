@@ -31,50 +31,62 @@ The **WiFiService** is a critical infrastructure service that manages all WiFi c
 ### Public Methods
 
 #### `bool wifi_activation()`
-Activates the WiFi service with automatic fallback logic:
-- Attempts to connect to saved WiFi credentials
-- Falls back to AP mode if connection fails
-- Returns `true` on successful activation (either mode)
+Activates WiFi with automatic fallback: tries STA, opens AP on failure. Returns `true` if either mode is active.
 
 #### `std::string getIP()`
-Returns the current IP address:
-- Station mode: Local IP on the network
-- AP mode: Gateway IP (typically `192.168.4.1`)
+Returns the current IP address (STA local IP or AP gateway IP).
 
 #### `std::string getSSID()`
-Returns the current SSID:
-- Station mode: Connected network name
-- AP mode: K10 Bot's access point name
+Returns the currently active SSID (connected network or own AP name).
 
 #### `std::string getHostname()`
-Returns the configured hostname for the device
+Returns the device hostname: base name + 6-char uppercase MAC suffix (e.g. `amakerbot-A3F2B1`).
+
+#### `std::string getWifiSsid() const`
+Returns the configured STA SSID held in memory (may differ from what the device is currently connected to if changed but not applied).
+
+#### `std::string getWifiPassword() const`
+Returns the configured STA password held in memory.
+
+#### `void setWifiCredentials(const std::string &ssid, const std::string &password)`
+Updates the in-memory STA credentials. Does **not** persist to NVS — call `saveSettings()` afterwards, or `applySettings()` to also reconnect.
+
+#### `bool applySettings()`
+Disconnects and reconnects using the current in-memory credentials (STA with AP fallback). Call after `setWifiCredentials()` + `saveSettings()` to activate changes without rebooting.
 
 #### Service Lifecycle Methods
-- `bool initializeService()` - Initializes WiFi hardware
-- `bool startService()` - Starts WiFi connectivity with fallback
-- `bool stopService()` - Disconnects and stops WiFi
-- `bool saveSettings()` - Persists WiFi configuration
-- `bool loadSettings()` - Loads saved WiFi configuration
+- `bool initializeService()` — loads NVS credentials via `loadSettings()`, sets status `INITIALIZED`
+- `bool startService()` — calls `connect_and_fallback()` with the current credentials
+- `bool stopService()` — disconnects and clears IP/SSID state
+- `bool saveSettings()` — writes all credentials to NVS (`Preferences` namespace `"wifi"`)
+- `bool loadSettings()` — reads credentials from NVS; silently keeps compile-time defaults if namespace absent
+- `bool resetSettings()` — clears the NVS `"wifi"` namespace and restores compile-time defaults in memory (does **not** reconnect)
 
 ### Protected Methods
 
 #### `bool open_access_point()`
-Creates a WiFi access point:
-- Default SSID: `K10-Bot-XXXXXX` (where XXXXXX is derived from MAC)
-- Default password: Configured in service
-- IP: `192.168.4.1`
+Creates a WiFi SoftAP. Full SSID = `ap_ssid_` + MAC suffix (default: `aMaker-XXXXXX`).
 
-#### `bool connect_to_wifi(std::string ssid, std::string password)`
-Connects to a specific WiFi network with provided credentials
+#### `bool connect_to_wifi(ssid, password)`
+Tries to connect up to `wifi_conn_max_attempts` (8) times, sleeping `wifi_conn_sleep_ms` (500 ms) between attempts.
 
 #### `bool disconnect_from_wifi()`
-Disconnects from current WiFi network
+Calls `WiFi.disconnect(true)` and clears `connected_ip_` / `connected_ssid_`.
 
-#### `bool connect_and_fallback(std::string ssid, std::string password)`
-Attempts connection with automatic AP fallback:
-1. Try to connect to specified network
-2. Wait for connection with timeout
-3. If fails, automatically switch to AP mode
+#### `bool connect_and_fallback(ssid, password)`
+Tries STA; opens AP on failure.
+
+## NVS Storage
+
+All credentials are persisted under the `Preferences` namespace `"wifi"`:
+
+| NVS key | Default value | Description |
+|---|---|---|
+| `ssid` | `Freebox-A35871` *(dev only)* | STA SSID |
+| `password` | *(dev default)* | STA password |
+| `ap_ssid` | `aMaker-` | AP SSID base |
+| `ap_password` | `amaker-club` | AP password |
+| `hostname` | `amakerbot-` | Hostname base |
 
 ## Usage Example
 
@@ -101,22 +113,12 @@ void setup() {
 }
 ```
 
-## Configuration
-
-WiFi configuration is typically stored in `SettingsService` with these parameters:
-- `wifi_ssid` - Target network SSID
-- `wifi_password` - Network password
-- `wifi_hostname` - Device hostname
-- `ap_ssid` - Access point SSID (optional)
-- `ap_password` - Access point password (optional)
-
 ## Integration Points
 
 ### With Other Services
-- **HTTPService**: Requires WiFi to be active before starting web server
-- **UDPService**: Requires network connectivity for UDP communications
-- **SettingsService**: Loads/saves WiFi configuration persistently
-- **UTB2026 UI**: Displays WiFi status and IP address on TFT screen
+- **BotServerWebSocket / BotServerUDP**: Require WiFi to be active. Started after WiFiService in `setup()`.
+- **AmakerBotService**: WiFi settings are exposed remotely via commands `0x47` / `0x48` / `0x49`. Inject with `amaker_bot_.setWifiService(&wifi_service_)`.
+- **AmakerBotUIService**: Displays the connected IP and SSID on the TFT screen.
 
 ### Startup Sequence
 The WiFiService must be started **before** any network-dependent services:

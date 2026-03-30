@@ -93,6 +93,13 @@ namespace BotServerWebConsts
     constexpr uint32_t   cam_queue_timeout_ms = 100;  ///< Max wait for a snapshot frame
     constexpr uint32_t   cam_stream_wait_ms   = 150;  ///< Blocking wait for next stream frame (ms)
     constexpr uint16_t   default_port         = 80;
+    // ---- Script filesystem routes ----
+    constexpr const char path_scripts[]              PROGMEM = "/scripts";
+    constexpr const char path_scripts_item[]         PROGMEM = "/scripts/*";
+    constexpr const char mime_json[]                 PROGMEM = "application/json; charset=utf-8";
+    constexpr const char err_script_not_found[]      PROGMEM = "Script not found";
+    constexpr const char err_script_save_failed[]    PROGMEM = "Save failed";
+    constexpr size_t     max_script_body_size        = 65536; ///< 64 KB cap per script body
 } // namespace BotServerWebConsts
 
 // ---------------------------------------------------------------------------
@@ -199,6 +206,12 @@ private:
      * @brief Register the GET /botserver route on server_.
      */
     void register_get_botserver();
+
+    /**
+     * @brief Register GET /scripts, GET/POST/DELETE /scripts/<name> routes.
+     * Must be called from start() before server_->begin().
+     */
+    void registerScriptRoutes();
 
     /**
      * @brief Decode a hex string into a binary std::string.

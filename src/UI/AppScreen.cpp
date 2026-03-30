@@ -123,13 +123,13 @@ const char *AppScreen::servoTypeLabel(ServoType t)
     switch (t)
     {
     case ServoType::SERVO_180:
-        return "180";
+        return "---";
     case ServoType::SERVO_270:
         return "270";
     case ServoType::CONTINUOUS:
         return "rot";
     default:
-        return " ?";
+        return "---";
     }
 }
 
@@ -688,8 +688,8 @@ void AppScreen::drawESPInfo(bool chrome_only)
         snprintf(lbuf, sizeof(lbuf), "%-20s", "Free PSRAM");
         tft.setCursor(x0 + cw, y0 + 4 * lh); tft.print(lbuf);
         
-        snprintf(lbuf, sizeof(lbuf), "%-20s", "Battery %");
-        tft.setCursor(x0 + cw, y0 + 6 * lh); tft.print(lbuf);
+        // snprintf(lbuf, sizeof(lbuf), "%-20s", "Battery %");
+        // tft.setCursor(x0 + cw, y0 + 6 * lh); tft.print(lbuf);
         
 
 
@@ -711,7 +711,7 @@ void AppScreen::drawESPInfo(bool chrome_only)
         tft.setCursor(x0 + 22 * cw, y0 + 4 * lh); tft.print(rbuf);
 
         
-        snprintf(rbuf, sizeof(rbuf), "%02u %%", board.getBattery());
-        tft.setCursor(x0 + 22 * cw, y0 + 6 * lh); tft.print(rbuf);
+        // snprintf(rbuf, sizeof(rbuf), "%02u %%", board.getBattery());
+        // tft.setCursor(x0 + 22 * cw, y0 + 6 * lh); tft.print(rbuf);
     }
 }

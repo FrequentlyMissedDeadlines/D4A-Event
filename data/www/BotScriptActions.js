@@ -17,7 +17,7 @@
 //
 // MODE 2: FIRE-AND-FORGET (BotScriptActions.js - THIS FILE)
 //   Functions: attachServo(channel, type), setServoAngle(channel, angle),
-//             setServoSpeeds(channels[], speeds[])
+//             setServoSpeeds(pairs[])
 //   Behavior: Returns immediately, no wait, optimized for 50ms gamepad polling
 //   Use case: Real-time control from gamepad/keyboard, script automation
 //
@@ -49,7 +49,6 @@
 
 // ── Xbox Controller Configuration ─────────────────────────────────────────────
 const SERVO_TYPES={
-  ANGULAR_180: 0,
   ANGULAR_270: 1, 
   ROTATIONAL: 2
 }
@@ -657,7 +656,6 @@ function detectGamepad() {
   _scriptLog('⚠️ Missing your own function in CUSTOMCONTROL.processGamepadInput(gamepad).');
 }
 
-
 /**
  * Handle gamepad connection
  */
@@ -775,20 +773,31 @@ function handleGamepaButton(gamepad, buttonIndex, buttonName, onPress, onRelease
  * joystick inputs are never queued behind a pending response.
  *
  * @param {number} channel - Servo channel (0-5)
- * @param {number} angle - Angle in degrees (0 to 180, or 0 to 270 depending on type)
+ * @param {number} angle - Angle in degrees (0 to 270 depending on type)
  */
 function setServoAngle(channel, angle) {
+  setServo270(channel, angle); // For simplicity, use the 270° function which can handle both types
+}
+
+/**
+ * Set a 270° servo to a precise angle using calibrated PWM endpoints.
+ * Provides accurate 1:1 degree mapping (0° → 0, 270° → 270).
+ * Uses fire-and-forget over the WebSocket WS bridge.
+ *
+ * @param {number} channel - Servo channel (0-5)
+ * @param {number} angle   - Angle in degrees (0 to 270)
+ */
+function setServo270(channel, angle) {
   if (typeof isMasterRegistered !== 'undefined' && !isMasterRegistered) {
     return;
   }
 
-  // Build packet: SET_SERVOS_ANGLE [servo_mask:u8] [angle_hi:u8] [angle_lo:u8]  (big-endian i16)
-  const mask    = (1 << channel) & 0xFF;
-  const angleHi = (angle >> 8) & 0xFF;
-  const angleLo = angle & 0xFF;
-  const packet  = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVOS_ANGLE, mask, angleHi, angleLo]);
+  const clamped  = Math.max(0, Math.min(270, Math.round(angle)));
+  const mask     = (1 << channel) & 0xFF;
+  const angleHi  = (clamped >> 8) & 0xFF;
+  const angleLo  = clamped & 0xFF;
+  const packet   = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVO270_ANGLE, mask, angleHi, angleLo]);
 
-  // Fire-and-forget (WS-like): no response awaited
   if (typeof sendWSFireAndForget !== 'undefined') {
     sendWSFireAndForget(packet);
   }
@@ -799,9 +808,10 @@ function setServoAngle(channel, angle) {
  * Uses fire-and-forget over the WebSocket bridge.
  *
  * @param {number} channel - Servo channel (0-5)
- * @param {number} type - Servo type (0=ANGULAR_180, 1=ANGULAR_270, 2=ROTATIONAL)
+ * @param {number} type - Servo type ( 1=ANGULAR_270, 2=ROTATIONAL)
  */
 function attachServo(channel, type) {
+  
   if (typeof isMasterRegistered !== 'undefined' && !isMasterRegistered) {
     return;
   }
@@ -821,10 +831,14 @@ function attachServo(channel, type) {
  * Uses fire-and-forget over the WebSocket WS bridge so that rapid
  * joystick inputs are never queued behind a pending response.
  *
- * @param {number[]} channels - Array of channel numbers (0-5)
- * @param {number[]} speeds - Array of speeds (-100 to +100), one per channel
+ * @param {Array<[number, number]>} pairs - Array of [channel, speed] pairs
+ *   channel: servo channel number (0-5)
+ *   speed: speed value (-100 to +100)
+ * @example
+ *   setServoSpeeds([[0, 100]]);           // servo 0 forward full speed
+ *   setServoSpeeds([[0, 100], [1, -100]]); // servo 0 fwd, servo 1 rev
  */
-function setServoSpeeds(channels, speeds) {
+function setServoSpeeds(pairs) {
   if (typeof isMasterRegistered !== 'undefined' && !isMasterRegistered) {
     return;
   }
@@ -832,9 +846,8 @@ function setServoSpeeds(channels, speeds) {
   // Protocol: SET_SERVOS_SPEED [servo_mask:u8] [speed:i8] — one speed for all masked channels.
   // Group channels that share the same speed into one packet; send separate packets otherwise.
   const speedMap = new Map();
-  for (let i = 0; i < channels.length; i++) {
-    const speed = speeds[i];
-    speedMap.set(speed, (speedMap.get(speed) || 0) | (1 << channels[i]));
+  for (const [channel, speed] of pairs) {
+    speedMap.set(speed, (speedMap.get(speed) || 0) | (1 << channel));
   }
 
   if (typeof sendWSFireAndForget !== 'undefined') {

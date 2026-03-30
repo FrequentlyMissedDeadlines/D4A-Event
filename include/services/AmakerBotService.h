@@ -1,6 +1,7 @@
 #pragma once
 #include "IsServiceInterface.h"
 #include "BotCommunication/BotMessageHandler.h"
+#include "services/WiFiService.h"
 #include <freertos/semphr.h>
 #include <functional>
 #include <vector>
@@ -26,6 +27,9 @@
  * | 0x44   | 0x04 | [id:4B ping payload]         | [0x44][id:4B] echo                  |
  * | 0x45   | 0x05 | (none)                       | [0x45][resp_ok][name bytes…]        |
  * | 0x46   | 0x06 | [name bytes…] (master only)  | [0x46][resp_ok or resp_not_master]  |
+ * | 0x47   | 0x07 | (none)                       | [0x47][resp_ok][ssid_len:1B][ssid…][pass_len:1B][pass…] |
+ * | 0x48   | 0x08 | [ssid_len:1B][ssid…][pass_len:1B][pass…] (master) | [0x48][resp_ok or err] |
+ * | 0x49   | 0x09 | (none, master only)          | [0x49][resp_ok or resp_not_master]  |
  */
 class AmakerBotService : public IsServiceInterface,
                          public IsBotActionHandlerInterface
@@ -126,6 +130,13 @@ public:
     bool setMasterIfTokenValid(const std::string &ip, const std::string &token);
 
     /**
+     * @brief Inject the WifiService used by CMD_GET/SET/RESET_WIFI_SETTINGS.
+     * @param wifi Pointer to the WifiService; must outlive this AmakerBotService.
+     *             Pass nullptr to disable WiFi settings commands.
+     */
+    void setWifiService(WifiService *wifi) { wifi_service_ = wifi; }
+
+    /**
      * @brief Watchdog: invoke the timeout callback if the master heartbeat has
      *        timed out (> 50 ms without a heartbeat from the registered master).
      *
@@ -201,6 +212,8 @@ private:
 
     std::function<void()> heartbeat_timeout_cb_; ///< Called once on timeout
 
+    WifiService *wifi_service_ = nullptr; ///< Injected via setWifiService(); may be nullptr
+
     std::vector<IsBotActionHandlerInterface *> bot_message_handlers;
 
     /** @brief Generate a random 5-character alphanumeric token via esp_random(). */
@@ -223,6 +236,54 @@ public:
     /** @brief Reset all dispatch counters to zero. */
     void resetDispatchCounts() { memset(dispatch_count_, 0, sizeof(dispatch_count_)); }
 
+    // ---- Script filesystem operations -----------------------------------
+
+    /**
+     * @brief List all scripts stored in the /scripts folder on LittleFS.
+     * @return Vector of file names (without directory prefix).
+     *         Returns an empty vector if the directory does not exist or
+     *         LittleFS is not mounted.
+     */
+    std::vector<std::string> listScripts();
+
+    /**
+     * @brief Read a script from /scripts/<name> on LittleFS.
+     * @param name Script file name (must not contain path separators or '..').
+     * @return File content as a UTF-8 string, or empty string if the file
+     *         is not found or the name fails validation.
+     */
+    std::string getScript(const std::string &name);
+
+    /**
+     * @brief Write (create or overwrite) /scripts/<name> on LittleFS.
+     *        Creates the /scripts directory automatically if needed.
+     * @param name    Script file name (must not contain path separators or '..').
+     * @param content UTF-8 script content.
+     * @return true on success, false on invalid name or write error.
+     */
+    bool saveScript(const std::string &name, const std::string &content);
+
+    /**
+     * @brief Delete /scripts/<name> from LittleFS.
+     * @param name Script file name.
+     * @return true on success, false if the file was not found or the name
+     *         fails validation.
+     */
+    bool deleteScript(const std::string &name);
+
+    /**
+     * @brief Check whether /scripts/<name> exists on LittleFS.
+     * @param name Script file name (validated before checking).
+     * @return true if the file exists, false otherwise.
+     */
+    bool scriptExists(const std::string &name);
+
 private:
+    /**
+     * @brief Validate that @p name is a safe script filename:
+     *        non-empty, ≤64 chars, no path separators, no null bytes, no '..'.
+     */
+    static bool isValidScriptName(const std::string &name);
+
     uint32_t dispatch_count_[256] = {}; ///< Per-action-byte dispatch counter
 };

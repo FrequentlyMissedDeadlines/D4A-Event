@@ -13,6 +13,7 @@
 #include "FlashStringHelper.h"
 #include <pgmspace.h>
 #include <ArduinoJson.h>
+#include "services/DFR1216.h"
 
 
 // DFR1216-specific OpenAPI constants namespace (stored in PROGMEM to save RAM)
@@ -23,7 +24,7 @@ namespace DFR1216Consts
     constexpr const char action_get_status[] PROGMEM = "getStatus";
     constexpr const char action_set_motor_speed[] PROGMEM = "setMotorSpeed";
     constexpr const char action_set_servo_angle[] PROGMEM = "setServoAngle";
-    constexpr const char desc_angle_degrees[] PROGMEM = "Angle in degrees (0-180)";
+    constexpr const char desc_angle_degrees[] PROGMEM = "Angle in degrees (0-270)";
     constexpr const char desc_get_status[] PROGMEM = "Get initialization status and operational state of the DFR1216 expansion board";
     constexpr const char desc_motor_control[] PROGMEM = "Set the speed and direction of a DC motor on the DFR1216 expansion board";
     constexpr const char desc_motor_number[] PROGMEM = "Motor number (1-4)";
@@ -37,7 +38,7 @@ namespace DFR1216Consts
     constexpr const char json_error[] PROGMEM = "{\"error\":\"";
     constexpr const char json_motor[] PROGMEM = "motor";
     constexpr const char json_speed[] PROGMEM = "speed";
-    constexpr const char msg_angle_out_of_range[] PROGMEM = "Angle out of range (0-180)";
+    constexpr const char msg_angle_out_of_range[] PROGMEM = "Angle out of range (0-270)";
     constexpr const char msg_missing_motor_params[] PROGMEM = "Missing required parameters: motor and speed";
     constexpr const char msg_missing_servo_params[] PROGMEM = "Missing required parameters: channel and angle";
     constexpr const char msg_motor_out_of_range[] PROGMEM = "Motor number out of range (1-4)";
@@ -57,10 +58,10 @@ namespace DFR1216Consts
     constexpr const char resp_status_retrieved[] PROGMEM = "Status retrieved successfully";
 
     // JSON Schema definitions
-    constexpr const char schema_channel_angle[] PROGMEM = "{\"type\":\"object\",\"required\":[\"channel\",\"angle\"],\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":5},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":180}}}";
+    constexpr const char schema_channel_angle[] PROGMEM = "{\"type\":\"object\",\"required\":[\"channel\",\"angle\"],\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":5},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":270}}}";
     constexpr const char schema_DFR1216_I2Cmotor_speed[] PROGMEM = "{\"type\":\"object\",\"required\":[\"motor\",\"speed\"],\"properties\":{\"motor\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":4},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}}}";
     constexpr const char schema_status[] PROGMEM = "{\"type\":\"object\",\"properties\":{\"service\":{\"type\":\"string\"},\"initialized\":{\"type\":\"boolean\"}}}";
-    constexpr const char req_channel_angle[] PROGMEM = "{\"type\":\"object\",\"required\":[\"channel\",\"angle\"],\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":5},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":180}}}";
+    constexpr const char req_channel_angle[] PROGMEM = "{\"type\":\"object\",\"required\":[\"channel\",\"angle\"],\"properties\":{\"channel\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":5},\"angle\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":270}}}";
     constexpr const char req_motor_speed[] PROGMEM = "{\"type\":\"object\",\"required\":[\"motor\",\"speed\"],\"properties\":{\"motor\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":4},\"speed\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100}}}";
 
     // Example values
@@ -143,7 +144,7 @@ bool DFR1216Board::setServoAngle(uint8_t channel, uint16_t angle)
         return false;
     }
 
-    if (angle > 180)
+    if (angle > 270)
     {
         debugLogger->error(progmem_to_string(DFR1216Consts::msg_angle_out_of_range));
         return false;
@@ -156,6 +157,35 @@ bool DFR1216Board::setServoAngle(uint8_t channel, uint16_t angle)
     debugLogger->info(log_buf);
     return true;
 }
+// bool DFR1216Board::setServo270(uint8_t channel, uint16_t angle)
+// {
+//     if (!isServiceStarted())
+//         return false;
+
+//     if (channel > 5)
+//     {
+//         debugLogger->error(progmem_to_string(DFR1216Consts::msg_servo_channel_out_of_range));
+//         return false;
+//     }
+
+//     if (angle > 270)
+//     {
+//         debugLogger->error(progmem_to_string(DFR1216Consts::msg_angle_out_of_range));
+//         return false;
+//     }
+
+//     // Linear interpolation: 0° → SERVO270_CAL_MIN_US, 270° → SERVO270_CAL_MAX_US
+//     uint16_t period_us = SERVO270_CAL_MIN_US +
+//         static_cast<uint16_t>((uint32_t)angle * (SERVO270_CAL_MAX_US - SERVO270_CAL_MIN_US) / 270);
+
+//     if (!setServoPeriod(static_cast<eServoNumber_t>(channel), period_us))
+//         return false;
+
+//     char log_buf[64];
+//     snprintf(log_buf, sizeof(log_buf), "setServo270: ch=%u angle=%u -> %u us", channel, angle, period_us);
+//     debugLogger->info(log_buf);++
+//     return true;
+// }
 bool DFR1216Board::setMotorSpeed(uint8_t motor, int8_t speed)
 {
     if (!isServiceStarted())
@@ -436,16 +466,30 @@ void DFR1216Board::setServoAngle(eServoNumber_t number, uint16_t angle)
 {
     setServoAngle(number, angle, 270);
 }
+
+// bool DFR1216Board::setServoPeriod(eServoNumber_t number, uint16_t position_us)
+// {
+//     uint8_t reg = number * 2 + I2C_SERVO0_DUTY_H;
+//     uint8_t _tempData[TEMP_LEN] = {0};
+//     _tempData[0] = (position_us >> 8) & 0xFF;
+//     _tempData[1] = (position_us >> 0) & 0xFF;
+//     for (uint8_t i = 0; i < RETRY_COUNT; i++)
+//     {
+//         if (writeReg(reg, _tempData, 2) == 0)
+//             return true;
+//         delay(I2C_RETRY_DELAY_MS);
+//     }
+//     return false;
+// }
+
 void DFR1216Board::setServoAngle(eServoNumber_t number, uint16_t angle, uint16_t maxAngle)
-{
+{ //TODO  better capping and error handling
     uint16_t period = 0;
-    if (maxAngle == 270) {
-        if (angle > 270) angle = 270;
+
+        if (angle > 270) angle = 270; 
+
         period = SERVO270_MIN_US + ((uint32_t)angle * (SERVO270_MAX_US - SERVO270_MIN_US) / 270);
-    } else {
-        if (angle > 180) angle = 180;
-        period = SERVO180_MIN_US + ((uint32_t)angle * (SERVO180_MAX_US - SERVO180_MIN_US) / 180);
-    }
+    
     uint8_t reg = number * 2 + I2C_SERVO0_DUTY_H;
     uint8_t result = 0;
     uint8_t _tempData[TEMP_LEN] = {0};
@@ -456,6 +500,7 @@ void DFR1216Board::setServoAngle(eServoNumber_t number, uint16_t angle, uint16_t
         if (result == 0) return;
         delay(I2C_RETRY_DELAY_MS);
     }
+    serviceLogger->info(("Servo " + String(number) + "->" + String(angle)).c_str(), "board");
 }
 uint8_t DFR1216Board::getBattery(void)
 {

@@ -419,7 +419,7 @@ bool MyService::saveSettings() {
 
 #### `loadSettings()`
 ```cpp
-virtual bool loadSettings() { return true; }
+virtual bool loadSettings() { return false; }
 ```
 **Purpose**: Loads service configuration from persistent storage.
 
@@ -427,31 +427,45 @@ virtual bool loadSettings() { return true; }
 - `true` if settings were loaded successfully
 - `false` if load operation failed
 
-**Default Implementation**: Returns `true` (no-op)
+**Default Implementation**: Returns `false` (no-op)
 
 **Best Practices**:
 - Call this during `initializeService()`
 - Provide sensible defaults if settings don't exist
 - Validate loaded values
 
-**Example**:
+---
+
+#### `resetSettings()`
 ```cpp
-bool MyService::loadSettings() {
-    // Load configuration from persistent storage
-    // This is typically called during initializeService()
-    
-    // Use defaults if settings don't exist
-    port = 8080;  // default value
-    mode = "auto";
-    
-    // Services can load from SettingsService or JSON files
-    
-    #ifdef VERBOSE_DEBUG
-    logger->debug(getServiceName() + " settings loaded");
-    #endif
+virtual bool resetSettings() { return false; }
+```
+**Purpose**: Clears persisted settings (e.g. wipes the NVS namespace) and restores compile-time defaults in memory.
+
+**Returns**: 
+- `true` if the reset succeeded
+- `false` if the operation is not supported (default)
+
+**Default Implementation**: Returns `false` (no-op)
+
+**When to override**: When your service stores settings in NVS and needs to expose a "factory reset" path (e.g. via the bot protocol or a web endpoint).
+
+**Example** (`WifiService`):
+```cpp
+bool WifiService::resetSettings() {
+    Preferences prefs;
+    if (prefs.begin("wifi", false)) {
+        prefs.clear();
+        prefs.end();
+    }
+    wifi_ssid_     = DEFAULT_SSID;
+    wifi_password_ = DEFAULT_PASSWORD;
+    // … restore other defaults …
     return true;
 }
 ```
+
+**Integration note**: `AmakerBotService` exposes `resetSettings()` over the binary protocol as command `0x49` (RESET_WIFI_SETTINGS). The call is master-gated.
 
 ---
 

@@ -163,6 +163,7 @@ bool BotServerWeb::start()
     }
 
     register_get_botserver();
+    registerScriptRoutes();
     server_->on("/", HTTP_GET, [this](AsyncWebServerRequest *request)   
     {
         request->redirect(FPSTR(BotServerWebConsts::default_file));
@@ -206,6 +207,112 @@ void BotServerWeb::stop()
 
     if (logger_)
         logger_->info(FPSTR(BotServerWebConsts::msg_stop));
+}
+
+// ---------------------------------------------------------------------------
+// registerScriptRoutes
+// ---------------------------------------------------------------------------
+
+void BotServerWeb::registerScriptRoutes()
+{
+    // NOTE: /scripts/* handlers are registered BEFORE /scripts because
+    // ESPAsyncWebServer matches a route registered as "/scripts" for any URL
+    // that starts with "/scripts/" (e.g. "/scripts/foo.js"), so the more
+    // specific wildcard pattern must come first to win the dispatch race.
+
+    // ---- GET /scripts/<name>  →  script content as plain text ---------------
+    server_->on(BotServerWebConsts::path_scripts_item, HTTP_GET,
+        [this](AsyncWebServerRequest *request)
+        {
+            // URL is "/scripts/<name>" — strip the "/scripts/" prefix (9 chars)
+            const std::string name(request->url().substring(9).c_str());
+            if (!bot_.scriptExists(name))
+            {
+                request->send(404, FPSTR(BotServerWebConsts::mime_text),
+                              FPSTR(BotServerWebConsts::err_script_not_found));
+                return;
+            }
+            const std::string content = bot_.getScript(name);
+            request->send(200, FPSTR(BotServerWebConsts::mime_text), content.c_str());
+        });
+
+    // ---- POST /scripts/<name>  →  save script (raw body = content) ----------
+    server_->on(BotServerWebConsts::path_scripts_item, HTTP_POST,
+        // Final handler: called once after the full body has been received
+        [this](AsyncWebServerRequest *request)
+        {
+            // URL is "/scripts/<name>" — strip the "/scripts/" prefix (9 chars)
+            const std::string name(request->url().substring(9).c_str());
+            std::string *body = static_cast<std::string *>(request->_tempObject);
+            const std::string content = body ? *body : std::string{};
+            if (body) { delete body; request->_tempObject = nullptr; }
+
+            if (!bot_.saveScript(name, content))
+            {
+                request->send(400, FPSTR(BotServerWebConsts::mime_text),
+                              FPSTR(BotServerWebConsts::err_script_save_failed));
+                return;
+            }
+            request->send(200, FPSTR(BotServerWebConsts::mime_text), "OK");
+        },
+        nullptr,  // upload handler (unused)
+        // Body handler: accumulate raw body chunks into request->_tempObject
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+           size_t index, size_t /*total*/)
+        {
+            if (index == 0)
+                request->_tempObject = new (std::nothrow) std::string();
+
+            std::string *body = static_cast<std::string *>(request->_tempObject);
+            if (body && (body->size() + len) <= BotServerWebConsts::max_script_body_size)
+                body->append(reinterpret_cast<const char *>(data), len);
+        });
+
+    // ---- DELETE /scripts/<name>  →  delete script ---------------------------
+    server_->on(BotServerWebConsts::path_scripts_item, HTTP_DELETE,
+        [this](AsyncWebServerRequest *request)
+        {
+            // URL is "/scripts/<name>" — strip the "/scripts/" prefix (9 chars)
+            const std::string name(request->url().substring(9).c_str());
+            if (!bot_.deleteScript(name))
+            {
+                request->send(404, FPSTR(BotServerWebConsts::mime_text),
+                              FPSTR(BotServerWebConsts::err_script_not_found));
+                return;
+            }
+            request->send(200, FPSTR(BotServerWebConsts::mime_text), "OK");
+        });
+
+    // ---- GET /scripts  →  JSON array of script names -------------------------
+    // Registered LAST so that the /scripts/* wildcard handlers above take
+    // precedence for item URLs (see note at the top of this function).
+    server_->on(BotServerWebConsts::path_scripts, HTTP_GET,
+        [this](AsyncWebServerRequest *request)
+        {
+            const std::vector<std::string> names = bot_.listScripts();
+
+            // Build compact JSON array without pulling in ArduinoJson
+            std::string json;
+            json.reserve(32 + names.size() * 24);
+            json += '[';
+            for (size_t i = 0; i < names.size(); ++i)
+            {
+                if (i > 0) json += ',';
+                json += '"';
+                for (const char c : names[i])
+                {
+                    if (c == '"' || c == '\\') json += '\\';
+                    json += c;
+                }
+                json += '"';
+            }
+            json += ']';
+
+            request->send(200, FPSTR(BotServerWebConsts::mime_json), json.c_str());
+        });
+
+    if (logger_)
+        logger_->info("Script routes registered (/scripts, /scripts/*)");
 }
 
 // ---------------------------------------------------------------------------

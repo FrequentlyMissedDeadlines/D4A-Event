@@ -66,7 +66,8 @@ const MOTOR_SERVO_ACTION = {
   GET_MOTORS_SPEED:       0x26, // MotorServoConsts::CMD_GET_MOTORS_SPEED
   GET_SERVOS_ANGLE:       0x27, // MotorServoConsts::CMD_GET_SERVOS_ANGLE
   STOP_ALL_MOTORS:        0x28, // MotorServoConsts::CMD_STOP_ALL_MOTORS
-  GET_BATTERY:            0x29  // MotorServoConsts::CMD_GET_BATTERY
+  GET_BATTERY:            0x29, // MotorServoConsts::CMD_GET_BATTERY
+  SET_SERVO270_ANGLE:     0x2A  // MotorServoConsts::CMD_SET_SERVO270_ANGLE
 };
 
 // DFR1216 action bytes — DFR1216Board (service_id 0x03)
@@ -661,7 +662,7 @@ async function detachServos() {
  * Handle servo attach/detach response
  */
 function handleServoAttachResponse(respCode, mask, type) {
-  const typeNames = ['180° Angular', '270° Angular', 'Continuous'];
+  const typeNames = [ '270° Angular', 'Continuous'];
   const typeName = typeNames[type] || `Type ${type}`;
   
   const respName = BOT_RESP_NAMES[respCode] || `0x${respCode.toString(16)}`;

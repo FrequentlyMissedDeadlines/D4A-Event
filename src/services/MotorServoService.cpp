@@ -552,7 +552,7 @@ void MotorServoService::applyServoAngle(uint8_t servo_id, int16_t angle)
 {
     const uint16_t max_angle =
         (servo_types_[servo_id] == ServoType::SERVO_270) ? 270 : 180;
-
+    serviceLogger->info(("Servo " + String(servo_id) + "->" + String(angle)).c_str() , "motor");
     board.setServoAngle(static_cast<eServoNumber_t>(servo_id),
                         static_cast<uint16_t>(angle),
                         max_angle);

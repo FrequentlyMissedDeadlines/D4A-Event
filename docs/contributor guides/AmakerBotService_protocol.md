@@ -177,6 +177,78 @@ No length prefix; name ends at the packet boundary. Default name: `"K10-Bot"`.
 
 ---
 
+### `0x47` — GET_WIFI_SETTINGS
+
+| Field | Detail |
+|---|---|
+| Byte 0 | `0x47` |
+| Payload | None |
+| Auth required | **No — available to any caller** |
+| Fire-and-forget | **No — response always sent** |
+
+**Server logic:** Reads current in-memory STA credentials from the injected `WifiService`.
+
+| Condition | Response |
+|---|---|
+| `WifiService` not injected | `[0x47][resp_not_started]` |
+| Always otherwise | `[0x47][resp_ok][ssid_len:1B][ssid…][pass_len:1B][pass…]` |
+
+**Response format:** custom — NOT `udp_reply`.
+```
+RX: 47 00 <ssid_len> <ssid bytes…> <pass_len> <pass bytes…>
+```
+
+---
+
+### `0x48` — SET_WIFI_SETTINGS
+
+| Field | Detail |
+|---|---|
+| Byte 0 | `0x48` |
+| Bytes 1 | `ssid_len` (1 byte) |
+| Bytes 2…(1+ssid_len) | SSID string |
+| Byte (2+ssid_len) | `pass_len` (1 byte) |
+| Bytes … | Password string |
+| Auth required | **Yes — caller IP must be the registered master** |
+| Fire-and-forget | **No — response always sent** |
+
+**Constraints:** SSID 1–32 chars; password 0–64 chars.
+
+**Server logic:** Calls `WifiService::setWifiCredentials()` then `WifiService::saveSettings()` (persists to NVS).
+
+| Condition | Response status |
+|---|---|
+| Caller is not the master | `resp_not_master` |
+| `WifiService` not injected | `resp_not_started` |
+| Payload too short | `resp_invalid_params` |
+| SSID empty / SSID > 32 / pass > 64 | `resp_invalid_values` |
+| Credentials saved | `resp_ok` |
+
+**Response format:** standard `[action][resp_code]`.
+
+---
+
+### `0x49` — RESET_WIFI_SETTINGS
+
+| Field | Detail |
+|---|---|
+| Byte 0 | `0x49` |
+| Payload | None |
+| Auth required | **Yes — caller IP must be the registered master** |
+| Fire-and-forget | **No — response always sent** |
+
+**Server logic:** Calls `WifiService::resetSettings()` which clears the NVS `"wifi"` namespace and restores compile-time defaults in memory.
+
+| Condition | Response status |
+|---|---|
+| Caller is not the master | `resp_not_master` |
+| `WifiService` not injected | `resp_not_started` |
+| Reset succeeded | `resp_ok` |
+
+**Response format:** standard `[action][resp_code]`.
+
+---
+
 ## Summary Table
 
 | Code | Name | Auth | Payload (TX) | Response (RX) | Fire-and-forget |
@@ -187,6 +259,9 @@ No length prefix; name ends at the packet boundary. Default name: `"K10-Bot"`.
 | `0x44` | PING | Master IP | `[0x44][4B id]` | `[0x44][4B id]` echo | No |
 | `0x45` | GET_NAME | None | `[0x45]` | `[0x45][name bytes]` | No |
 | `0x46` | SET_NAME | Master IP | `[0x46][name bytes]` | `[echo][STATUS]` | No |
+| `0x47` | GET_WIFI_SETTINGS | None | `[0x47]` | `[0x47][resp_ok][ssid_len][ssid…][pass_len][pass…]` | No |
+| `0x48` | SET_WIFI_SETTINGS | Master IP | `[0x48][ssid_len][ssid…][pass_len][pass…]` | `[0x48][resp_code]` | No |
+| `0x49` | RESET_WIFI_SETTINGS | Master IP | `[0x49]` | `[0x49][resp_code]` | No |
 
 ---
 
@@ -197,4 +272,8 @@ No length prefix; name ends at the packet boundary. Default name: `"K10-Bot"`.
 - **`0x43` heartbeat must arrivBOT_SERVICE_IDe within 50 ms** when a master is registered and `heartbeat_active_` is true. The first heartbeat after registration activates the watchdog; before that, no timeout fires.
 - **`0x44` ping** is not claimed (`return false`) when the caller is not the master. This differs from all other commands which return `true` and send `DENIED`.
 - **`0x45` get name** is the only command with no auth check.
+- **`0x47` get WiFi settings** is also open to unauthenticated callers (read-only, display-level info).
+- **`0x48` set WiFi settings** writes credentials to NVS immediately via `WifiService::saveSettings()`. The device does **not** reconnect automatically — the user must reboot or call a separate reconnect action.
+- **`0x49` reset WiFi settings** clears the NVS `"wifi"` namespace via `Preferences::clear()` and restores compile-time defaults in memory. Credentials are not re-applied until the next reboot or explicit `applySettings()` call.
+- **WiFi commands require `setWifiService()`** to be called on `AmakerBotService` at startup (done in `main.cpp`). If the pointer is null, all three commands return `resp_not_started`.
 - The `udp_reply` helper always **prepends the full incoming message** before the status byte. For short commands like `0x42` or `0x43` the echo is just the single action byte.

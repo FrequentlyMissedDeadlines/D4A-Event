@@ -10,6 +10,7 @@
 #include "services/AmakerBotService.h"
 #include "FlashStringHelper.h"
 #include <Arduino.h>          // millis(), esp_random()
+#include <LittleFS.h>         // listScripts / getScript / saveScript / deleteScript
 
 // ---------------------------------------------------------------------------
 // PROGMEM constants (translation-unit local)
@@ -33,6 +34,9 @@ namespace AmakerBotConsts
     constexpr const char msg_hb_restored[]      PROGMEM = "AmakerBot: heartbeat restored";
     constexpr const char msg_master_needed[]    PROGMEM = "AmakerBot: BotMaster must be started first";
     constexpr const char msg_mutex_failed[]     PROGMEM = "AmakerBot: name_mutex alloc failed";
+    constexpr const char msg_wifi_not_set[]     PROGMEM = "AmakerBot: WiFi service not injected";
+    constexpr const char msg_wifi_settings_set[] PROGMEM = "AmakerBot: WiFi credentials updated by master";
+    constexpr const char msg_wifi_settings_reset[] PROGMEM = "AmakerBot: WiFi settings reset to defaults by master";
 
     constexpr uint8_t  BOT_SERVICE_ID      = 0x04;
     constexpr uint8_t  CMD_REGISTER        = 0x01; ///< [token bytes…]
@@ -41,8 +45,19 @@ namespace AmakerBotConsts
     constexpr uint8_t  CMD_PING            = 0x04; ///< [id:4B] → echo
     constexpr uint8_t  CMD_GET_NAME        = 0x05; ///< → [resp_ok][name…]
     constexpr uint8_t  CMD_SET_NAME        = 0x06; ///< [name…] (master only)
+    constexpr uint8_t  CMD_GET_WIFI        = 0x07; ///< → [resp_ok][ssid_len:1B][ssid…][pass_len:1B][pass…]
+    constexpr uint8_t  CMD_SET_WIFI        = 0x08; ///< [ssid_len:1B][ssid…][pass_len:1B][pass…] master-only; saves+applies
+    constexpr uint8_t  CMD_RESET_WIFI      = 0x09; ///< (no payload) master-only; clears NVS, restores defaults
 
     constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 50;  ///< ms without heartbeat → emergency stop
+
+    // ---- Script filesystem constants ----------------------------------------
+    constexpr const char scripts_dir[]             PROGMEM = "/scripts";
+    constexpr const char msg_script_saved[]        PROGMEM = "AmakerBot: script saved: ";
+    constexpr const char msg_script_deleted[]      PROGMEM = "AmakerBot: script deleted: ";
+    constexpr const char msg_script_not_found[]    PROGMEM = "AmakerBot: script not found: ";
+    constexpr const char msg_script_name_invalid[] PROGMEM = "AmakerBot: invalid script name";
+    constexpr const char msg_scripts_dir_created[] PROGMEM = "AmakerBot: /scripts dir created";
 } // namespace AmakerBotConsts
 
 char svccode[6] = "proxy";
@@ -227,6 +242,71 @@ std::string AmakerBotService::handleBotMessage(const uint8_t *data, size_t len,
             return BotProto::make_ack(action, BotProto::resp_invalid_values);
 
         setBotName(name);
+        return BotProto::make_ack(action, BotProto::resp_ok);
+    }
+
+    // ---- CMD_GET_WIFI 0x07 : → [action][resp_ok][ssid_len:1B][ssid…][pass_len:1B][pass…] ---
+    if (cmd == AmakerBotConsts::CMD_GET_WIFI)
+    {
+        if (!wifi_service_)
+        {
+            if (debugLogger) debugLogger->error(FPSTR(AmakerBotConsts::msg_wifi_not_set));
+            return BotProto::make_ack(action, BotProto::resp_not_started);
+        }
+        const std::string ssid = wifi_service_->getWifiSsid();
+        const std::string pass = wifi_service_->getWifiPassword();
+        std::string reply;
+        reply.reserve(4 + ssid.size() + pass.size());
+        reply += static_cast<char>(action);
+        reply += static_cast<char>(BotProto::resp_ok);
+        reply += static_cast<char>(ssid.size() & 0xFF);
+        reply += ssid;
+        reply += static_cast<char>(pass.size() & 0xFF);
+        reply += pass;
+        return reply;
+    }
+
+    // ---- CMD_SET_WIFI 0x08 : [ssid_len:1B][ssid…][pass_len:1B][pass…] (master only) ---
+    if (cmd == AmakerBotConsts::CMD_SET_WIFI)
+    {
+        if (!isMaster(senderIP))
+            return BotProto::make_ack(action, BotProto::resp_not_master);
+        if (!wifi_service_)
+        {
+            if (debugLogger) debugLogger->error(FPSTR(AmakerBotConsts::msg_wifi_not_set));
+            return BotProto::make_ack(action, BotProto::resp_not_started);
+        }
+        // Payload: [ssid_len:1B][ssid…][pass_len:1B][pass…]
+        if (len < 3)  // need at least action + ssid_len + pass_len
+            return BotProto::make_ack(action, BotProto::resp_invalid_params);
+        const uint8_t ssid_len = data[1];
+        if (len < static_cast<size_t>(2 + ssid_len + 1))
+            return BotProto::make_ack(action, BotProto::resp_invalid_params);
+        const std::string ssid(reinterpret_cast<const char *>(data + 2), ssid_len);
+        const uint8_t pass_len = data[2 + ssid_len];
+        if (len < static_cast<size_t>(2 + ssid_len + 1 + pass_len))
+            return BotProto::make_ack(action, BotProto::resp_invalid_params);
+        const std::string pass(reinterpret_cast<const char *>(data + 3 + ssid_len), pass_len);
+        if (ssid.empty() || ssid.size() > 32 || pass.size() > 64)
+            return BotProto::make_ack(action, BotProto::resp_invalid_values);
+        wifi_service_->setWifiCredentials(ssid, pass);
+        wifi_service_->saveSettings();
+        if (debugLogger) debugLogger->info(FPSTR(AmakerBotConsts::msg_wifi_settings_set));
+        return BotProto::make_ack(action, BotProto::resp_ok);
+    }
+
+    // ---- CMD_RESET_WIFI 0x09 : (no payload, master only) --------------
+    if (cmd == AmakerBotConsts::CMD_RESET_WIFI)
+    {
+        if (!isMaster(senderIP))
+            return BotProto::make_ack(action, BotProto::resp_not_master);
+        if (!wifi_service_)
+        {
+            if (debugLogger) debugLogger->error(FPSTR(AmakerBotConsts::msg_wifi_not_set));
+            return BotProto::make_ack(action, BotProto::resp_not_started);
+        }
+        wifi_service_->resetSettings();
+        if (debugLogger) debugLogger->info(FPSTR(AmakerBotConsts::msg_wifi_settings_reset));
         return BotProto::make_ack(action, BotProto::resp_ok);
     }
 
@@ -456,4 +536,155 @@ void AmakerBotService::updateMasterLastSeen()
 unsigned long AmakerBotService::getMasterLastSeen() const
 {
     return last_seen_ms_;
+}
+
+// ---------------------------------------------------------------------------
+// Script filesystem operations
+// ---------------------------------------------------------------------------
+
+bool AmakerBotService::isValidScriptName(const std::string &name)
+{
+    if (name.empty() || name.size() > 64)
+        return false;
+    if (name.find("..") != std::string::npos)
+        return false;
+    for (const char c : name)
+    {
+        if (c == '/' || c == '\\' || c == '\0' || c == ':')
+            return false;
+    }
+    return true;
+}
+
+std::vector<std::string> AmakerBotService::listScripts()
+{
+    std::vector<std::string> names;
+
+    if (!LittleFS.exists(AmakerBotConsts::scripts_dir))
+        return names;
+
+    File dir = LittleFS.open(AmakerBotConsts::scripts_dir);
+    if (!dir || !dir.isDirectory())
+        return names;
+
+    File entry = dir.openNextFile();
+    while (entry)
+    {
+        if (!entry.isDirectory())
+        {
+            // name() may return "/scripts/foo.js" or just "foo.js" depending
+            // on the ESP32 core version — strip everything up to the last '/'
+            std::string full = entry.name();
+            const size_t slash = full.rfind('/');
+            const std::string fname = (slash != std::string::npos)
+                                      ? full.substr(slash + 1)
+                                      : full;
+            if (!fname.empty())
+                names.push_back(fname);
+        }
+        entry.close();
+        entry = dir.openNextFile();
+    }
+    dir.close();
+    return names;
+}
+
+std::string AmakerBotService::getScript(const std::string &name)
+{
+    if (!isValidScriptName(name))
+    {
+        if (debugLogger)
+            debugLogger->error(FPSTR(AmakerBotConsts::msg_script_name_invalid));
+        return {};
+    }
+
+    const std::string path = std::string(AmakerBotConsts::scripts_dir) + "/" + name;
+    File f = LittleFS.open(path.c_str(), "r");
+    if (!f || f.isDirectory())
+    {
+        if (debugLogger)
+            debugLogger->error((progmem_to_string(AmakerBotConsts::msg_script_not_found) + name).c_str());
+        return {};
+    }
+
+    std::string content;
+    content.reserve(f.size());
+    uint8_t buf[128];
+    while (f.available())
+    {
+        const int n = f.read(buf, sizeof(buf));
+        if (n > 0)
+            content.append(reinterpret_cast<const char *>(buf), static_cast<size_t>(n));
+    }
+    f.close();
+    return content;
+}
+
+bool AmakerBotService::saveScript(const std::string &name, const std::string &content)
+{
+    if (!isValidScriptName(name))
+    {
+        if (debugLogger)
+            debugLogger->error(FPSTR(AmakerBotConsts::msg_script_name_invalid));
+        return false;
+    }
+
+    if (!LittleFS.exists(AmakerBotConsts::scripts_dir))
+    {
+        LittleFS.mkdir(AmakerBotConsts::scripts_dir);
+        if (debugLogger)
+            debugLogger->info(FPSTR(AmakerBotConsts::msg_scripts_dir_created));
+    }
+
+    const std::string path = std::string(AmakerBotConsts::scripts_dir) + "/" + name;
+    File f = LittleFS.open(path.c_str(), "w");
+    if (!f)
+    {
+        if (debugLogger)
+            debugLogger->error(("AmakerBot: cannot open for write: " + path).c_str());
+        return false;
+    }
+
+    f.print(content.c_str());
+    f.close();
+
+    if (debugLogger)
+        debugLogger->info((progmem_to_string(AmakerBotConsts::msg_script_saved) + name).c_str());
+    return true;
+}
+
+bool AmakerBotService::deleteScript(const std::string &name)
+{
+    if (!isValidScriptName(name))
+    {
+        if (debugLogger)
+            debugLogger->error(FPSTR(AmakerBotConsts::msg_script_name_invalid));
+        return false;
+    }
+
+    const std::string path = std::string(AmakerBotConsts::scripts_dir) + "/" + name;
+    if (!LittleFS.exists(path.c_str()))
+    {
+        if (debugLogger)
+            debugLogger->error((progmem_to_string(AmakerBotConsts::msg_script_not_found) + name).c_str());
+        return false;
+    }
+
+    const bool ok = LittleFS.remove(path.c_str());
+    if (debugLogger)
+    {
+        if (ok)
+            debugLogger->info((progmem_to_string(AmakerBotConsts::msg_script_deleted) + name).c_str());
+        else
+            debugLogger->error(("AmakerBot: delete failed: " + path).c_str());
+    }
+    return ok;
+}
+
+bool AmakerBotService::scriptExists(const std::string &name)
+{
+    if (!isValidScriptName(name))
+        return false;
+    const std::string path = std::string(AmakerBotConsts::scripts_dir) + "/" + name;
+    return LittleFS.exists(path.c_str());
 }

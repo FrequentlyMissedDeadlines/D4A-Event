@@ -281,10 +281,12 @@ void setup()
   // Initialize DFR1216 board as a full service before MotorServoService
   // (MotorServoService::initializeService() requires board.getStatus() == STARTED)
   start_service(board);
-
   start_service(motor_servo_);
   start_service(led_service_);
   start_service(amaker_bot_);
+
+  // Inject WifiService so AmakerBotService can handle CMD_GET/SET/RESET_WIFI
+  amaker_bot_.setWifiService(&wifi_service_);
 
   start_service(wifi_service_);
 

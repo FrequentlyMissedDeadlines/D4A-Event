@@ -97,6 +97,38 @@ public:
      */
     bool loadSettings() override;
 
+    /**
+     * @brief Clear NVS and restore compile-time default credentials.
+     * @return true on success.
+     */
+    bool resetSettings() override;
+
+    /**
+     * @brief (Re-)connect to WiFi using the current in-memory credentials.
+     *        Call after setWifiCredentials() to activate the new settings.
+     * @return true if either STA or AP mode is active.
+     */
+    bool applySettings();
+
+    /**
+     * @brief Return the configured STA SSID.
+     */
+    std::string getWifiSsid() const;
+
+    /**
+     * @brief Return the configured STA password.
+     */
+    std::string getWifiPassword() const;
+
+    /**
+     * @brief Update the STA credentials in memory.
+     *        Call saveSettings() afterwards to persist to NVS, or
+     *        applySettings() to reconnect immediately.
+     * @param ssid     New SSID.
+     * @param password New password.
+     */
+    void setWifiCredentials(const std::string &ssid, const std::string &password);
+
 protected:
     /**
      * @brief Create a SoftAP with the configured AP credentials.
@@ -125,4 +157,15 @@ protected:
      * @return true if either STA or AP mode is active.
      */
     bool connect_and_fallback(const std::string &ssid, const std::string &password);
+
+private:
+    // ---- Credential & connection state (previously translation-unit statics) ----
+    std::string wifi_ssid_;       ///< STA SSID
+    std::string wifi_password_;   ///< STA password
+    std::string ap_ssid_;         ///< AP SSID base (MAC suffix appended at runtime)
+    std::string ap_password_;     ///< AP password
+    std::string hostname_;        ///< Hostname base (MAC suffix appended at runtime)
+    std::string connected_ip_;    ///< Current IP address (STA or AP gateway)
+    std::string connected_ssid_;  ///< Currently active SSID
+    std::string mac_suffix_;      ///< 6-char uppercase hex derived from ESP32 MAC
 };

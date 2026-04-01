@@ -1,1113 +1,783 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>K10 Bot - JavaScript User Guide</title>
-  <link rel="stylesheet" href="./amaker.css">
-
-
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      line-height: 1.6;
-      color: #333;
-
-    }
-
-    .container {
-      max-width: 100%;
-      margin: 0 auto;
-      display: flex;
-      background: rgba(255, 255, 255, 0.8);
-      min-height: 100vh;
-      border-radius: 1em;
-    }
-
-    /* Sidebar Navigation */
-    aside {
-      width: 280px;
-      background: #1e3a8a;
-      border-radius: 1em;
-      color: white;
-      padding: 1em;
-      position: sticky;
-      top: 0;
-      height: 100vh;
-      overflow-y: auto;
-      flex-shrink: 0;
-    }
-
-    aside h2 {
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-top: 30px;
-      margin-bottom: 15px;
-      color: #93c5fd;
-      font-weight: 600;
-    }
-
-    aside h2:first-child {
-      margin-top: 0;
-    }
-
-    aside a {
-      display: block;
-      color: #e0e7ff;
-      text-decoration: none;
-      padding: 10px 12px;
-      margin: 5px 0;
-      border-radius: 4px;
-      font-size: 14px;
-      transition: all 0.2s;
-    }
-
-    aside a:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-      padding-left: 16px;
-    }
-
-    aside a.active {
-      background: #3b82f6;
-      color: white;
-      font-weight: 600;
-    }
-
-    /* Main Content */
-    main {
-      flex: 1;
-      padding: 40px 60px;
-      overflow-y: auto;
-    }
-
-    /* Header */
-    .page-header {
-      margin-bottom: 50px;
-      padding-bottom: 30px;
-      border-bottom: 2px solid #e5e7eb;
-    }
-
-    .page-header h1 {
-      font-size: 36px;
-      margin-bottom: 10px;
-      color: #1e293b;
-    }
-
-    .page-header p {
-      font-size: 16px;
-      color: #64748b;
-    }
-
-    /* Headings */
-    h1 {
-      font-size: 32px;
-      margin: 50px 0 20px 0;
-      color: #1e293b;
-      padding-bottom: 10px;
-      border-bottom: 3px solid #3b82f6;
-    }
-
-    h1:first-of-type {
-      margin-top: 0;
-    }
-
-    h2 {
-      font-size: 24px;
-      margin: 40px 0 15px 0;
-      color: #1e40af;
-    }
-
-    h3 {
-      font-size: 20px;
-      margin: 30px 0 12px 0;
-      color: #1e40af;
-    }
-
-    h4 {
-      font-size: 16px;
-      margin: 20px 0 10px 0;
-      color: #334155;
-      font-weight: 600;
-    }
-
-    /* Text Elements */
-    p {
-      margin-bottom: 15px;
-      color: #475569;
-    }
-
-    strong {
-      color: #1e293b;
-      font-weight: 600;
-    }
-
-    em {
-      color: #64748b;
-    }
-
-    /* Links */
-    a {
-      color: #3b82f6;
-      text-decoration: none;
-      border-bottom: 1px solid transparent;
-      transition: all 0.2s;
-    }
-
-    a:hover {
-      border-bottom-color: #3b82f6;
-      color: #1e40af;
-    }
-
-    /* Code */
-    code {
-      background: #f1f5f9;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-family: 'Monaco', 'Courier New', monospace;
-      font-size: 14px;
-      color: #e11d48;
-    }
-
-    pre {
-      background: #1e293b;
-      color: #e2e8f0;
-      padding: 20px;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin: 20px 0;
-      line-height: 1.5;
-      font-family: 'Monaco', 'Courier New', monospace;
-      font-size: 13px;
-    }
-
-    pre code {
-      background: none;
-      padding: 0;
-      color: inherit;
-    }
-
-    /* Tables */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-      font-size: 14px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    th {
-      background: #f1f5f9;
-      padding: 12px 15px;
-      text-align: left;
-      font-weight: 600;
-      color: #1e293b;
-      border-bottom: 2px solid #cbd5e1;
-    }
-
-    td {
-      padding: 12px 15px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    tr:hover {
-      background: #f8fafc;
-    }
-
-    /* Lists */
-    ul,
-    ol {
-      margin: 15px 0 15px 30px;
-      color: #475569;
-    }
-
-    li {
-      margin-bottom: 8px;
-    }
-
-    /* Blockquotes */
-    blockquote {
-      border-left: 4px solid #3b82f6;
-      padding-left: 20px;
-      margin: 20px 0;
-      color: #64748b;
-      font-style: italic;
-    }
-
-    /* Info Boxes */
-    .info-box {
-      background: #eff6ff;
-      border-left: 4px solid #3b82f6;
-      padding: 15px 20px;
-      margin: 20px 0;
-      border-radius: 4px;
-    }
-
-    .info-box strong {
-      color: #1e40af;
-    }
-
-    .success-box {
-      background: #f0fdf4;
-      border-left: 4px solid #22c55e;
-    }
-
-    .warning-box {
-      background: #fef3c7;
-      border-left: 4px solid #f59e0b;
-    }
-
-    .error-box {
-      background: #fee2e2;
-      border-left: 4px solid #ef4444;
-    }
-
-    /* Diagram/ASCII Art */
-    .diagram {
-      background: #f1f5f9;
-      padding: 15px 20px;
-      border-radius: 4px;
-      font-family: 'Monaco', 'Courier New', monospace;
-      font-size: 12px;
-      overflow-x: auto;
-      margin: 20px 0;
-      color: #1e293b;
-      white-space: pre;
-    }
-
-    /* Tabs for Code Sections */
-    width: 50px;
-
-    .code-tabs {
-      margin: 20px 0;
-    }
-
-    .tab-buttons {
-      display: flex;
-      gap: 5px;
-      border-bottom: 1px solid #e2e8f0;
-      margin-bottom: 15px;
-    }
-
-    .tab-btn {
-      padding: 10px 15px;
-      background: #f1f5f9;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-      border-radius: 4px 4px 0 0;
-      transition: all 0.2s;
-      color: #64748b;
-      font-weight: 500;
-    }
-
-    .tab-btn.active {
-      background: #3b82f6;
-      color: white;
-    }
-
-    .tab-content {
-      display: none;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    /* Back to Top Button */
-    .back-to-top {
-      position: fixed;
-      bottom: 30px;
-      right: 30px;
-      height: 50px;
-      background: #3b82f6;
-      color: white;
-      border: none;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 20px;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.3s;
-      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-      z-index: 100;
-    }
-
-    .back-to-top:hover {
-      background: #1e40af;
-      transform: translateY(-3px);
-      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.6);
-    }
-
-    .back-to-top.show {
-      display: flex;
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-      .container {
-        flex-direction: column;
-      }
-
-      aside {
-        width: 100%;
-        height: auto;
-        position: relative;
-        padding: 20px;
-      }
-
-      main {
-        padding: 30px 20px;
-      }
-
-      .page-header h1 {
-        font-size: 24px;
-      }
-
-      h1 {
-        font-size: 24px;
-      }
-
-      h2 {
-        font-size: 20px;
-      }
-
-      pre {
-        font-size: 12px;
-        padding: 15px;
-      }
-
-      table {
-        font-size: 12px;
-      }
-
-      th,
-      td {
-        padding: 8px 10px;
-      }
-    }
-
-    /* Print Styles */
-    @media print {
-      aside {
-        display: none;
-      }
-
-      main {
-        padding: 0;
-      }
-
-      .back-to-top {
-        display: none;
-      }
-
-      a {
-        color: #1e40af;
-      }
-    }
-
-    /* Emoji Styling */
-    .emoji {
-      margin-right: 8px;
-    }
-
-    /* Checklist */
-    .checklist {
-      list-style: none;
-      margin: 15px 0;
-    }
-
-    .checklist li {
-      padding-left: 30px;
-      position: relative;
-      margin-bottom: 10px;
-    }
-
-    .checklist li:before {
-      content: "✓";
-      position: absolute;
-      left: 0;
-      color: #22c55e;
-      font-weight: bold;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript User Guide - K10 Bot Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            	background: url('./large.png') no-repeat top;
+	            background-size: 100% auto;
+              background-attachment: scroll;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 100%;
+            
+            margin: 0 auto;
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .sidebar {
+            width: 20%;
+            background: white;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 100vh;
+            position: sticky;
+            top: 0;
+        }
+        
+        .sidebar h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar ul ul {
+            margin-left: 15px;
+            margin-top: 5px;
+        }
+        
+        .sidebar li {
+            margin: 5px 0;
+        }
+        
+        .sidebar a {
+            color: #3498db;
+            text-decoration: none;
+            font-size: 0.9em;
+            transition: color 0.3s;
+            display: block;
+            padding: 3px 0;
+        }
+        
+        .sidebar a:hover {
+            color: #2980b9;
+            text-decoration: underline;
+        }
+        
+        .content {
+            flex: 1;
+            padding: 40px;
+            background-color: rgba(255, 255, 255, 0.8);
+            margin: 20px;
+            border-radius: 8px;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+            margin-top: 40px;
+        }
+        
+        h1:first-child {
+            margin-top: 0;
+        }
+        
+        h2 {
+            color: #34495e;
+            font-size: 1.7em;
+            margin: 30px 0 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        h3 {
+            color: #7f8c8d;
+            font-size: 1.3em;
+            margin: 20px 0 15px;
+        }
+        
+        h4 {
+            color: #95a5a6;
+            font-size: 1.1em;
+            margin: 15px 0 10px;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #c7254e;
+        }
+        
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            line-height: 1.4;
+            font-size: 0.9em;
+        }
+        
+        pre code {
+            color: inherit;
+            background: none;
+            padding: 0;
+        }
+        
+        pre.ascii-art {
+            background: #1a1a2e;
+            color: #a0d2db;
+            font-size: 0.75em;
+            line-height: 1.2;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        
+        th {
+            background: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        tr:hover {
+            background: #f0f8ff;
+        }
+        
+        ul, ol {
+            margin: 15px 0 15px 30px;
+        }
+        
+        li {
+            margin: 8px 0;
+        }
+        
+        blockquote {
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+            margin: 20px 0;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        
+        .danger {
+            background: #f8d7da;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #dc3545;
+            margin: 15px 0;
+        }
+        
+        .success {
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+            margin: 15px 0;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #17a2b8;
+            margin: 15px 0;
+        }
+
+        hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(to right, #3498db, transparent);
+            margin: 40px 0;
+        }
+        
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                max-height: none;
+                position: static;
+                border-right: none;
+                border-bottom: 1px solid #ddd;
+            }
+            
+            .content {
+                margin: 10px;
+                padding: 20px;
+                max-height: none;
+            }
+        }
+    </style>
+    
 </head>
-
 <body>
-  <div class="container">
-    <!-- Sidebar Navigation -->
-    <aside id="sidebar">
-      <h2>📚 Navigation</h2>
-      <a href="#intro">Overview</a>
-      <a href="#connectivity">Connectivity</a>
-      <a href="#quick-start">🚀 Quick Start</a>
-      <a href="#learning-path">📚 Learning Path</a>
-      <a href="#troubleshooting">❓ Troubleshooting</a>
+    <div class="container">
+        <div class="sidebar">
+            <h2>📚 Table of Contents</h2>
+            <ul>
+                <li><a href="#connectivity">🔌 Connectivity</a></li>
+                <li><a href="#provided-hardware">🔧 Provided Hardware</a></li>
+                <li><a href="#quick-start">🚀 Quick Start</a>
+                    <ul>
+                        <li><a href="#step0-wifi">Step 0: WiFi</a></li>
+                        <li><a href="#step1-editor">Step 1: Script Editor</a></li>
+                        <li><a href="#step2-register">Step 2: Register</a></li>
+                        <li><a href="#step3-attach">Step 3: Attach Servo</a></li>
+                        <li><a href="#step4-move">Step 4: Move</a></li>
+                        <li><a href="#step5-stop">Step 5: Stop</a></li>
+                    </ul>
+                </li>
+                <li><a href="#learning-path">📚 Learning Path</a></li>
+                <li><a href="#troubleshooting">❓ Troubleshooting</a>
+                    <ul>
+                        <li><a href="#nothing-happens">Nothing Happens</a></li>
+                        <li><a href="#not-registered">Not Registered</a></li>
+                        <li><a href="#servo-not-moving">Servo Not Moving</a></li>
+                        <li><a href="#gamepad-not-detected">Gamepad Not Detected</a></li>
+                        <li><a href="#javascript-errors">JS Errors</a></li>
+                        <li><a href="#function-not-found">Function Not Found</a></li>
+                        <li><a href="#two-functions">Two setServoSpeeds?</a></li>
+                    </ul>
+                </li>
+                <li><a href="#basics">🔰 Basics</a>
+                    <ul>
+                        <li><a href="#basics-intro">Introduction</a></li>
+                        <li><a href="#basics-debugging">Debugging</a></li>
+                    </ul>
+                </li>
+                <li><a href="#programmatic">💻 getBotControl()</a>
+                    <ul>
+                        <li><a href="#getbotcontrol-sig">Function Signature</a></li>
+                        <li><a href="#getbotcontrol-examples">Usage Examples</a></li>
+                        <li><a href="#getbotcontrol-when">When to Use</a></li>
+                        <li><a href="#getbotcontrol-compare">UI vs Programmatic</a></li>
+                    </ul>
+                </li>
+                <li><a href="#basics-steps">🔰 Basics: Steps</a>
+                    <ul>
+                        <li><a href="#step0-servos">Step 0: Your Servos</a></li>
+                        <li><a href="#step1-declare">Step 1: Declare Types</a></li>
+                        <li><a href="#step2-actions">Step 2: Create Actions</a></li>
+                    </ul>
+                </li>
+                <li><a href="#input-control">🕹️ Input Control</a>
+                    <ul>
+                        <li><a href="#gamepad-events">Gamepad Events</a></li>
+                        <li><a href="#analog-stick">Analog Stick</a></li>
+                        <li><a href="#keyboard-events">Keyboard Events</a></li>
+                    </ul>
+                </li>
+                <li><a href="#advanced-async">🤖 Advanced: Async</a>
+                    <ul>
+                        <li><a href="#fire-and-forget">Fire-and-Forget</a></li>
+                        <li><a href="#request-response">Request-Response</a></li>
+                        <li><a href="#async-mistakes">Common Mistakes</a></li>
+                    </ul>
+                </li>
+                <li><a href="#performance">⚡ Performance</a>
+                    <ul>
+                        <li><a href="#perf-metrics">Metrics</a></li>
+                        <li><a href="#perf-best-practices">Best Practices</a></li>
+                        <li><a href="#perf-bottlenecks">Bottlenecks</a></li>
+                        <li><a href="#perf-optimization">Optimization Tips</a></li>
+                    </ul>
+                </li>
+                <li><a href="#templates">💾 Code Templates</a></li>
+                <li><a href="#reference">📖 Reference</a>
+                    <ul>
+                        <li><a href="#ref-functions">Function Reference</a></li>
+                        <li><a href="#ref-constants">Constants</a></li>
+                        <li><a href="#ref-decision-tree">Decision Tree</a></li>
+                    </ul>
+                </li>
+                <li><a href="#operational-example">🛠️ Operational Example</a></li>
+            </ul>
+        </div>
+        
+        <div class="content">
+            <h1>📖 How to Script Your K10 Bot Controller</h1>
 
-      <h2>🔰 Basics</h2>
-      <a href="#basics-intro">Introduction</a>
-      <a href="#step-0">Step 0: Name Servos</a>
-      <a href="#step-1">Step 1: Declare Types</a>
-      <a href="#step-2">Step 2: Create Actions</a>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="connectivity">
+                <h2>🔌 Connectivity</h2>
+<pre class="ascii-art"><code>                                                               (your computer)
+┌───────┐                       (your bot)                     ┌─────────────┐
+│servoA ┼────────────┐        ┌──────────────┐                 │ your js code│
+└───────┘            │        │        ┌────┐│                 │             │
+┌───────┐            │        │   s5   │ .  ││                 │             │
+│servoB ┼───────────┐│        │   s4   │ .  ││                 │             │
+└───────┘           │└────────│──►s3   │ .  ││                 │            ---------- Gamepad
+┌───────┐           └─────────│──►s2   │ .  ││  web socket     │             │
+│servoC ┼─────────────────────│──►s1   │ .  ◄┼────[WiFi]───────►             │
+└───────┘            ┌────────│──►s0   │ .  ││                 │             │
+┌───────┐            │        │        │K10 ││                 │             │
+│servoD ┼────────────┘        │ ext.   │board│                 │             │
+└───────┘                     │ board  └────┘│                 │             │
+                              └──────────────┘                 └─────────────┘</code></pre>
+            </section>
 
-      <h2>🕹️ Input Control</h2>
-      <a href="#input-control">Step 3: Handle Events</a>
-      <a href="#gamepad-events">Gamepad Events</a>
-      <a href="#gamepad-svg-overlay">Gamepad SVG Overlay</a>
-      <a href="#keyboard-events">Keyboard Events</a>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="provided-hardware">
+                <h2>🔧 Provided Hardware</h2>
+                <ul>
+                    <li><strong>Unihiker K10 board</strong> — plugged into the Extension board, with pre-built C code that handles interaction with servos, dialog over HTTP and UDP.</li>
+                    <li><strong>2 continuous rotation servos</strong> (green) — to be connected to the extension board.</li>
+                    <li><strong>2 angular servos</strong> (grey) — to be connected to the extension board.</li>
+                    <li><strong>Extension board</strong> — connected to the bot, with the servos attached to it.</li>
+                </ul>
+                <h3>Not Provided Hardware</h3>
+                <ul>
+                    <li><strong>Gamepad</strong> — your game pad connected to your computer. Control can also be coded using keyboard.</li>
+                </ul>
+                <h3>JS Public Documentation of Interest</h3>
+                <ul>
+                    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Navigator/getGamepads" target="_blank">Gamepad API – MDN</a></li>
+                    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/WebSocket" target="_blank">WebSocket API – MDN</a></li>
+                </ul>
+            </section>
 
-      <h2>🐛 Advanced</h2>
-      <a href="#debugging">Debugging Guide</a>
-      <a href="#async-behavior">Asynchronous Behavior</a>
-      <a href="#performance">Performance</a>
-      <a href="#code-templates">Code Templates</a>
+            <hr>
 
-      <h2>📖 Reference</h2>
-      <a href="#quick-reference">Function Reference</a>
-      <a href="#constants">Constants</a>
-      <a href="#operational-example">Example Code</a>
-    </aside>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="quick-start">
+                <h1>🚀 Quick Start (5 minutes)</h1>
+                <p><strong>Just want to move a servo right now?</strong> This section gets you there in 6 steps.</p>
 
-    <!-- Main Content -->
-    <main>
-      <!-- Header -->
-      <div class="page-header">
-        <h1>K10 Bot JavaScript User Guide</h1>
-        <p>Learn to script and control your K10 bot with JavaScript. From beginner to advanced in 45 minutes.</p>
-      </div>
+                <h3 id="step0-wifi">Step 0: Connect to Your WiFi Access Point</h3>
+                <p>At boot time, the board will try to connect to a stored WiFi access point. If there's none, or if connection fails, your board will start its own access point whose name is displayed in UI.</p>
+                <p>In this case, connect to this access point <code>amaker-xxxxxx</code>, and open the <a href="http://192.168.4.1">board home page at 192.168.4.1</a> to define the WiFi SSID and password to connect to:</p>
+                <ol>
+                    <li>Register as master</li>
+                    <li>Update and save WiFi settings</li>
+                    <li>Reboot the board</li>
+                </ol>
 
-      <!-- Introduction -->
-      <section id="intro">
-        <h1>How to Script Your Bot Controller</h1>
+                <h3 id="step1-editor">Step 1: Open the Script Editor</h3>
+                <ol>
+                    <li>Navigate to <strong>📝 Script</strong> tab in the web interface</li>
+                    <li>You'll see a text editor with example code</li>
+                </ol>
 
-        <h2 id="connectivity">Connectivity Overview</h2>
-        <p>Your bot communicates with your computer via WebSocket over WiFi. Here's how the system works:</p>
+                <h3 id="step2-register">Step 2: Register as Master</h3>
+                <p>In your code, use the <code>getBotControl(ip, port)</code> function to connect and register in one call:</p>
+<pre><code>// Connect to bot and register as master - all in one line!
+await getBotControl('192.168.4.1', '81', 'mytoken');
+_scriptLog('✓ Connected and registered!');</code></pre>
+                <p><strong>Why?</strong> You must register before controlling servos. This prevents accidental commands.</p>
 
-        <pre class="diagram">
-          ┌───────┐                     (your bot)                      ┌─────────────┐
-          │servoA ┼────────────┐        ┌──────────────┐                │ your js code│
-          └───────┘            │        │      ┌────┐  │                │             │
-          ┌───────┐            │        │ s5   │ .  │  │                │             │
-          │servoB ┼────────┐   │        │ s4   │ .  │  │                │             │
-          └───────┘        │   └────────│──►s3 │ .  │  │                │          ---------- Gamepad
-          ┌───────┐        └────────────│──►s2 │ .  │  │  web socket    │             │
-          │servoC ┼─────────────────────│──►s1 │ . ◄┼──┼────[WiFi]──────┼──►          |
-          └───────┘              ┌──────│──►s0 │ .  │  │                │             │
-          ┌───────┐              │      │      │K10 │  │                │             │
-          │servoD ┼──────────────┘      │ ext. │board  │                │             │
-          └───────┘                     │ board└────┘  │                │             │
-                                        └──────────────┘                │             │
-                                                                        └─────────────┘
-</pre>
-
-        <h3>Provided Hardware</h3>
-        <ul>
-          <li><strong>Unihiker K10 Board</strong> - Main controller board with pre-built C code</li>
-          <li><strong>Green Servos (x2)</strong> - Continuous rotation servos</li>
-          <li><strong>Grey Servos (x2)</strong> - Angular 270° servos</li>
-          <li><strong>Extension Board</strong> - DFR1216 with servo connectors</li>
-        </ul>
-
-        <h3>Not Provided (Your Equipment)</h3>
-        <ul>
-          <li><strong>Game Controller</strong> - Xbox, PlayStation, or generic USB gamepad</li>
-          <li><strong>Computer</strong> - Running a web browser</li>
-          <li><strong>WiFi Network</strong> - Same network as the K10 bot</li>
-        </ul>
-      </section>
-
-      <!-- Quick Start -->
-      <section id="quick-start">
-        <h1><span class="emoji">🚀</span>Quick Start (5 minutes)</h1>
-
-        <p><strong>Just want to move a servo right now?</strong> This section gets you there in 5 steps.</p>
-
-        <h2>Step 1: Open the Script Editor</h2>
-        <ol>
-          <li>Navigate to <strong>📝 Script</strong> tab in the web interface</li>
-          <li>You'll see a text editor with example code</li>
-        </ol>
-
-        <h2>Step 2: Register as Master</h2>
-        <ol>
-          <li>Go to <strong>Control Panel</strong> (top of the page)</li>
-          <li>Enter a <strong>Master Token</strong> (any 5 characters like <code>abc12</code>)</li>
-          <li>Click <strong>🔐 Register as Master</strong></li>
-          <li>Wait for status to change to "Registered: Yes"</li>
-        </ol>
-        <p><strong>Why?</strong> You must register before controlling servos. This prevents accidental commands.</p>
-
-        <h2>Step 3: Attach Your First Servo</h2>
-        <p>In the <strong>Script Editor</strong>, paste this code:</p>
-        <pre><code>// Attach a servo to channel 0 (green continuous rotation servo)
+                <h3 id="step3-attach">Step 3: Attach Your First Servo</h3>
+                <p>In the <strong>Script Editor</strong>, paste this code:</p>
+<pre><code>// Attach a servo to channel 0 (green continuous rotation servo)
 attachServo(0, SERVO_TYPES.ROTATIONAL);
 _scriptLog('✓ Servo 0 attached and ready to move!');</code></pre>
-        <p>Click <strong>▶️ Run</strong> and check the output console.</p>
-        <p><strong>What happens?</strong> Your servo is now registered and ready to receive commands.</p>
+                <p>Click <strong>▶️ Run</strong> and check the output console.</p>
+                <p><strong>What happens?</strong> Your servo is now registered and ready to receive commands.</p>
 
-        <h2>Step 4: Move the Servo</h2>
-        <p>Replace the code with:</p>
-        <pre><code>// Move servo 0 forward at full speed
+                <h3 id="step4-move">Step 4: Move the Servo</h3>
+                <p>Replace the code with:</p>
+<pre><code>// Move servo 0 forward at full speed
 setServoSpeeds([[0, 100]]);
 _scriptLog('→ Servo 0 moving forward');</code></pre>
-        <p>Click <strong>▶️ Run</strong>. Your servo should move!</p>
+                <p>Click <strong>▶️ Run</strong>. Your servo should move!</p>
+                <p><strong>Expected result:</strong></p>
+                <ul>
+                    <li>Green servo spins in one direction</li>
+                    <li>Output shows: <code>→ Servo 0 moving forward</code></li>
+                    <li>Bot Status shows heartbeat is active</li>
+                </ul>
 
-        <div class="success-box">
-          <strong>Expected result:</strong>
-          <ul>
-            <li>Green servo spins in one direction</li>
-            <li>Output shows: <code>→ Servo 0 moving forward</code></li>
-            <li>Bot Status shows heartbeat is active</li>
-          </ul>
-        </div>
-
-        <h2>Step 5: Stop the Servo</h2>
-        <p>Replace the code with:</p>
-        <pre><code>// Stop servo 0
+                <h3 id="step5-stop">Step 5: Stop the Servo</h3>
+<pre><code>// Stop servo 0
 setServoSpeeds([[0, 0]]);
 _scriptLog('⏸ Servo 0 stopped');</code></pre>
-        <p>Click <strong>▶️ Run</strong>. The servo stops.</p>
+                <p>Click <strong>▶️ Run</strong>. The servo stops.</p>
 
-        <h3>🎉 You Did It!</h3>
-        <p>You've just controlled your bot! You learned:</p>
-        <ul class="checklist">
-          <li>Register as Master (required first)</li>
-          <li>Attach servos with <code>attachServo()</code></li>
-          <li>Move servos with <code>setServoSpeeds()</code></li>
-          <li>Stop servos by setting speed to 0</li>
-        </ul>
+                <hr>
+                <h2>🎉 You Did It!</h2>
+                <p>You've just controlled your bot! You learned:</p>
+                <ul>
+                    <li>✅ Register as Master (required first)</li>
+                    <li>✅ Attach servos with <code>attachServo()</code></li>
+                    <li>✅ Move servos with <code>setServoSpeeds()</code></li>
+                    <li>✅ Stop servos by setting speed to 0</li>
+                </ul>
 
-        <h3>Next Steps</h3>
-        <p><strong>Want to add a second servo?</strong></p>
-        <pre><code>attachServo(0, SERVO_TYPES.ROTATIONAL);   // Left wheel
+                <h3>Next Steps</h3>
+                <p><strong>Want to add a second servo?</strong></p>
+<pre><code>attachServo(0, SERVO_TYPES.ROTATIONAL);   // Left wheel
 attachServo(1, SERVO_TYPES.ROTATIONAL);   // Right wheel
 setServoSpeeds([[0, 100], [1, -100]]);      // Turn left
 _scriptLog('↙ Turning left');</code></pre>
+            </section>
 
-        <p><strong>Want to use gamepad/keyboard control?</strong> → See the full <strong>Input Control</strong> section
-          below</p>
-        <p><strong>Need help?</strong> → Jump to <strong>Troubleshooting</strong> section or check your <strong>Bot
-            Status</strong> panel for errors</p>
-      </section>
+            <hr>
 
-      <!-- Learning Path -->
-      <section id="learning-path">
-        <h1><span class="emoji">📚</span>Learning Path (Choose Your Level)</h1>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="learning-path">
+                <h1>📚 Learning Path (Choose Your Level)</h1>
+                <table>
+                    <tr>
+                        <th>Level</th><th>Time</th><th>What You'll Learn</th><th>For You If…</th>
+                    </tr>
+                    <tr><td><strong>🚀 Quick Start</strong></td><td>5 min</td><td>Move a servo instantly</td><td>You want immediate results</td></tr>
+                    <tr><td><strong>❓ Troubleshooting</strong></td><td>2 min</td><td>Fix common problems</td><td>Something isn't working</td></tr>
+                    <tr><td><strong>🔰 Basics</strong></td><td>15 min</td><td>Attach &amp; control multiple servos</td><td>You're new to coding this bot</td></tr>
+                    <tr><td><strong>🕹️ Input Control</strong></td><td>20 min</td><td>Gamepad &amp; keyboard input</td><td>You want real-time control</td></tr>
+                    <tr><td><strong>🤖 Advanced</strong></td><td>45 min</td><td>State machines, optimization</td><td>You're building complex behaviors</td></tr>
+                    <tr><td><strong>📖 Reference</strong></td><td>Lookup</td><td>Function signatures, constants</td><td>You need quick answers</td></tr>
+                </table>
+                <p><strong>Already did Quick Start?</strong> → Jump to <a href="#troubleshooting">❓ Troubleshooting</a> if stuck, else start <a href="#basics">🔰 Basics</a></p>
+            </section>
 
-        <p>This guide is organized by <strong>complexity level</strong> with time estimates. Pick where you are:</p>
+            <hr>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Level</th>
-              <th>Time</th>
-              <th>What You'll Learn</th>
-              <th>For You If...</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>🚀 Quick Start</strong></td>
-              <td>5 min</td>
-              <td>Move a servo instantly</td>
-              <td>You want immediate results</td>
-            </tr>
-            <tr>
-              <td><strong>❓ Troubleshooting</strong></td>
-              <td>2 min</td>
-              <td>Fix common problems</td>
-              <td>Something isn't working</td>
-            </tr>
-            <tr>
-              <td><strong>🔰 Basics</strong></td>
-              <td>15 min</td>
-              <td>Attach & control multiple servos</td>
-              <td>You're new to coding this bot</td>
-            </tr>
-            <tr>
-              <td><strong>🕹️ Input Control</strong></td>
-              <td>20 min</td>
-              <td>Gamepad & keyboard input</td>
-              <td>You want real-time control</td>
-            </tr>
-            <tr>
-              <td><strong>🤖 Advanced</strong></td>
-              <td>45 min</td>
-              <td>State machines, optimization</td>
-              <td>You're building complex behaviors</td>
-            </tr>
-            <tr>
-              <td><strong>📖 Reference</strong></td>
-              <td>Lookup</td>
-              <td>Function signatures, constants</td>
-              <td>You need quick answers</td>
-            </tr>
-          </tbody>
-        </table>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="troubleshooting">
+                <h1>❓ Troubleshooting (Read When Stuck)</h1>
+                <p><strong>Something isn't working?</strong> Check this section first.</p>
 
-        <p><strong>Already did Quick Start?</strong> → Jump to <strong>Troubleshooting</strong> if stuck, else start
-          <strong>Basics</strong></p>
-      </section>
+                <h2>Quick Diagnosis</h2>
+                <ol>
+                    <li><a href="#nothing-happens">🔴 Nothing happens when I run code</a></li>
+                    <li><a href="#not-registered">🔴 Bot says "Not Registered" or won't connect</a></li>
+                    <li><a href="#servo-not-moving">🔴 Servo attached but doesn't move</a></li>
+                    <li><a href="#gamepad-not-detected">🔴 Gamepad not detected</a></li>
+                    <li><a href="#javascript-errors">🔴 JavaScript error messages</a></li>
+                    <li><a href="#function-not-found">🔴 Function not found error</a></li>
+                    <li><a href="#two-functions">🔴 Why are there two setServoSpeeds()?</a></li>
+                </ol>
 
-      <!-- Troubleshooting -->
-      <section id="troubleshooting">
-        <h1><span class="emoji">❓</span>Troubleshooting (Read When Stuck)</h1>
+                <hr>
 
-        <p><strong>Something isn't working?</strong> Check this section first - answers to the most common problems.</p>
-
-        <h2>Quick Diagnosis</h2>
-        <p>Select the symptom you're seeing:</p>
-        <ol>
-          <li><a href="#nothing-happens">Nothing happens when I run code</a></li>
-          <li><a href="#not-registered">Bot says "Not Registered" or won't connect</a></li>
-          <li><a href="#servo-not-moving">Servo attached but doesn't move</a></li>
-          <li><a href="#gamepad-not-detected">Gamepad not detected</a></li>
-          <li><a href="#javascript-errors">JavaScript error messages</a></li>
-          <li><a href="#function-not-found">Function not found error</a></li>
-          <li><a href="#two-functions">Why are there two setServoSpeeds()?</a></li>
-        </ol>
-
-        <!-- Problem 1 -->
-        <h2 id="nothing-happens">🔴 Nothing Happens When I Run Code</h2>
-        <p><strong>Symptom:</strong> Click ▶️ Run, but nothing happens. Output console is empty.</p>
-
-        <h3>Checklist:</h3>
-        <ol class="checklist">
-          <li><strong>Check the Output Console</strong>
-            <ul>
-              <li>Does it show ANY messages?</li>
-              <li>If not, check browser console (F12 → Console)</li>
-              <li>Look for red error messages</li>
-            </ul>
-          </li>
-          <li><strong>Check for Syntax Errors</strong>
-            <pre><code>// Common mistakes:
+                <h3 id="nothing-happens">🔴 Nothing Happens When I Run Code</h3>
+                <p><strong>Symptom</strong>: Click ▶️ Run, but nothing happens. Output console is empty.</p>
+                <p><strong>Checklist:</strong></p>
+                <ol>
+                    <li>✅ <strong>Check the Output Console</strong> — Does it show ANY messages? If not, check browser console (F12 → Console)</li>
+                    <li>✅ <strong>Check for Syntax Errors</strong></li>
+                </ol>
+<pre><code>// Common mistakes:
 setServoSpeeds[0][100];       // ❌ Wrong: missing parentheses
 setServoSpeeds([[0, 100]]    // ❌ Wrong: missing closing )
 const x = { a: 1 b: 2 };    // ❌ Wrong: missing comma</code></pre>
-            <p><strong>Fix:</strong> Check browser console for red errors, fix typos</p>
-          </li>
-          <li><strong>Try a Simple Test</strong>
-            <pre><code>_scriptLog('Test message');</code></pre>
-            <p>If this doesn't print, something is very wrong.</p>
-          </li>
-        </ol>
+                <ol start="3">
+                    <li>✅ <strong>Try a Simple Test</strong></li>
+                </ol>
+<pre><code>_scriptLog('Test message');</code></pre>
 
-        <!-- Problem 2 -->
-        <h2 id="not-registered">🔴 Bot Says "Not Registered" or Won't Connect</h2>
-        <p><strong>Symptom:</strong> Status shows "Registered: No" or "Connected: No"</p>
+                <hr>
 
-        <h3>Solution:</h3>
-        <ol class="checklist">
-          <li>Fill in Bot IP → Default: <code>192.168.4.1</code></li>
-          <li>Fill in WebSocket Port → Default: <code>81</code></li>
-          <li>Enter Master Token → Any 5 letters/numbers (e.g., <code>abc12</code>)</li>
-          <li>Click "Register as Master" → Wait for status change</li>
-        </ol>
+                <h3 id="not-registered">🔴 Bot Says "Not Registered" or Won't Connect</h3>
+                <div class="danger">
+                    <strong>Symptom</strong>: Status shows "Registered: No" or "Connected: No"
+                    <p><strong>Solution:</strong></p>
+                    <ol>
+                        <li>✅ Fill in Bot IP → Default: <code>192.168.4.1</code></li>
+                        <li>✅ Fill in WebSocket Port → Default: <code>81</code></li>
+                        <li>✅ Enter Master Token → Any 5 letters/numbers (e.g., <code>abc12</code>)</li>
+                        <li>✅ Click "Register as Master" → Wait for status change</li>
+                    </ol>
+                    <p>If still not connecting:</p>
+                    <ul>
+                        <li>Is bot WiFi on?</li>
+                        <li>Are you on the same WiFi as the bot?</li>
+                        <li>Is IP address correct?</li>
+                    </ul>
+                </div>
 
-        <div class="warning-box">
-          <strong>If still not connecting:</strong>
-          <ul>
-            <li>Is bot WiFi on?</li>
-            <li>Are you on the same WiFi as the bot?</li>
-            <li>Is IP address correct?</li>
-          </ul>
-        </div>
+                <hr>
 
-        <!-- Problem 3 -->
-        <h2 id="servo-not-moving">🔴 Servo Attached but Doesn't Move</h2>
-        <p><strong>Symptom:</strong> <code>attachServo()</code> works but servo won't move</p>
-
-        <h3>Checklist:</h3>
-        <ol class="checklist">
-          <li><strong>Did you register as Master first?</strong> (REQUIRED)
-            <pre><code>registerMaster("mytoken");  // Must do this first!
-attachServo(0, SERVO_TYPES.ROTATIONAL);</code></pre>
-          </li>
-          <li><strong>Check Bot Status Panel</strong>
-            <ul>
-              <li>"Registered:" = <strong>Yes</strong></li>
-              <li>"Connected:" = <strong>Yes</strong></li>
-              <li>"Heartbeat:" = <strong>Active</strong></li>
-            </ul>
-          </li>
-          <li><strong>Check Servo Channel</strong> (Valid: 0-5)
-            <pre><code>attachServo(0, SERVO_TYPES.ROTATIONAL);  // Channel 0</code></pre>
-          </li>
-          <li><strong>Check Servo Type</strong>
-            <pre><code>// Green servo = ROTATIONAL
+                <h3 id="servo-not-moving">🔴 Servo Attached but Doesn't Move</h3>
+                <div class="danger">
+                    <strong>Symptom</strong>: <code>attachServo()</code> works but servo won't move
+                    <p><strong>Checklist:</strong></p>
+                    <ol>
+                        <li>✅ <strong>Did you register as Master first?</strong> (REQUIRED)</li>
+                        <li>✅ <strong>Check Bot Status Panel</strong> — All should show "Yes" or "Active"</li>
+                        <li>✅ <strong>Check Servo Channel</strong> — Valid: 0–5</li>
+                        <li>✅ <strong>Check Servo Type</strong> — <code>ROTATIONAL</code> vs <code>ANGULAR_270</code></li>
+                        <li>✅ <strong>Check Speed Values</strong> — Must be -100 to +100</li>
+                    </ol>
+                </div>
+<pre><code>// Green servo = ROTATIONAL
 attachServo(0, SERVO_TYPES.ROTATIONAL);   ✅
 
 // Grey servo = ANGULAR_270
-attachServo(2, SERVO_TYPES.ANGULAR_270);  ✅</code></pre>
-          </li>
-          <li><strong>Check Speed Values</strong> (Valid: -100 to +100)
-            <pre><code>setServoSpeeds([[0, 100]]);    // ✅ Valid
+attachServo(2, SERVO_TYPES.ANGULAR_270);  ✅
+
+// Speed values
+setServoSpeeds([[0, 100]]);    // ✅ Valid
 setServoSpeeds([[0, -100]]);   // ✅ Valid
 setServoSpeeds([[0, 150]]);    // ❌ Too high</code></pre>
-          </li>
-        </ol>
 
-        <!-- Problem 4 -->
-        <h2 id="gamepad-not-detected">🔴 Gamepad Not Detected</h2>
-        <p><strong>Symptom:</strong> Controller shows "Not connected"</p>
+                <hr>
 
-        <h3>Solution:</h3>
-        <ol class="checklist">
-          <li>Press a Button - Gamepad detection waits for button press</li>
-          <li>Use Chrome/Firefox - Xbox/PlayStation work best</li>
-          <li>Try Different USB Port - Unplug and replug into different port</li>
-          <li>Check Compatibility - Some generic gamepads need driver updates</li>
-        </ol>
+                <h3 id="gamepad-not-detected">🔴 Gamepad Not Detected</h3>
+                <p><strong>Symptom</strong>: Controller shows "Not connected"</p>
+                <ol>
+                    <li>✅ <strong>Press a Button</strong> — Gamepad detection waits for button press</li>
+                    <li>✅ <strong>Use Chrome/Firefox</strong> — Xbox/PlayStation work best; Safari has limited support</li>
+                    <li>✅ <strong>Try Different USB Port</strong> — Unplug and replug, press button again</li>
+                    <li>✅ <strong>Check Compatibility</strong> — Some generic gamepads need driver updates</li>
+                </ol>
 
-        <!-- Problem 5 -->
-        <h2 id="javascript-errors">🔴 JavaScript Error Messages</h2>
-        <p><strong>Symptom:</strong> Red text in browser console (F12)</p>
+                <hr>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Error</th>
-              <th>Problem</th>
-              <th>Fix</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>Cannot read property 'ROTATIONAL' of undefined</code></td>
-              <td>SERVO_TYPES not loaded</td>
-              <td>Check both scripts loaded</td>
-            </tr>
-            <tr>
-              <td><code>setServoSpeeds is not defined</code></td>
-              <td>Typo or not loaded</td>
-              <td>Check spelling & scripts</td>
-            </tr>
-            <tr>
-              <td><code>SyntaxError: Unexpected token</code></td>
-              <td>Typo in code</td>
-              <td>Check line number for missing <code>,</code> <code>]</code> <code>}</code> <code>"</code></td>
-            </tr>
-            <tr>
-              <td><code>Maximum call stack exceeded</code></td>
-              <td>Infinite loop</td>
-              <td>Check for <code>while(true)</code> without break</td>
-            </tr>
-          </tbody>
-        </table>
+                <h3 id="javascript-errors">🔴 JavaScript Error Messages</h3>
+                <p><strong>Symptom</strong>: Red text in browser console (F12)</p>
+                <table>
+                    <tr><th>Error</th><th>Problem</th><th>Fix</th></tr>
+                    <tr><td><code>Cannot read property 'ROTATIONAL' of undefined</code></td><td>SERVO_TYPES not loaded</td><td>Check both scripts loaded</td></tr>
+                    <tr><td><code>setServoSpeeds is not defined</code></td><td>Typo or not loaded</td><td>Check spelling &amp; scripts</td></tr>
+                    <tr><td><code>SyntaxError: Unexpected token</code></td><td>Typo in code</td><td>Check line number for missing <code>,</code> <code>]</code> <code>}</code> <code>"</code></td></tr>
+                    <tr><td><code>Maximum call stack exceeded</code></td><td>Infinite loop</td><td>Check for while(true) without break</td></tr>
+                </table>
 
-        <!-- Problem 6 -->
-        <h2 id="function-not-found">🔴 Function Not Found Error</h2>
+                <hr>
 
-        <h3>Common Typos:</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Trying</th>
-              <th>Should Be</th>
-              <th>Fix</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>setServoSpeed()</code></td>
-              <td><code>setServoSpeeds()</code></td>
-              <td>Add <strong>s</strong> (plural)</td>
-            </tr>
-            <tr>
-              <td><code>attachServos()</code></td>
-              <td><code>attachServo()</code></td>
-              <td>Remove <strong>s</strong> (singular)</td>
-            </tr>
-            <tr>
-              <td><code>SERVO_TYPE</code></td>
-              <td><code>SERVO_TYPES</code></td>
-              <td>Add <strong>S</strong> (plural)</td>
-            </tr>
-            <tr>
-              <td><code>ANGULAR_290</code></td>
-              <td><code>ANGULAR_270</code></td>
-              <td>Should be <strong>270</strong></td>
-            </tr>
-          </tbody>
-        </table>
+                <h3 id="function-not-found">🔴 Function Not Found Error</h3>
+                <p><strong>Common typos:</strong></p>
+                <table>
+                    <tr><th>Trying</th><th>Should Be</th><th>Fix</th></tr>
+                    <tr><td><code>setServoSpeed()</code></td><td><code>setServoSpeeds()</code></td><td>Add <strong>s</strong> (plural)</td></tr>
+                    <tr><td><code>attachServos()</code></td><td><code>attachServo()</code></td><td>Remove <strong>s</strong> (singular)</td></tr>
+                    <tr><td><code>SERVO_TYPE</code></td><td><code>SERVO_TYPES</code></td><td>Add <strong>S</strong> (plural)</td></tr>
+                    <tr><td><code>ANGULAR_290</code></td><td><code>ANGULAR_270</code></td><td>Should be <strong>270</strong></td></tr>
+                </table>
 
-        <!-- Problem 7 -->
-        <h2 id="two-functions">🔴 Why Two setServoSpeeds() Functions?</h2>
+                <hr>
 
-        <h3>Answer: Two Different Modes Exist:</h3>
+                <h3 id="two-functions">🔴 Why Two setServoSpeeds() Functions?</h3>
+                <p><strong>Answer</strong>: Two DIFFERENT MODES exist:</p>
 
-        <h4>Mode 1: Fire-and-Forget ⚡ (Real-Time)</h4>
-        <pre><code>setServoSpeeds([[0, 100]]);  // Returns immediately
+                <h4>Mode 1: Fire-and-Forget ⚡ (Real-Time)</h4>
+<pre><code>setServoSpeeds([[0, 100]]);  // Returns immediately
 // Use in: Gamepad/keyboard loops (needs speed)</code></pre>
 
-        <h4>Mode 2: Request-Response 📊 (Feedback)</h4>
-        <pre><code>await setServoSpeedsUI();    // Waits for response
-// Use in: Button clicks (needs feedback)</code></pre>
+                <h4>Mode 2: Request-Response 📊 (Feedback)</h4>
+<pre><code>const resp = await requestSetServoSpeeds([[0, 100]]);  // Waits for response
+// Use when you need confirmation</code></pre>
 
-        <h3>Quick Rule:</h3>
-        <div class="info-box">
-          <strong>🕹️ Gamepad/keyboard?</strong> → Use <code>setServoSpeeds()</code><br>
-          <strong>🔘 Button click?</strong> → Use <code>setServoSpeedsUI()</code>
-        </div>
+                <div class="info">
+                    <strong>Quick Rule:</strong><br>
+                    🕹️ <strong>Gamepad/keyboard?</strong> → Use <code>setServoSpeeds()</code><br>
+                    🔘 <strong>Need confirmation?</strong> → Use <code>requestSetServoSpeeds(pairs[])</code>
+                </div>
+            </section>
 
-        <h2>Still Stuck?</h2>
-        <ol>
-          <li>📖 Check <strong>Debugging Guide</strong> section</li>
-          <li>👀 Use <code>_scriptLog()</code> to debug</li>
-          <li>🔍 Open F12 console for errors</li>
-          <li>💾 Copy from <strong>Code Templates</strong></li>
-          <li>📚 Search <strong>Function Quick Reference</strong></li>
-        </ol>
-      </section>
+            <hr>
 
-      <!-- Basics Section -->
-      <section id="basics-intro">
-        <h1><span class="emoji">🔰</span>Basics (15 minutes)</h1>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="basics">
+                <h1 id="basics-intro">🔰 Basics (15 minutes)</h1>
+                <p>Start here after the Quick Start. You'll learn to attach multiple servos and control them.</p>
 
-        <h2>Introduction</h2>
-        <p>Your bot runs <strong>two JavaScript files</strong> that work together:</p>
+                <h3>BotScript.js (Infrastructure Layer)</h3>
+                <p>Handles all low-level communication and heartbeat management:</p>
+                <ul>
+                    <li><strong>Heartbeat protocol</strong>: Sends <code>0x43</code> HEARTBEAT command every 40ms to keep the bot alive</li>
+                    <li><strong>Watchdog safety</strong>: Bot automatically stops all servos if heartbeat is missing for &gt;50ms</li>
+                    <li><strong>WebSocket management</strong>: Establishes and maintains connection to the bot</li>
+                    <li><strong>Ping monitoring</strong>: Tracks connection latency and stability</li>
+                    <li><strong>Fire-and-forget messaging</strong>: Ensures rapid control commands aren't delayed</li>
+                </ul>
+                <p><strong>You don't need to modify this file</strong> — it's pre-configured.</p>
 
-        <h3>BotScript.js (Infrastructure Layer)</h3>
-        <p>Handles all low-level communication and heartbeat management:</p>
-        <ul>
-          <li><strong>Heartbeat protocol:</strong> Sends heartbeat every 40ms</li>
-          <li><strong>Watchdog safety:</strong> Bot stops if heartbeat missing >50ms</li>
-          <li><strong>WebSocket management:</strong> Connection & communication</li>
-          <li><strong>Fire-and-forget messaging:</strong> Ensures rapid commands</li>
-        </ul>
-        <p><strong>You don't need to modify this file</strong> — it's pre-configured.</p>
+                <h3>BotScriptActions.js (Control Layer)</h3>
+                <p>Pure infrastructure for gamepad/keyboard input handling:</p>
+                <ul>
+                    <li><strong>Gamepad polling</strong>: Reads gamepad input at display refresh rate with 50ms throttling</li>
+                    <li><strong>Button state tracking</strong>: Detects button press/release events (rising/falling edges)</li>
+                    <li><strong>Analog stick handling</strong>: Reads continuous stick values with deadzone filtering</li>
+                    <li><strong>Servo control functions</strong>: Provides <code>setServoAngle()</code> and <code>setServoSpeeds()</code></li>
+                    <li><strong>Empty override hooks</strong>:
+                        <ul>
+                            <li><code>processGamepadInput(gamepad)</code> — Map gamepad buttons/sticks to actions</li>
+                            <li><code>onKeyDown(event)</code> — Map keyboard key presses to actions</li>
+                            <li><code>onKeyUp(event)</code> — Map keyboard key releases to actions</li>
+                        </ul>
+                    </li>
+                </ul>
+                <p><strong>All custom logic goes in your HTML page</strong> — BotScriptActions.js is infrastructure only.</p>
 
-        <h3>BotScriptActions.js (Control Layer)</h3>
-        <p>Pure infrastructure for gamepad/keyboard input:</p>
-        <ul>
-          <li><strong>Gamepad polling:</strong> Reads controller input</li>
-          <li><strong>Button tracking:</strong> Press/release detection</li>
-          <li><strong>Servo control:</strong> <code>setServoAngle()</code> and <code>setServoSpeeds()</code></li>
-          <li><strong>Empty hooks:</strong> Functions waiting for you to define</li>
-        </ul>
-        <p><strong>All custom logic goes in your HTML page</strong> — this is infrastructure only.</p>
+                <h3>Your Workflow</h3>
+                <ol>
+                    <li>Define your servo pin assignments and types (Step 0–1)</li>
+                    <li>Create action functions that call <code>setServoAngle()</code> and <code>setServoSpeeds()</code> (Step 2)</li>
+                    <li><strong>In your HTML page</strong>, override <code>processGamepadInput()</code>, <code>onKeyDown()</code>, and <code>onKeyUp()</code> to map inputs to your actions (Step 3)</li>
+                </ol>
+            </section>
 
-        <h3 id="step-0">Step 0: Name Your Servos</h3>
-        <p>There are 6 pins for servos. Define them with names for clarity:</p>
-        <pre><code>///
-// Name your servos
-const myServos = {
-  LEFT_WHEEL: 0,      // Assuming left wheel servo is connected to pin 0
-  RIGHT_WHEEL: 1,     // Assuming right wheel servo is connected to pin 1
-  ARM: 4,             // Assuming arm servo is connected to pin 4
-  DIRECTION: 5        // Assuming direction servo is connected to pin 5
-}</code></pre>
+            <hr>
 
-        <h3 id="step-1">Step 1: Declare Servo Types</h3>
-        <p>For each servo, call <code>attachServo(channel, type)</code> to register it:</p>
-        <p><strong>Reminder:</strong> Green = ROTATIONAL, Grey = ANGULAR_270</p>
-        <pre><code>// First, define your servo pin assignments
-const myServos = {
-  LEFT_WHEEL: 0,      // Continuous rotation servo
-  RIGHT_WHEEL: 1,     // Continuous rotation servo
-  ARM: 4,             // Angular 270 servo
-  DIRECTION: 5        // Angular 270 servo
-};
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="programmatic">
+                <h1>💻 Programmatic Connection with getBotControl()</h1>
+                <p><strong>Don't want to click buttons on the web UI?</strong> You can connect and register as master programmatically. Perfect for scripts, automation, and headless operation.</p>
 
-// Then, declare the servo types to the bot
-attachServo(myServos.LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
-attachServo(myServos.RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
-attachServo(myServos.ARM, SERVO_TYPES.ANGULAR_270);
-attachServo(myServos.DIRECTION, SERVO_TYPES.ANGULAR_270);</code></pre>
+                <h2>One-Line Connection</h2>
+<pre><code>// Connect to bot, set IP/port, and register as master - all at once!
+await getBotControl('192.168.4.1', '81', 'mytoken');
 
-        <h3 id="step-2">Step 2: Create Your Actions</h3>
-        <p>Use lambda functions or regular functions to define actions:</p>
-        <pre><code>const moveForward = () => {
-  // Move both wheels forward at full speed
-  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, 100]]);
-}
+// Now you can immediately control servos without any UI clicks
+attachServo(0, SERVO_TYPES.ROTATIONAL);
+setServoSpeeds([[0, 100]]);
+_scriptLog('✓ Connected and controlling servo!');</code></pre>
 
-const moveBackward = () => {
-  // Move both wheels backward at full speed
-  setServoSpeeds([[myServos.LEFT_WHEEL, -100], [myServos.RIGHT_WHEEL, -100]]);
-}
+                <h2>What getBotControl() Does</h2>
+                <ol>
+                    <li><strong>Sets global connection parameters</strong> — Stores IP and port so all functions use them</li>
+                    <li><strong>Initializes WebSocket</strong> — Connects to the bot via WebSocket</li>
+                    <li><strong>Registers as Master</strong> — Authenticates with your token</li>
+                    <li><strong>Sets UI fields</strong> — Updates HTML form fields for consistency</li>
+                </ol>
 
-const rotateClockwise = () => {
-  // Rotate the bot clockwise (left forward, right backward)
-  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, -100]]);
-}
-
-const stop = () => {
-  // Stop both wheels
-  setServoSpeeds([[myServos.LEFT_WHEEL, 0], [myServos.RIGHT_WHEEL, 0]]);
-}
-
-const shoot = () => {
-  // Move the arm servo to shoot position (90 degrees)
-  setServoAngle(myServos.ARM, 90);
-}
-
-const relax = () => {
-  // Move the arm servo to relax position (0 degrees)
-  setServoAngle(myServos.ARM, 0);
-}</code></pre>
-      </section>
-
-      <!-- Input Control -->
-      <section id="input-control">
-        <h1><span class="emoji">🕹️</span>Input Control (20 minutes)</h1>
-
-        <p>Now that you can move servos, learn to control them with gamepad and keyboard input.</p>
-
-        <h2 id="gamepad-svg-overlay">Gamepad SVG Overlay</h2>
-        <p>Show a <strong>live visual overlay</strong> of your gamepad. Buttons light up on press, sticks move with
-          analog input.
-          The correct SVG is auto-detected (Xbox / PlayStation / Nintendo).</p>
-        <pre><code>// Enable the overlay (call once)
-showGamepad(true);
-
-// Disable the overlay
-showGamepad(false);</code></pre>
-        <div class="tip-box">
-          <strong>💡 Tip:</strong> You can also click the <strong>🎮 Show Gamepad</strong> button in the Control Panel.
-          The overlay auto-loads the correct SVG when a gamepad connects or disconnects.
-        </div>
-
-        <h2 id="gamepad-events">Gamepad Events</h2>
-        <p>Implement <code>processGamepadInput()</code> in your HTML page:</p>
-        <pre><code>CUSTOMCONTROL.processGamepadInput = function (gamepad) {
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_UP, 'UP', () => {
-    moveForward();
-  }, () => {
-    stop();
-  });
-  
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_DOWN, 'DOWN', () => {
-    moveBackward();
-  }, () => {
-    stop();
-  });
-
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_LEFT, 'LEFT', () => {
-    rotateCounterClockwise();
-  }, () => {
-    stop();
-  });
-
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_RIGHT, 'RIGHT', () => {
-    rotateClockwise();
-  }, () => {
-    stop();
-  });
-}</code></pre>
-
-        <h3>Analog Stick Control</h3>
-        <p>Each axis returns a value between <strong>-1.0 and +1.0</strong>:</p>
-        <pre><code>CUSTOMCONTROL.processGamepadInput = function (gamepad) {
-  // Deadzone threshold (prevents stick drift)
-  const DEADZONE = 0.15;
-  
-  // Read right stick axes
-  const rightStickX = gamepad.axes[STICK_AXES.RIGHT_X];
-  const rightStickY = gamepad.axes[STICK_AXES.RIGHT_Y];
-  
-  // Apply deadzone
-  const x = Math.abs(rightStickX) > DEADZONE ? rightStickX : 0;
-  const y = Math.abs(rightStickY) > DEADZONE ? rightStickY : 0;
-  
-  // Convert analog values to motor speeds (-100 to +100)
-  const forwardSpeed = -Math.round(y * 100);
-  const turnSpeed = Math.round(x * 100);
-  
-  // Differential steering
-  const leftSpeed = forwardSpeed + turnSpeed;
-  const rightSpeed = forwardSpeed - turnSpeed;
-  
-  // Clamp speeds to -100 to +100
-  const leftSpeedClamped = Math.max(-100, Math.min(100, leftSpeed));
-  const rightSpeedClamped = Math.max(-100, Math.min(100, rightSpeed));
-  
-  // Send to bot
-  setServoSpeeds([[myServos.LEFT_WHEEL, leftSpeedClamped], [myServos.RIGHT_WHEEL, rightSpeedClamped]]);
-}</code></pre>
-
-        <h2 id="keyboard-events">Keyboard Events</h2>
-        <p>Override <code>onKeyDown()</code> and <code>onKeyUp()</code> in your HTML page:</p>
-        <pre><code>/**
- * Handle keyboard key down
+                <h3 id="getbotcontrol-sig">Function Signature</h3>
+<pre><code>/**
+ * Connect to bot and register as master (programmatic approach)
+ * @param {string} ip - Bot IP address (e.g., "192.168.4.1")
+ * @param {string} port - WebSocket port (e.g., "80", "81")
+ * @param {string} masterToken - Master authentication token (e.g., "abc12")
+ * @returns {Promise&lt;void&gt;} - Resolves when connected and registered
+ * @throws {Error} - If connection or registration fails
  */
-CUSTOMCONTROL.onKeyDown = function (event) {
-  const key = event.key.toLowerCase();
-  
-  // Prevent default for arrow keys
-  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-    event.preventDefault();
-  }
-  
-  // Skip if key already pressed
-  if (keyStates[key]) return;
-  keyStates[key] = true;
-  
-  // Map keys to actions
-  switch (key) {
-    case 'arrowup':
-      moveForward();
-      break;
-    case 'arrowdown':
-      moveBackward();
-      break;
-    case 'arrowleft':
-      rotateCounterClockwise();
-      break;
-    case 'arrowright':
-      rotateClockwise();
-      break;
-    case 'q':
-      shoot();
-      break;
-  }
-}
+async function getBotControl(ip, port, masterToken)</code></pre>
 
-/**
- * Handle keyboard key up
- */
-CUSTOMCONTROL.onKeyUp = function (event) {
-  const key = event.key.toLowerCase();
-  keyStates[key] = false;
+                <h3 id="getbotcontrol-examples">Usage Examples</h3>
+
+                <h4>Simple Connection</h4>
+<pre><code>// Basic usage - connect to bot and register
+await getBotControl('192.168.4.1', '81', 'abc12');
+_scriptLog('✓ Ready to control!');</code></pre>
+
+                <h4>With Error Handling</h4>
+<pre><code>try {
+  await getBotControl('192.168.4.1', '81', 'mytoken');
+  _scriptLog('✓ Connected successfully');
   
-  switch (key) {
-    case 'arrowup':
-    case 'arrowdown':
-    case 'arrowleft':
-    case 'arrowright':
-      stop();
-      break;
-    case 'q':
-      relax();
-      break;
-  }
+  // Now control servos
+  attachServo(0, SERVO_TYPES.ROTATIONAL);
+  setServoSpeeds([[0, 100]]);
+} catch (error) {
+  _scriptLog('❌ Connection failed: ' + error.message);
 }</code></pre>
-      </section>
 
-      <!-- Advanced Sections -->
-      <section id="debugging">
-        <h1><span class="emoji">🐛</span>Debugging Guide</h1>
+                <h4>Dynamic IP from Variable</h4>
+<pre><code>const botIp = '192.168.4.1';
+const botPort = '81';
+const token = 'mytoken';
 
-        <h2>Using <code>_scriptLog()</code></h2>
-        <p>The <code>_scriptLog()</code> function prints messages to the <strong>Output Console</strong> in the Script
-          Editor.</p>
-        <pre><code>_scriptLog('Starting servo setup...');
+await getBotControl(botIp, botPort, token);
+_scriptLog('✓ Connected to ' + botIp);</code></pre>
+
+                <h4>Multiple Bots (Sequential)</h4>
+<pre><code>// Control bot 1
+await getBotControl('192.168.4.1', '81', 'bot1token');
+setServoSpeeds([[0, 100]]);
+await delay(2000);
+
+// Switch to bot 2
+await getBotControl('192.168.1.179', '81', 'bot2token');
+setServoSpeeds([[1, 50]]);</code></pre>
+
+                <h3 id="getbotcontrol-when">When to Use</h3>
+                <div class="success">
+                    <strong>✅ Use getBotControl() When:</strong>
+                    <ul>
+                        <li>You're writing <strong>scripts</strong> (not interactive web UI)</li>
+                        <li>You want to <strong>skip manual UI clicks</strong></li>
+                        <li>You need <strong>programmatic control</strong> of connection parameters</li>
+                        <li>You're testing or <strong>automating</strong> bot operations</li>
+                        <li>You want <strong>headless operation</strong> (no web UI needed)</li>
+                        <li>You need to <strong>reconnect dynamically</strong> to different bots</li>
+                    </ul>
+                </div>
+                <div class="highlight">
+                    <strong>❌ Use Web UI When:</strong>
+                    <ul>
+                        <li>You want <strong>interactive manual control</strong> (clicking buttons)</li>
+                        <li>Non-technical users need to <strong>operate the bot</strong></li>
+                        <li>You prefer <strong>visual feedback</strong> on buttons</li>
+                        <li>You want <strong>persistent connection</strong> through UI session</li>
+                    </ul>
+                </div>
+
+                <h3 id="getbotcontrol-compare">Comparison: UI vs Programmatic</h3>
+                <table>
+                    <tr><th>Aspect</th><th>Web UI</th><th>getBotControl()</th></tr>
+                    <tr><td><strong>Method</strong></td><td>Click buttons, fill forms</td><td>Call function</td></tr>
+                    <tr><td><strong>Connection</strong></td><td>Manual with Control Panel</td><td>Automatic, one call</td></tr>
+                    <tr><td><strong>Setup Time</strong></td><td>3–4 clicks</td><td>1 line of code</td></tr>
+                    <tr><td><strong>Best For</strong></td><td>Interactive use</td><td>Scripts &amp; automation</td></tr>
+                    <tr><td><strong>Error Feedback</strong></td><td>Visual status panel</td><td>try/catch error handling</td></tr>
+                    <tr><td><strong>Default values</strong></td><td>Pre-filled in form</td><td>Your choice</td></tr>
+                    <tr><td><strong>Headless</strong></td><td>Requires browser</td><td>Works without UI</td></tr>
+                </table>
+
+                <h3>Global Variables</h3>
+                <p><code>getBotControl()</code> sets these globals that all other functions use:</p>
+<pre><code>gBotIp = '192.168.4.1'    // Bot IP address
+gBotPort = '81'               // WebSocket port</code></pre>
+                <p>All subsequent calls to functions like <code>setServoSpeeds()</code>, <code>attachServo()</code>, etc. will use these globals automatically.</p>
+            </section>
+
+            <hr>
+
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="basics-steps">
+                <h1>🔰 Basics: Servo Setup Steps</h1>
+
+                <h2 id="basics-debugging">Debugging with _scriptLog()</h2>
+                <p>When "nothing happens," debugging helps you figure out <strong>why</strong>.</p>
+<pre><code>_scriptLog('Starting servo setup...');
 attachServo(0, SERVO_TYPES.ROTATIONAL);
 _scriptLog('Servo 0 attached');
 
@@ -1115,8 +785,8 @@ _scriptLog('Moving servo 0...');
 setServoSpeeds([[0, 100]]);
 _scriptLog('Command sent');</code></pre>
 
-        <h3>What to Log</h3>
-        <pre><code>// 1. Track function execution
+                <h4>What to Log</h4>
+<pre><code>// 1. Track function execution
 _scriptLog('→ Function moveForward() called');
 
 // 2. Check variable values
@@ -1140,384 +810,537 @@ _scriptLog('✓ Setup complete');
 _scriptLog('❌ Error: servo not attached');
 _scriptLog('⚠️ Warning: speed out of range');</code></pre>
 
-        <h3>Common Debugging Patterns</h3>
-        <pre><code>// Check if a function is being called
-function moveForward() {
-  _scriptLog('✓ moveForward() called');
-  setServoSpeeds([[0, 100], [1, 100]]);
-}
+                <h4>Troubleshooting Checklist</h4>
+                <div class="danger">
+                    <strong>Unable to connect?</strong>
+                    <ol>
+                        <li>✅ <strong>Ensure you use http, not https</strong> — there is no https on the board. Some browser options may force https.</li>
+                        <li>✅ <strong>Verify the network name</strong> — Ensure you're connected on the same network</li>
+                        <li>✅ <strong>Verify the IP of board</strong> — Ensure you're using the correct IP</li>
+                    </ol>
+                </div>
 
-// Check if a condition is true
-if (isMasterRegistered) {
-  _scriptLog('✓ Master is registered, proceeding...');
-  moveForward();
-} else {
-  _scriptLog('❌ ERROR: Not registered as master!');
-}</code></pre>
+                <hr>
 
-        <h3>Browser Console Debugging</h3>
-        <ol>
-          <li>Press <strong>F12</strong> (or Ctrl+Shift+I on Linux)</li>
-          <li>Go to <strong>Console</strong> tab</li>
-          <li>Look for red error messages with line numbers</li>
-        </ol>
-      </section>
-
-      <section id="async-behavior">
-        <h1><span class="emoji">⏱️</span>Understanding Asynchronous Behavior</h1>
-
-        <h2>Fire-and-Forget Mode ⚡ (Fastest)</h2>
-        <p><strong>Functions:</strong> <code>setServoSpeeds()</code>, <code>setServoAngle()</code>,
-          <code>attachServo()</code></p>
-        <p><strong>Timeline:</strong> &lt;1 millisecond</p>
-
-        <p>The function sends a packet and <strong>returns immediately</strong> without waiting for response.</p>
-        <pre><code>_scriptLog('Before call');
-setServoSpeeds([[0, 100]]);  // Returns immediately!
-_scriptLog('After call');    // Prints RIGHT AWAY
-
-// Output:
-// Before call
-// After call
-// (servo starts moving a moment later)</code></pre>
-
-        <p><strong>Use fire-and-forget when:</strong></p>
-        <ul>
-          <li>✅ You're in a gamepad/keyboard loop (needs to be fast)</li>
-          <li>✅ You want rapid successive commands</li>
-          <li>✅ You don't need confirmation</li>
-        </ul>
-
-        <h2>Request-Response Mode 📊 (Slower but Safe)</h2>
-        <p><strong>Functions:</strong> <code>setServoSpeedsUI()</code>, <code>setServoAnglesUI()</code></p>
-        <p><strong>Timeline:</strong> 100-500 milliseconds</p>
-
-        <p>The function sends a packet and <strong>blocks execution</strong> until response arrives.</p>
-        <pre><code>_scriptLog('Before call');
-await setServoSpeedsUI();    // Waits for response!
-_scriptLog('After call');    // Prints AFTER response arrives
-
-// Output:
-// Before call
-// (waits ~100-500ms for bot response)
-// ✓ Servo speeds set
-// After call</code></pre>
-
-        <p><strong>Use request-response when:</strong></p>
-        <ul>
-          <li>✅ You need confirmation the command worked</li>
-          <li>✅ You're responding to a button click</li>
-          <li>✅ You're doing sequential setup</li>
-        </ul>
-
-        <h3>Comparing the Two Modes</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Aspect</th>
-              <th>Fire-and-Forget ⚡</th>
-              <th>Request-Response 📊</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Speed</strong></td>
-              <td>&lt;1ms function call</td>
-              <td>100-500ms (waits for response)</td>
-            </tr>
-            <tr>
-              <td><strong>Blocks execution</strong></td>
-              <td>No - returns immediately</td>
-              <td>Yes - waits for response</td>
-            </tr>
-            <tr>
-              <td><strong>Confirms success</strong></td>
-              <td>No - just sends</td>
-              <td>Yes - gets OK from bot</td>
-            </tr>
-            <tr>
-              <td><strong>Functions</strong></td>
-              <td>setServoSpeeds, setServoAngle</td>
-              <td>setServoSpeedsUI, setServoAnglesUI</td>
-            </tr>
-            <tr>
-              <td><strong>Best for</strong></td>
-              <td>Real-time control</td>
-              <td>User interaction</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section id="performance">
-        <h1><span class="emoji">📊</span>Performance Characteristics & Best Practices</h1>
-
-        <h2>Performance Metrics</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Component</th>
-              <th>Metric</th>
-              <th>Value</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Gamepad Input</strong></td>
-              <td>Polling rate</td>
-              <td>50ms minimum</td>
-              <td>Don't poll faster</td>
-            </tr>
-            <tr>
-              <td><strong>Heartbeat</strong></td>
-              <td>Interval</td>
-              <td>40ms</td>
-              <td>Keeps connection alive</td>
-            </tr>
-            <tr>
-              <td><strong>Servo Command</strong></td>
-              <td>Fire-and-forget</td>
-              <td>&lt;1ms</td>
-              <td>Returns immediately</td>
-            </tr>
-            <tr>
-              <td><strong>Network</strong></td>
-              <td>WebSocket roundtrip</td>
-              <td>50-200ms</td>
-              <td>WiFi latency varies</td>
-            </tr>
-            <tr>
-              <td><strong>Bot Processing</strong></td>
-              <td>Max command rate</td>
-              <td>~20 commands/second</td>
-              <td>One every 50ms</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <h2>Best Practices for Good Performance</h2>
-
-        <h3>✅ DO: Use Fire-and-Forget in Gamepad Loops</h3>
-        <pre><code>CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  // This runs ~20 times per second
-  const leftSpeed = gamepad.axes[STICK_AXES.LEFT_Y] * 100;
-  const rightSpeed = gamepad.axes[STICK_AXES.RIGHT_Y] * 100;
-  
-  // Fire-and-forget - returns immediately
-  setServoSpeeds([[0, leftSpeed], [1, rightSpeed]]);
-  // Doesn't block, gamepad loop stays responsive
+                <h2 id="step0-servos">Step 0: Your Servos</h2>
+                <p>There are 6 pins for servos on the extension board, so you can have up to 6 servos connected at the same time. Name your servos for code readability:</p>
+<pre><code>// Name your servos
+const myServos = {
+  LEFT_WHEEL: 0,   // green servo connected to pin 0
+  RIGHT_WHEEL: 1,  // green servo connected to pin 1
+  ARM: 4,          // grey servo connected to pin 4
+  DIRECTION: 5     // grey servo connected to pin 5
 };</code></pre>
 
-        <h3>✅ DO: Use Request-Response for Setup</h3>
-        <pre><code>async function setupBot() {
-  _scriptLog('Setting up...');
+                <h2 id="step1-declare">Step 1: Declare the Servo Type</h2>
+                <p>For each servo you need to call <code>attachServo(channel, type)</code>.</p>
+                <p><strong>Reminder:</strong> green servos are continuous rotation (<code>ROTATIONAL</code>), grey servos are angular 270 (<code>ANGULAR_270</code>).</p>
+<pre><code>const myServos = {
+  LEFT_WHEEL: 0,
+  RIGHT_WHEEL: 1,
+  ARM: 4,
+  DIRECTION: 5
+};
+
+attachServo(myServos.LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
+attachServo(myServos.RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
+attachServo(myServos.ARM, SERVO_TYPES.ANGULAR_270);
+attachServo(myServos.DIRECTION, SERVO_TYPES.ANGULAR_270);</code></pre>
+
+                <h2 id="step2-actions">Step 2: Create Your Actions Code</h2>
+                <p>Use lambda functions or regular function definitions. Setting speed in a function becomes handy when you realize you need to swap rotation direction in code instead of remounting your bot.</p>
+<pre><code>const moveForward = () =&gt; {
+  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, 100]]);
+};
+
+const moveBackward = () =&gt; {
+  setServoSpeeds([[myServos.LEFT_WHEEL, -100], [myServos.RIGHT_WHEEL, -100]]);
+};
+
+const rotateClockwise = () =&gt; {
+  setServoSpeeds([[myServos.LEFT_WHEEL, 100], [myServos.RIGHT_WHEEL, -100]]);
+};
+
+const rotateCounterClockwise = () =&gt; {
+  setServoSpeeds([[myServos.LEFT_WHEEL, -100], [myServos.RIGHT_WHEEL, 100]]);
+};
+
+const stop = () =&gt; {
+  setServoSpeeds([[myServos.LEFT_WHEEL, 0], [myServos.RIGHT_WHEEL, 0]]);
+};
+
+const shoot = () =&gt; {
+  setServoAngle(myServos.ARM, 90);
+};
+
+const relax = () =&gt; {
+  setServoAngle(myServos.ARM, 0);
+};</code></pre>
+            </section>
+
+            <hr>
+
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="input-control">
+                <h1>🕹️ Input Control (20 minutes)</h1>
+                <p>Now that you can move servos, learn to control them with gamepad and keyboard input.</p>
+
+                <h2>Step 3: Handle Events in Your HTML Page</h2>
+                <p>Override three empty hook functions in <strong>your HTML page</strong>:</p>
+                <ul>
+                    <li><code>processGamepadInput(gamepad)</code> — Called when gamepad input is detected</li>
+                    <li><code>onKeyDown(event)</code> — Called when a key is pressed</li>
+                    <li><code>onKeyUp(event)</code> — Called when a key is released</li>
+                </ul>
+
+                <h3 id="gamepad-events">Gamepad Events</h3>
+<pre><code>function processGamepadInput(gamepad) {
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_UP, 'UP', () =&gt; {
+    moveForward();
+  }, () =&gt; {
+    stop();
+  });
   
-  // Use request-response to confirm each step
-  await setServoSpeedsUI();
-  _scriptLog('✓ Speeds set');
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_DOWN, 'DOWN', () =&gt; {
+    moveBackward();
+  }, () =&gt; {
+    stop();
+  });
+
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_LEFT, 'LEFT', () =&gt; {
+    rotateCounterClockwise();
+  }, () =&gt; {
+    stop();
+  });
+
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_RIGHT, 'RIGHT', () =&gt; {
+    rotateClockwise();
+  }, () =&gt; {
+    stop();
+  });
+}</code></pre>
+
+                <h3 id="analog-stick">Gamepad Analog Stick Events</h3>
+                <p>Each axis returns a value between <strong>-1.0 and +1.0</strong>:</p>
+                <ul>
+                    <li><strong>X axis</strong>: -1 = left, +1 = right</li>
+                    <li><strong>Y axis</strong>: -1 = up, +1 = down</li>
+                </ul>
+                <p>Apply a <strong>deadzone</strong> to avoid stick drift.</p>
+<pre><code>CUSTOMCONTROL.processGamepadInput = function (gamepad) {
+  const DEADZONE = 0.15;
+  
+  const rightStickX = gamepad.axes[STICK_AXES.RIGHT_X];
+  const rightStickY = gamepad.axes[STICK_AXES.RIGHT_Y];
+  
+  const x = Math.abs(rightStickX) &gt; DEADZONE ? rightStickX : 0;
+  const y = Math.abs(rightStickY) &gt; DEADZONE ? rightStickY : 0;
+  
+  const forwardSpeed = -Math.round(y * 100);
+  const turnSpeed = Math.round(x * 100);
+  
+  // Differential steering
+  const leftSpeed = Math.max(-100, Math.min(100, forwardSpeed + turnSpeed));
+  const rightSpeed = Math.max(-100, Math.min(100, forwardSpeed - turnSpeed));
+  
+  setServoSpeeds([[myServos.LEFT_WHEEL, leftSpeed],
+                   [myServos.RIGHT_WHEEL, rightSpeed]]);
+};</code></pre>
+                <div class="info">
+                    <strong>Key concepts:</strong>
+                    <ul>
+                        <li><strong>Deadzone</strong>: Prevents unwanted motion from stick drift (typically 0.1–0.2)</li>
+                        <li><strong>Normalization</strong>: Convert -1.0 to +1.0 range to -100 to +100 motor speed</li>
+                        <li><strong>Differential steering</strong>: Adjust left/right wheel speeds independently</li>
+                        <li><strong>Clamping</strong>: Ensure final speeds stay within valid range</li>
+                    </ul>
+                </div>
+
+                <h3 id="keyboard-events">Keyboard Events</h3>
+<pre><code>CUSTOMCONTROL.onKeyDown = function (event) {
+  const key = event.key.toLowerCase();
+  
+  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+    event.preventDefault();
+  }
+  
+  if (keyStates[key]) return;
+  keyStates[key] = true;
+  
+  switch (key) {
+    case 'arrowup':    moveForward(); break;
+    case 'arrowdown':  moveBackward(); break;
+    case 'arrowleft':  rotateCounterClockwise(); break;
+    case 'arrowright': rotateClockwise(); break;
+    case 'q':          shoot(); break;
+  }
+};
+
+CUSTOMCONTROL.onKeyUp = function (event) {
+  const key = event.key.toLowerCase();
+  keyStates[key] = false;
+  
+  switch (key) {
+    case 'arrowup':
+    case 'arrowdown':
+    case 'arrowleft':
+    case 'arrowright': stop(); break;
+    case 'q':          relax(); break;
+  }
+};</code></pre>
+            </section>
+
+            <hr>
+
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="advanced-async">
+                <h1>🤖 Advanced: Asynchronous Behavior</h1>
+                <p>Different functions behave differently — some return immediately, others wait for confirmation.</p>
+
+                <h2 id="fire-and-forget">Fire-and-Forget Mode ⚡ (Fastest)</h2>
+                <p><strong>Functions</strong>: <code>setServoSpeeds()</code>, <code>setServoAngle()</code>, <code>attachServo()</code></p>
+                <p><strong>Timeline</strong>: &lt;1 millisecond</p>
+<pre class="ascii-art"><code>Your Code                   Bot
+═══════════════════════════════════════════════
+setServoSpeeds([[0, 100]])
+│
+├─ Send command packet ────────────────→
+│                            (~50-200ms over network)
+└─ Return IMMEDIATELY
+  (no waiting)               (bot processes later)</code></pre>
+<pre><code>_scriptLog('Before call');
+setServoSpeeds([[0, 100]]);  // Returns immediately!
+_scriptLog('After call');    // Prints RIGHT AWAY</code></pre>
+                <div class="success">
+                    <strong>Use fire-and-forget when:</strong>
+                    <ul>
+                        <li>✅ You're in a gamepad/keyboard loop (needs to be fast)</li>
+                        <li>✅ You want rapid successive commands</li>
+                        <li>✅ You don't need confirmation</li>
+                        <li>✅ You want real-time responsiveness</li>
+                    </ul>
+                </div>
+
+                <h2 id="request-response">Request-Response Mode 📊 (Slower but Safe)</h2>
+                <p><strong>Functions</strong>: <code>requestSetServoSpeeds(pairs[])</code>, <code>requestSetServoAngles(pairs[])</code>, <code>attachServos()</code>, <code>getBattery()</code></p>
+                <p><strong>Timeline</strong>: 100–500 milliseconds</p>
+<pre><code>_scriptLog('Before call');
+const resp = await requestSetServoSpeeds([[0, 100]]);  // Waits for response!
+_scriptLog('After call');    // Prints AFTER response arrives</code></pre>
+                <div class="success">
+                    <strong>Use request-response when:</strong>
+                    <ul>
+                        <li>✅ You need confirmation the command worked</li>
+                        <li>✅ You're responding to a button click</li>
+                        <li>✅ You're doing sequential setup</li>
+                        <li>✅ You need to know if the command failed</li>
+                    </ul>
+                </div>
+
+                <h3>Comparing the Two Modes</h3>
+                <table>
+                    <tr><th>Aspect</th><th>Fire-and-Forget ⚡</th><th>Request-Response 📊</th></tr>
+                    <tr><td><strong>Speed</strong></td><td>&lt;1ms function call</td><td>100–500ms (waits)</td></tr>
+                    <tr><td><strong>Blocks execution</strong></td><td>No</td><td>Yes</td></tr>
+                    <tr><td><strong>Confirms success</strong></td><td>No</td><td>Yes</td></tr>
+                    <tr><td><strong>Use case</strong></td><td>Gamepad/keyboard loops</td><td>Button clicks, setup</td></tr>
+                    <tr><td><strong>Functions</strong></td><td>setServoSpeeds, setServoAngle</td><td>requestSetServoSpeeds, requestSetServoAngles</td></tr>
+                    <tr><td><strong>Best for</strong></td><td>Real-time control</td><td>User interaction</td></tr>
+                </table>
+
+                <h3 id="async-mistakes">Common Mistakes</h3>
+
+                <div class="danger">
+                    <strong>❌ Mistake 1: Expecting fire-and-forget to confirm</strong>
+<pre><code>setServoSpeeds([[0, 100]]);
+_scriptLog('Servo is now at speed 100');  // Wrong!</code></pre>
+                    <strong>✅ Correct:</strong>
+<pre><code>setServoSpeeds([[0, 100]]);
+_scriptLog('Speed command sent (will apply asynchronously)');</code></pre>
+                </div>
+
+                <div class="danger">
+                    <strong>❌ Mistake 2: Using request-response in a fast loop</strong>
+<pre><code>// DON'T DO THIS - too slow!
+CUSTOMCONTROL.processGamepadInput = function(gamepad) {
+  await requestSetServoSpeeds([[0, 100]]);  // Waits 100-500ms each time
+};</code></pre>
+                    <strong>✅ Correct:</strong>
+<pre><code>CUSTOMCONTROL.processGamepadInput = function(gamepad) {
+  setServoSpeeds([[0, gamepad.axes[0] * 100]]);
+  // Returns immediately, loop stays fast
+};</code></pre>
+                </div>
+
+                <div class="danger">
+                    <strong>❌ Mistake 3: Forgetting <code>await</code> on request-response</strong>
+<pre><code>async function setupServos() {
+  requestSetServoSpeeds([[0, 100]]);  // Missing await!
+  _scriptLog('Done');  // Prints immediately
+}</code></pre>
+                    <strong>✅ Correct:</strong>
+<pre><code>async function setupServos() {
+  await requestSetServoSpeeds([[0, 100]]);  // Wait for response
+  _scriptLog('Done');  // Prints after response
+}</code></pre>
+                </div>
+
+                <h3>When to Use Async/Await</h3>
+<pre><code>async function setupBot() {
+  _scriptLog('Starting setup...');
+  
+  attachServo(0, SERVO_TYPES.ROTATIONAL);
+  attachServo(1, SERVO_TYPES.ROTATIONAL);
   
   await delay(500);
+  _scriptLog('All servos attached, testing movement...');
   
-  // Do next step only after previous one confirms
+  await requestSetServoSpeeds([[0, 100]]);
+  _scriptLog('✓ Setup complete!');
+}</code></pre>
+            </section>
+
+            <hr>
+
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="performance">
+                <h1>⚡ Performance Characteristics &amp; Best Practices</h1>
+
+                <h2 id="perf-metrics">Performance Metrics</h2>
+                <table>
+                    <tr><th>Component</th><th>Metric</th><th>Value</th><th>Notes</th></tr>
+                    <tr><td>Gamepad Input</td><td>Polling rate</td><td>50ms minimum</td><td>Don't poll faster</td></tr>
+                    <tr><td>Gamepad Input</td><td>Button detection</td><td>&lt;1ms</td><td>Immediate</td></tr>
+                    <tr><td>Heartbeat</td><td>Interval</td><td>40ms</td><td>Keeps connection alive</td></tr>
+                    <tr><td>Servo Command</td><td>Fire-and-forget</td><td>&lt;1ms</td><td>Returns immediately</td></tr>
+                    <tr><td>Servo Command</td><td>Request-response</td><td>100–500ms</td><td>Waits for confirmation</td></tr>
+                    <tr><td>Network</td><td>WebSocket roundtrip</td><td>50–200ms</td><td>WiFi latency varies</td></tr>
+                    <tr><td>Network</td><td>Packet loss</td><td>~0–5%</td><td>WiFi can lose packets</td></tr>
+                    <tr><td>Bot Processing</td><td>Max command rate</td><td>~20 cmd/sec</td><td>One every 50ms</td></tr>
+                    <tr><td>Display</td><td>Refresh rate</td><td>60 FPS</td><td>~16ms per frame</td></tr>
+                </table>
+
+                <h2 id="perf-best-practices">Best Practices</h2>
+
+                <div class="success">
+                    <strong>✅ DO: Use Fire-and-Forget in Gamepad Loops</strong>
+<pre><code>CUSTOMCONTROL.processGamepadInput = function(gamepad) {
+  const leftSpeed = gamepad.axes[STICK_AXES.LEFT_Y] * 100;
+  const rightSpeed = gamepad.axes[STICK_AXES.RIGHT_Y] * 100;
+  setServoSpeeds([[0, leftSpeed], [1, rightSpeed]]);
+};</code></pre>
+                </div>
+
+                <div class="success">
+                    <strong>✅ DO: Use Request-Response for Setup</strong>
+<pre><code>async function setupBot() {
+  await requestSetServoSpeeds([[0, 100]]);
+  _scriptLog('✓ Speeds set');
+  await delay(500);
   _scriptLog('Setup complete!');
 }</code></pre>
+                </div>
 
-        <h3>❌ DON'T: Use Request-Response in Fast Loops</h3>
-        <pre><code>// ❌ BAD - will cause lag!
+                <div class="danger">
+                    <strong>❌ DON'T: Use Request-Response in Fast Loops</strong>
+<pre><code>// BAD - will cause lag!
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  await setServoSpeedsUI();  // Waits 100-500ms each time
-  // Gamepad polling can't keep up!
+  await requestSetServoSpeeds([[0, 100]]);  // Waits 100-500ms each time
 };</code></pre>
+                </div>
 
-        <h3>✅ DO: Optimize Gamepad Input</h3>
-        <pre><code>// ✅ GOOD - only send when there's actual change
-CUSTOMCONTROL.processGamepadInput = function(gamepad) {
+                <div class="danger">
+                    <strong>❌ DON'T: Send Too Many Commands Per Second</strong>
+<pre><code>// BAD - exceeds maximum command rate
+for (let i = 0; i &lt; 100; i++) {
+  setServoSpeeds([[0, 100]]);  // 100 commands instantly
+}</code></pre>
+                </div>
+
+                <div class="success">
+                    <strong>✅ DO: Throttle Rapid Operations</strong>
+<pre><code>async function quickTest() {
+  for (let i = 0; i &lt; 5; i++) {
+    setServoSpeeds([[0, 100]]);
+    await delay(50);  // Wait 50ms between commands
+    setServoSpeeds([[0, 0]]);
+    await delay(50);
+  }
+}</code></pre>
+                </div>
+
+                <div class="success">
+                    <strong>✅ DO: Optimize Gamepad Input (avoid sending identical commands)</strong>
+<pre><code>CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   const leftSpeed = Math.round(gamepad.axes[STICK_AXES.LEFT_Y] * 100);
-  
-  // Avoid sending identical commands
   if (leftSpeed !== lastLeftSpeed) {
     setServoSpeeds([[0, leftSpeed]]);
     lastLeftSpeed = leftSpeed;
   }
 };</code></pre>
+                </div>
 
-        <h3>❌ DON'T: Log Everything in Fast Loops</h3>
-        <pre><code>// ❌ BAD - logging slows things down
+                <div class="danger">
+                    <strong>❌ DON'T: Log Everything in Fast Loops</strong>
+<pre><code>// BAD - logging slows things down
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  _scriptLog('Axis: ' + gamepad.axes[0]);      // Too much spam!
-  _scriptLog('Button pressed: ' + button);
-  setServoSpeeds([[0, speed]]);
+  _scriptLog('Axis: ' + gamepad.axes[0]);  // 20 times/second!
 };</code></pre>
+                </div>
 
-        <h3>✅ DO: Log Selectively</h3>
-        <pre><code>// ✅ GOOD - only log important events
-CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  if (gamepad.buttons[XBOX_BUTTONS.A].pressed) {
-    _scriptLog('A button pressed - moving forward');  // Only when needed
-    moveForward();
-  }
-};</code></pre>
-      </section>
+                <h2 id="perf-bottlenecks">Bottleneck Analysis</h2>
+<pre class="ascii-art"><code>Gamepad Input (50ms) ←── Bottleneck! Limits responsiveness
+         ↓
+Send Command (~1ms)
+         ↓
+Network Latency (50-200ms) ←── Second bottleneck
+         ↓
+Bot Processing (10-50ms)
+         ↓
+Response (50-200ms) ←── For request-response only
+         ↓
+Display Update (16ms)</code></pre>
 
-      <!-- Code Templates -->
-      <section id="code-templates">
-        <h1><span class="emoji">💾</span>Code Templates (Copy-Paste Ready)</h1>
+                <h2 id="perf-optimization">Optimization Tips</h2>
+                <p><strong>Reduce Network Latency:</strong></p>
+<pre><code>// ❌ BAD - sends every tiny movement
+setServoSpeeds([[0, 99.999]]);
 
-        <p><strong>Don't reinvent the wheel!</strong> Use these ready-to-use templates as starting points.</p>
+// ✅ GOOD - round to reduce changes
+const speed = Math.round(gamepad.axes[0] * 100);
+setServoSpeeds([[0, speed]]);</code></pre>
 
-        <h2>Template 1: Simple D-Pad Movement</h2>
-        <p>Use this for basic forward/back/left/right control.</p>
-        <pre><code>// Copy this into your Script Editor textarea
+                <p><strong>Reduce Command Overhead:</strong></p>
+<pre><code>// ❌ Less efficient - two network packets
+setServoSpeeds([[0, speed0]]);
+setServoSpeeds([[1, speed1]]);
 
-const LEFT_WHEEL = 0;
+// ✅ GOOD - one network packet
+setServoSpeeds([[0, speed0], [1, speed1]]);</code></pre>
+
+                <h3>Acceptable Lag Guidelines</h3>
+                <table>
+                    <tr><th>Use Case</th><th>Acceptable</th><th>Better</th><th>Excellent</th></tr>
+                    <tr><td>Gamepad control</td><td>&lt;300ms</td><td>&lt;150ms</td><td>&lt;100ms</td></tr>
+                    <tr><td>Button feedback</td><td>&lt;500ms</td><td>&lt;300ms</td><td>&lt;200ms</td></tr>
+                    <tr><td>Console logging</td><td>&lt;50ms</td><td>Instant</td><td>Instant</td></tr>
+                    <tr><td>Servo movement</td><td>Visible</td><td>Smooth</td><td>Very smooth</td></tr>
+                    <tr><td>Screen update</td><td>&lt;100ms</td><td>&lt;50ms</td><td>Real-time</td></tr>
+                </table>
+                <p><strong>Your system typically achieves:</strong> Gamepad control: <strong>100–150ms</strong> ✅ | Button feedback: <strong>200–400ms</strong> ✅ | Servo movement: <strong>Immediate</strong> ✅</p>
+            </section>
+
+            <hr>
+
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="templates">
+                <h1>💾 Code Templates (Copy-Paste Ready)</h1>
+
+                <h3>Template 1: Simple D-Pad Movement</h3>
+<pre><code>const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;
 
-function moveForward() {
-  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]);
-  _scriptLog('→ Moving forward');
-}
+function moveForward()  { setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]); }
+function moveBackward() { setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, -100]]); }
+function turnLeft()     { setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, 100]]); }
+function turnRight()    { setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, -100]]); }
+function stop()         { setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]); }
 
-function moveBackward() {
-  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, -100]]);
-  _scriptLog('← Moving backward');
-}
-
-function turnLeft() {
-  setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, 100]]);
-  _scriptLog('↙ Turning left');
-}
-
-function turnRight() {
-  setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, -100]]);
-  _scriptLog('↘ Turning right');
-}
-
-function stop() {
-  setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]);
-  _scriptLog('⏸ Stopped');
-}
-
-// Attach servos
 attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
 attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
-_scriptLog('✓ Servos ready for D-Pad control');
 
-// Handle D-Pad input
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  if (gamepad.buttons[XBOX_BUTTONS.DPAD_UP].pressed) {
-    moveForward();
-  } else if (gamepad.buttons[XBOX_BUTTONS.DPAD_DOWN].pressed) {
-    moveBackward();
-  } else if (gamepad.buttons[XBOX_BUTTONS.DPAD_LEFT].pressed) {
-    turnLeft();
-  } else if (gamepad.buttons[XBOX_BUTTONS.DPAD_RIGHT].pressed) {
-    turnRight();
-  } else {
-    stop();
-  }
+  if (gamepad.buttons[XBOX_BUTTONS.DPAD_UP].pressed)         moveForward();
+  else if (gamepad.buttons[XBOX_BUTTONS.DPAD_DOWN].pressed)  moveBackward();
+  else if (gamepad.buttons[XBOX_BUTTONS.DPAD_LEFT].pressed)  turnLeft();
+  else if (gamepad.buttons[XBOX_BUTTONS.DPAD_RIGHT].pressed) turnRight();
+  else stop();
 };</code></pre>
 
-        <h2>Template 2: Analog Stick Control (with Deadzone)</h2>
-        <p>Use this for smooth, analog left stick control with deadzone.</p>
-        <pre><code>const LEFT_WHEEL = 0;
+                <h3>Template 2: Analog Stick Control (with Deadzone)</h3>
+<pre><code>const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;
-const DEADZONE = 0.15;  // Prevent stick drift
+const DEADZONE = 0.15;
 
-function setSpeed(leftSpeed, rightSpeed) {
-  setServoSpeeds([[LEFT_WHEEL, leftSpeed], [RIGHT_WHEEL, rightSpeed]]);
-}
-
-// Attach servos
 attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
 attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
-_scriptLog('✓ Analog stick control ready');
 
-// Handle analog stick input
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
   let stickX = gamepad.axes[STICK_AXES.LEFT_X];
   let stickY = gamepad.axes[STICK_AXES.LEFT_Y];
   
-  // Apply deadzone
-  if (Math.abs(stickX) < DEADZONE) stickX = 0;
-  if (Math.abs(stickY) < DEADZONE) stickY = 0;
+  if (Math.abs(stickX) &lt; DEADZONE) stickX = 0;
+  if (Math.abs(stickY) &lt; DEADZONE) stickY = 0;
   
-  // Convert to motor speeds
   const leftSpeed = Math.round((stickY - stickX) * 100);
   const rightSpeed = Math.round((stickY + stickX) * 100);
   
-  // Clamp to valid range
-  const leftClamped = Math.max(-100, Math.min(100, leftSpeed));
-  const rightClamped = Math.max(-100, Math.min(100, rightSpeed));
-  
-  setSpeed(leftClamped, rightClamped);
+  setServoSpeeds([
+    [LEFT_WHEEL, Math.max(-100, Math.min(100, leftSpeed))],
+    [RIGHT_WHEEL, Math.max(-100, Math.min(100, rightSpeed))]
+  ]);
 };</code></pre>
 
-        <h2>Template 3: Keyboard Control (WASD)</h2>
-        <p>Use this for keyboard-based movement.</p>
-        <pre><code>const LEFT_WHEEL = 0;
+                <h3>Template 3: Keyboard Control (WASD)</h3>
+<pre><code>const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;
 const keys = {};
 
 function updateMovement() {
-  const w = keys['w'];
-  const a = keys['a'];
-  const s = keys['s'];
-  const d = keys['d'];
-  
-  let leftSpeed = 0;
-  let rightSpeed = 0;
-  
-  if (w) { leftSpeed += 100; rightSpeed += 100; }
-  if (s) { leftSpeed -= 100; rightSpeed -= 100; }
-  if (a) { leftSpeed -= 50; rightSpeed += 50; }
-  if (d) { leftSpeed += 50; rightSpeed -= 50; }
-  
-  setServoSpeeds([[LEFT_WHEEL, leftSpeed], [RIGHT_WHEEL, rightSpeed]]);
+  let left = 0, right = 0;
+  if (keys['w']) { left += 100; right += 100; }
+  if (keys['s']) { left -= 100; right -= 100; }
+  if (keys['a']) { left -= 50;  right += 50; }
+  if (keys['d']) { left += 50;  right -= 50; }
+  setServoSpeeds([[LEFT_WHEEL, left], [RIGHT_WHEEL, right]]);
 }
 
-// Attach servos
 attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
 attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
-_scriptLog('✓ Keyboard control ready (W=forward, A=left, S=back, D=right)');
 
-// Handle keyboard
 CUSTOMCONTROL.onKeyDown = function(event) {
-  const key = event.key.toLowerCase();
-  keys[key] = true;
+  keys[event.key.toLowerCase()] = true;
   updateMovement();
 };
-
 CUSTOMCONTROL.onKeyUp = function(event) {
-  const key = event.key.toLowerCase();
-  keys[key] = false;
+  keys[event.key.toLowerCase()] = false;
   updateMovement();
 };</code></pre>
 
-        <h2>Template 4: State Machine (Complex Behavior)</h2>
-        <p>Use this when your bot needs different modes (explore, capture, return).</p>
-        <pre><code>const LEFT_WHEEL = 0;
-const RIGHT_WHEEL = 1;
-const ARM = 2;
+                <h3>Template 4: Multi-Servo Coordination (Arms + Wheels)</h3>
+<pre><code>const LEFT_WHEEL = 0, RIGHT_WHEEL = 1, LEFT_ARM = 2, RIGHT_ARM = 3;
 
+function moveForward() { setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]); }
+function stop()        { setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]); }
+function armUp()       { setServoAngle(LEFT_ARM, 90); setServoAngle(RIGHT_ARM, 90); }
+function armDown()     { setServoAngle(LEFT_ARM, -90); setServoAngle(RIGHT_ARM, -90); }
+function armRest()     { setServoAngle(LEFT_ARM, 0); setServoAngle(RIGHT_ARM, 0); }
+
+attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
+attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
+attachServo(LEFT_ARM, SERVO_TYPES.ANGULAR_270);
+attachServo(RIGHT_ARM, SERVO_TYPES.ANGULAR_270);
+
+CUSTOMCONTROL.processGamepadInput = function(gamepad) {
+  if (gamepad.buttons[XBOX_BUTTONS.DPAD_UP].pressed) moveForward();
+  else stop();
+  
+  if (gamepad.buttons[XBOX_BUTTONS.Y].pressed) armUp();
+  else if (gamepad.buttons[XBOX_BUTTONS.A].pressed) armDown();
+  else if (gamepad.buttons[XBOX_BUTTONS.X].pressed) armRest();
+};</code></pre>
+
+                <h3>Template 5: State Machine (Complex Behavior)</h3>
+<pre><code>const LEFT_WHEEL = 0, RIGHT_WHEEL = 1, ARM = 2;
 let currentState = 'idle';
 
-function setState(newState) {
-  currentState = newState;
-  _scriptLog('→ State: ' + newState);
-}
+function setState(s) { currentState = s; _scriptLog('→ State: ' + s); }
 
 async function explore() {
   if (currentState !== 'explore') return;
-  _scriptLog('Exploring...');
-  
   setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]);
   await delay(2000);
-  
-  if (currentState === 'explore') {
-    setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]);
-    setState('idle');
-  }
+  if (currentState === 'explore') { stop(); setState('idle'); }
 }
 
 async function capture() {
@@ -1525,412 +1348,294 @@ async function capture() {
   setServoAngle(ARM, 90);
   await delay(500);
   setServoAngle(ARM, 0);
-  
-  if (currentState === 'capture') {
-    setState('idle');
-  }
+  if (currentState === 'capture') setState('idle');
 }
 
-// Attach servos
+function stop() { setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]); }
+
 attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
 attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
 attachServo(ARM, SERVO_TYPES.ANGULAR_270);
 
-// Gamepad control
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  if (gamepad.buttons[XBOX_BUTTONS.A].pressed && currentState !== 'explore') {
-    setState('explore');
-    explore();
-  } else if (gamepad.buttons[XBOX_BUTTONS.B].pressed && currentState !== 'capture') {
-    setState('capture');
-    capture();
+  if (gamepad.buttons[XBOX_BUTTONS.A].pressed &amp;&amp; currentState !== 'explore') {
+    setState('explore'); explore();
+  } else if (gamepad.buttons[XBOX_BUTTONS.B].pressed &amp;&amp; currentState !== 'capture') {
+    setState('capture'); capture();
+  } else if (gamepad.buttons[XBOX_BUTTONS.Y].pressed) {
+    setState('idle');
   }
 };</code></pre>
-      </section>
 
-      <!-- Function Reference -->
-      <section id="quick-reference">
-        <h1><span class="emoji">🔧</span>Function Quick Reference</h1>
+                <h3>Template 6: Button Detection Helper</h3>
+<pre><code>const LEFT_WHEEL = 0, RIGHT_WHEEL = 1;
 
-        <p><strong>Use this table to quickly find what you need.</strong></p>
+function moveForward()  { setServoSpeeds([[LEFT_WHEEL, 100], [RIGHT_WHEEL, 100]]); }
+function moveBackward() { setServoSpeeds([[LEFT_WHEEL, -100], [RIGHT_WHEEL, -100]]); }
+function stop()         { setServoSpeeds([[LEFT_WHEEL, 0], [RIGHT_WHEEL, 0]]); }
 
-        <h2>Connection & Setup</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Function</th>
-              <th>Call When</th>
-              <th>Example</th>
-              <th>Returns</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>registerMaster(token)</code></td>
-              <td><strong>FIRST</strong> - before anything</td>
-              <td><code>registerMaster("abc12")</code></td>
-              <td>Promise</td>
-            </tr>
-            <tr>
-              <td><code>attachServo(channel, type)</code></td>
-              <td>Setup, before moving</td>
-              <td><code>attachServo(0, SERVO_TYPES.ROTATIONAL)</code></td>
-              <td>void</td>
-            </tr>
-          </tbody>
-        </table>
+attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
+attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
 
-        <h2>Servo Control (Fire-and-Forget) ⚡</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Function</th>
-              <th>Use Case</th>
-              <th>Example</th>
-              <th>Returns</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>setServoSpeeds(channels[], speeds[])</code></td>
-              <td>Move rotational servos immediately</td>
-              <td><code>setServoSpeeds([[0,100],[1,-100]])</code></td>
-              <td>void</td>
-            </tr>
-            <tr>
-              <td><code>setServoAngle(channel, angle)</code></td>
-              <td>Move angular servos immediately</td>
-              <td><code>setServoAngle(2, 90)</code></td>
-              <td>void</td>
-            </tr>
-          </tbody>
-        </table>
+CUSTOMCONTROL.processGamepadInput = function(gamepad) {
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_UP, 'UP', moveForward, stop);
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_DOWN, 'DOWN', moveBackward, stop);
+};</code></pre>
+            </section>
 
-        <h2>Servo Control (Request-Response) 📊</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Function</th>
-              <th>Use Case</th>
-              <th>Example</th>
-              <th>Returns</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>setServoSpeedsUI()</code></td>
-              <td>Button click with feedback</td>
-              <td><code>await setServoSpeedsUI()</code></td>
-              <td>Promise</td>
-            </tr>
-            <tr>
-              <td><code>setServoAnglesUI()</code></td>
-              <td>Button click with feedback</td>
-              <td><code>await setServoAnglesUI()</code></td>
-              <td>Promise</td>
-            </tr>
-            <tr>
-              <td><code>getBattery()</code></td>
-              <td>Query battery level</td>
-              <td><code>await getBattery()</code></td>
-              <td>Promise</td>
-            </tr>
-          </tbody>
-        </table>
+            <hr>
 
-        <h2>Utility Functions</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Function</th>
-              <th>Purpose</th>
-              <th>Example</th>
-              <th>Returns</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>_scriptLog(message)</code></td>
-              <td>Print debug message</td>
-              <td><code>_scriptLog('Hello!')</code></td>
-              <td>void</td>
-            </tr>
-            <tr>
-              <td><code>showGamepad(enable)</code></td>
-              <td>Show/hide live SVG gamepad overlay</td>
-              <td><code>showGamepad(true)</code></td>
-              <td>void</td>
-            </tr>
-            <tr>
-              <td><code>delay(milliseconds)</code></td>
-              <td>Sleep for time period</td>
-              <td><code>await delay(1000)</code></td>
-              <td>Promise</td>
-            </tr>
-            <tr>
-              <td><code>nextScreen()</code></td>
-              <td>Go to next screen</td>
-              <td><code>nextScreen()</code></td>
-              <td>Promise</td>
-            </tr>
-            <tr>
-              <td><code>previousScreen()</code></td>
-              <td>Go to previous screen</td>
-              <td><code>previousScreen()</code></td>
-              <td>Promise</td>
-            </tr>
-          </tbody>
-        </table>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="reference">
+                <h1>📖 Reference (Lookup Anytime)</h1>
 
-        <h2 id="constants">Constants (Ready to Use)</h2>
-        <pre><code>// Servo types
-const SERVO_TYPES = {
-  ANGULAR_270: 1,    // grey servo
-  ROTATIONAL: 2      // green servo
-}
+                <h2 id="ref-functions">🔧 Function Quick Reference</h2>
 
-// Xbox controller buttons
-const XBOX_BUTTONS = {
-  A: 0, B: 1, X: 2, Y: 3,
-  DPAD_UP: 12, DPAD_DOWN: 13, DPAD_LEFT: 14, DPAD_RIGHT: 15,
-  LB: 4, RB: 5,
-  START: 9, BACK: 8,
-  // ... and more
-}
+                <h4>Connection &amp; Setup</h4>
+                <table>
+                    <tr><th>Function</th><th>Call When</th><th>Module</th><th>Example</th><th>Returns</th></tr>
+                    <tr><td><code>getBotControl(ip, port, token)</code></td><td><strong>Easiest programmatic connect</strong></td><td>BotScript.js</td><td><code>await getBotControl('192.168.4.1', '81', 'abc12')</code></td><td>Promise</td></tr>
+                    <tr><td><code>registerMaster(token)</code></td><td><strong>FIRST</strong> – before anything (alternative)</td><td>BotScript.js</td><td><code>registerMaster("abc12")</code></td><td>Promise</td></tr>
+                    <tr><td><code>unregisterMaster()</code></td><td>Cleanup, when done</td><td>BotScript.js</td><td><code>unregisterMaster()</code></td><td>Promise</td></tr>
+                    <tr><td><code>attachServo(channel, type)</code></td><td>Setup, before moving</td><td>BotScriptActions.js</td><td><code>attachServo(0, SERVO_TYPES.ROTATIONAL)</code></td><td>void</td></tr>
+                    <tr><td><code>detectGamepad()</code></td><td>Optional, when gamepad not detected</td><td>BotScriptActions.js</td><td><code>detectGamepad()</code></td><td>void</td></tr>
+                </table>
 
-// Xbox controller axes
-const STICK_AXES = {
-  LEFT_X: 0,   // Left stick horizontal
-  LEFT_Y: 1,   // Left stick vertical
-  RIGHT_X: 2,  // Right stick horizontal
-  RIGHT_Y: 3   // Right stick vertical
-}</code></pre>
-      </section>
+                <h4>Servo Control (Fire-and-Forget) ⚡</h4>
+                <table>
+                    <tr><th>Function</th><th>Use Case</th><th>Module</th><th>Example</th><th>Returns</th></tr>
+                    <tr><td><code>setServoSpeeds(pairs[])</code></td><td>Move rotational servos immediately</td><td>BotScriptActions.js</td><td><code>setServoSpeeds([[0,100],[1,-100]])</code></td><td>void</td></tr>
+                    <tr><td><code>setServoAngle(channel, angle)</code></td><td>Move angular servos immediately</td><td>BotScriptActions.js</td><td><code>setServoAngle(2, 90)</code></td><td>void</td></tr>
+                </table>
 
-      <!-- Operational Example -->
-      <section id="operational-example">
-        <h1>Operational Example</h1>
+                <h4>Servo Control (Request-Response with Feedback) 📊</h4>
+                <table>
+                    <tr><th>Function</th><th>Use Case</th><th>Module</th><th>Example</th><th>Returns</th></tr>
+                    <tr><td><code>requestSetServoSpeeds(pairs[])</code></td><td>Confirmed speed control</td><td>BotScript.js</td><td><code>await requestSetServoSpeeds([[0,100]])</code></td><td>Promise&lt;number|null&gt;</td></tr>
+                    <tr><td><code>requestSetServoAngles(pairs[])</code></td><td>Confirmed angle control</td><td>BotScript.js</td><td><code>await requestSetServoAngles([[2,90]])</code></td><td>Promise&lt;number|null&gt;</td></tr>
+                    <tr><td><code>attachServos()</code></td><td>UI-based servo attachment</td><td>BotScript.js</td><td><code>attachServos()</code></td><td>Promise</td></tr>
+                    <tr><td><code>getBattery()</code></td><td>Query battery level</td><td>BotScript.js</td><td><code>getBattery()</code></td><td>Promise</td></tr>
+                </table>
 
-        <p>Complete example for a bot with:</p>
-        <ul>
-          <li><strong>S0:</strong> Left track (continuous rotation)</li>
-          <li><strong>S1:</strong> Right track (continuous rotation)</li>
-          <li><strong>S2:</strong> Arm 1 (angular 270)</li>
-          <li><strong>S3:</strong> Arm 2 (angular 270)</li>
-        </ul>
+                <h4>Gamepad Input (Hook Functions) 🕹️</h4>
+                <table>
+                    <tr><th>Hook</th><th>Called When</th><th>What to Do</th></tr>
+                    <tr><td><code>CUSTOMCONTROL.onKeyDown(event)</code></td><td>Key pressed</td><td>Call your action functions</td></tr>
+                    <tr><td><code>CUSTOMCONTROL.onKeyUp(event)</code></td><td>Key released</td><td>Stop or change state</td></tr>
+                    <tr><td><code>CUSTOMCONTROL.processGamepadInput(gamepad)</code></td><td>Gamepad button/stick moved</td><td>Call your action functions</td></tr>
+                    <tr><td><code>handleGamepaButton(gamepad, btnIdx, name, onPress, onRelease)</code></td><td>Helper for button detection</td><td>void</td></tr>
+                </table>
 
-        <h3>Controls:</h3>
-        <ul>
-          <li><strong>D-Pad:</strong> Full-speed movement</li>
-          <li><strong>Right stick:</strong> Fine-grain speed control</li>
-          <li><strong>LT/LB:</strong> Arm 1 control</li>
-          <li><strong>RT/RB:</strong> Arm 2 control</li>
-        </ul>
+                <h4>Utility Functions</h4>
+                <table>
+                    <tr><th>Function</th><th>Purpose</th><th>Example</th><th>Returns</th></tr>
+                    <tr><td><code>_scriptLog(message)</code></td><td>Print debug message</td><td><code>_scriptLog('Hello!')</code></td><td>void</td></tr>
+                    <tr><td><code>delay(ms)</code></td><td>Sleep for time period</td><td><code>await delay(1000)</code></td><td>Promise</td></tr>
+                    <tr><td><code>setBotName(name)</code></td><td>Set bot display name</td><td><code>setBotName("MyBot")</code></td><td>Promise</td></tr>
+                    <tr><td><code>setScreen(index)</code></td><td>Jump to screen (0–5)</td><td><code>setScreen(0)</code></td><td>Promise</td></tr>
+                    <tr><td><code>nextScreen()</code></td><td>Go to next screen</td><td><code>nextScreen()</code></td><td>Promise</td></tr>
+                    <tr><td><code>previousScreen()</code></td><td>Go to previous screen</td><td><code>previousScreen()</code></td><td>Promise</td></tr>
+                </table>
 
-        <p><strong>Add this code to your HTML page:</strong></p>
-        <pre><code>// ── Bot Configuration ────────────────────────────────────────
+                <h2 id="ref-constants">Constants You'll Use</h2>
+                <table>
+                    <tr><th>Constant</th><th>Purpose</th><th>Values</th><th>Module</th></tr>
+                    <tr><td><code>SERVO_TYPES</code></td><td>Servo type identifier</td><td><code>ANGULAR_270</code>, <code>ROTATIONAL</code></td><td>BotScriptActions.js</td></tr>
+                    <tr><td><code>XBOX_BUTTONS</code></td><td>Xbox button identifier</td><td><code>A</code>, <code>B</code>, <code>X</code>, <code>Y</code>, <code>DPAD_UP</code>, etc.</td><td>BotScriptActions.js</td></tr>
+                    <tr><td><code>STICK_AXES</code></td><td>Xbox stick axis</td><td><code>LEFT_X</code>, <code>LEFT_Y</code>, <code>RIGHT_X</code>, <code>RIGHT_Y</code></td><td>BotScriptActions.js</td></tr>
+                    <tr><td><code>PLAYSTATION_BUTTONS</code></td><td>PlayStation buttons</td><td><code>X</code>, <code>CIRCLE</code>, <code>SQUARE</code>, <code>TRIANGLE</code>, etc.</td><td>BotScriptActions.js</td></tr>
+                    <tr><td><code>NINTENDO_SWITCH_BUTTONS</code></td><td>Nintendo buttons</td><td><code>B</code>, <code>A</code>, <code>Y</code>, <code>X</code>, etc.</td><td>BotScriptActions.js</td></tr>
+                </table>
 
-// Define servo pin assignments
+                <h2 id="ref-decision-tree">Decision Tree: Which Function to Use?</h2>
+                <ul>
+                    <li><strong>Move a servo RIGHT NOW</strong> → <code>setServoSpeeds()</code> or <code>setServoAngle()</code> (fire-and-forget)</li>
+                    <li><strong>Move with confirmation</strong> → <code>requestSetServoSpeeds(pairs[])</code> or <code>requestSetServoAngles(pairs[])</code> (request-response)</li>
+                    <li><strong>Gamepad buttons trigger actions</strong> → Override <code>CUSTOMCONTROL.processGamepadInput()</code></li>
+                    <li><strong>Keyboard keys trigger actions</strong> → Override <code>CUSTOMCONTROL.onKeyDown()</code> and <code>onKeyUp()</code></li>
+                    <li><strong>Debug code</strong> → Use <code>_scriptLog()</code></li>
+                    <li><strong>Wait between actions</strong> → Use <code>await delay(ms)</code></li>
+                </ul>
+            </section>
+
+            <hr>
+
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="operational-example">
+                <h1>🛠️ Operational Example</h1>
+                <p>A complete operational example for a bot with:</p>
+                <ul>
+                    <li><strong>S0</strong>: Left track (continuous rotation)</li>
+                    <li><strong>S1</strong>: Right track (continuous rotation)</li>
+                    <li><strong>S2</strong>: Arm 1 (angular 270) — up: +135°, down: -120°, neutral: 0°</li>
+                    <li><strong>S3</strong>: Arm 2 (angular 270) — up: +100°, down: -40°, neutral: 0°</li>
+                </ul>
+
+                <h3>Controls</h3>
+                <table>
+                    <tr><th>Input</th><th>Action</th></tr>
+                    <tr><td><strong>D-Pad ↑</strong></td><td>Forward (full speed)</td></tr>
+                    <tr><td><strong>D-Pad ↓</strong></td><td>Backward (full speed)</td></tr>
+                    <tr><td><strong>D-Pad ←</strong></td><td>Rotate counter-clockwise</td></tr>
+                    <tr><td><strong>D-Pad →</strong></td><td>Rotate clockwise</td></tr>
+                    <tr><td><strong>Right Stick</strong></td><td>Fine-grain movement</td></tr>
+                    <tr><td><strong>LT</strong></td><td>Arm 1 up</td></tr>
+                    <tr><td><strong>LB</strong></td><td>Arm 1 down</td></tr>
+                    <tr><td><strong>RT</strong></td><td>Arm 2 up</td></tr>
+                    <tr><td><strong>RB</strong></td><td>Arm 2 down</td></tr>
+                    <tr><td><strong>Back</strong></td><td>Previous screen</td></tr>
+                    <tr><td><strong>Start</strong></td><td>Next screen</td></tr>
+                    <tr><td><strong>Keyboard</strong>: ↑ ↓ ← →</td><td>Same as D-Pad</td></tr>
+                    <tr><td><strong>Keyboard</strong>: Q/A</td><td>Arm 1 up/down</td></tr>
+                    <tr><td><strong>Keyboard</strong>: W/S</td><td>Arm 2 up/down</td></tr>
+                </table>
+
+                <h3>Full Code</h3>
+<pre><code>// ── Bot Configuration ────────────────────────────────────────
 const botServos = {
-  LEFT_TRACK: 0,    // S0 - Left track
-  RIGHT_TRACK: 1,   // S1 - Right track
-  ARM_1: 2,         // S2 - Arm 1
-  ARM_2: 3          // S3 - Arm 2
+  LEFT_TRACK: 0,    // S0 - continuous rotation
+  RIGHT_TRACK: 1,   // S1 - continuous rotation
+  ARM_1: 2,         // S2 - angular 270
+  ARM_2: 3          // S3 - angular 270
 };
 
-// Declare servo types
 attachServo(botServos.LEFT_TRACK, SERVO_TYPES.ROTATIONAL);
 attachServo(botServos.RIGHT_TRACK, SERVO_TYPES.ROTATIONAL);
 attachServo(botServos.ARM_1, SERVO_TYPES.ANGULAR_270);
 attachServo(botServos.ARM_2, SERVO_TYPES.ANGULAR_270);
 
-// Arm positions
-const ARM_1_POSITIONS = { UP: 135, DOWN: -120, NEUTRAL: 0 };
-const ARM_2_POSITIONS = { UP: 100, DOWN: -40, NEUTRAL: 0 };
+const ARM_1_POS = { UP: 135, DOWN: -120, NEUTRAL: 0 };
+const ARM_2_POS = { UP: 100, DOWN: -40, NEUTRAL: 0 };
 
-// ── Movement Functions ───────────────────────────────────────
-
-const moveForwardFull = () => {
+// ── Movement ─────────────────────────────────────────────────
+const moveForwardFull = () =&gt;
   setServoSpeeds([[botServos.LEFT_TRACK, 100], [botServos.RIGHT_TRACK, 100]]);
-};
-
-const moveBackwardFull = () => {
+const moveBackwardFull = () =&gt;
   setServoSpeeds([[botServos.LEFT_TRACK, -100], [botServos.RIGHT_TRACK, -100]]);
-};
-
-const rotateClockwiseFull = () => {
+const rotateClockwiseFull = () =&gt;
   setServoSpeeds([[botServos.LEFT_TRACK, 100], [botServos.RIGHT_TRACK, -100]]);
-};
-
-const rotateCounterClockwiseFull = () => {
+const rotateCounterClockwiseFull = () =&gt;
   setServoSpeeds([[botServos.LEFT_TRACK, -100], [botServos.RIGHT_TRACK, 100]]);
-};
-
-const stopTracks = () => {
+const stopTracks = () =&gt;
   setServoSpeeds([[botServos.LEFT_TRACK, 0], [botServos.RIGHT_TRACK, 0]]);
-};
 
-// ── Arm Control ──────────────────────────────────────────────
+// ── Arms ─────────────────────────────────────────────────────
+const arm1Up      = () =&gt; setServoAngle(botServos.ARM_1, ARM_1_POS.UP);
+const arm1Down    = () =&gt; setServoAngle(botServos.ARM_1, ARM_1_POS.DOWN);
+const arm1Neutral = () =&gt; setServoAngle(botServos.ARM_1, ARM_1_POS.NEUTRAL);
+const arm2Up      = () =&gt; setServoAngle(botServos.ARM_2, ARM_2_POS.UP);
+const arm2Down    = () =&gt; setServoAngle(botServos.ARM_2, ARM_2_POS.DOWN);
+const arm2Neutral = () =&gt; setServoAngle(botServos.ARM_2, ARM_2_POS.NEUTRAL);
 
-const arm1Up = () => setServoAngle(botServos.ARM_1, ARM_1_POSITIONS.UP);
-const arm1Down = () => setServoAngle(botServos.ARM_1, ARM_1_POSITIONS.DOWN);
-const arm1Neutral = () => setServoAngle(botServos.ARM_1, ARM_1_POSITIONS.NEUTRAL);
-
-const arm2Up = () => setServoAngle(botServos.ARM_2, ARM_2_POSITIONS.UP);
-const arm2Down = () => setServoAngle(botServos.ARM_2, ARM_2_POSITIONS.DOWN);
-const arm2Neutral = () => setServoAngle(botServos.ARM_2, ARM_2_POSITIONS.NEUTRAL);
-
-// ── Gamepad Input Processing ─────────────────────────────────
-
+// ── Gamepad ──────────────────────────────────────────────────
 function processGamepadInput(gamepad) {
-  // D-Pad: Full-speed movement
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_UP, 'UP', 
+  // D-Pad
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_UP, 'UP',
     moveForwardFull, stopTracks);
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_DOWN, 'DOWN', 
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_DOWN, 'DOWN',
     moveBackwardFull, stopTracks);
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_LEFT, 'LEFT', 
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_LEFT, 'LEFT',
     rotateCounterClockwiseFull, stopTracks);
-  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_RIGHT, 'RIGHT', 
+  handleGamepaButton(gamepad, XBOX_BUTTONS.DPAD_RIGHT, 'RIGHT',
     rotateClockwiseFull, stopTracks);
 
-  // Arm control
-  handleGamepaButton(gamepad, XBOX_BUTTONS.LB, 'LB', arm1Up, arm1Neutral);
-  handleGamepaButton(gamepad, XBOX_BUTTONS.RB, 'RB', arm2Up, arm2Neutral);
+  // Right Stick: fine-grain
+  const DEADZONE = 0.15;
+  const x = Math.abs(gamepad.axes[STICK_AXES.RIGHT_X]) &gt; DEADZONE
+            ? gamepad.axes[STICK_AXES.RIGHT_X] : 0;
+  const y = Math.abs(gamepad.axes[STICK_AXES.RIGHT_Y]) &gt; DEADZONE
+            ? gamepad.axes[STICK_AXES.RIGHT_Y] : 0;
+  if (x !== 0 || y !== 0) {
+    const fwd = -Math.round(y * 100), turn = Math.round(x * 100);
+    setServoSpeeds([
+      [botServos.LEFT_TRACK,  Math.max(-100, Math.min(100, fwd + turn))],
+      [botServos.RIGHT_TRACK, Math.max(-100, Math.min(100, fwd - turn))]
+    ]);
+  }
+
+  // Arms
+  handleGamepaButton(gamepad, XBOX_BUTTONS.LT, 'LT', arm1Up, arm1Neutral);
+  handleGamepaButton(gamepad, XBOX_BUTTONS.LB, 'LB', arm1Down, arm1Neutral);
+  handleGamepaButton(gamepad, XBOX_BUTTONS.RT, 'RT', arm2Up, arm2Neutral);
+  handleGamepaButton(gamepad, XBOX_BUTTONS.RB, 'RB', arm2Down, arm2Neutral);
+
+  // UI navigation
+  handleGamepaButton(gamepad, XBOX_BUTTONS.BACK, 'BACK', previousScreen, undefined);
+  handleGamepaButton(gamepad, XBOX_BUTTONS.START, 'START', nextScreen, undefined);
+}
+
+// ── Keyboard ─────────────────────────────────────────────────
+function onKeyDown(event) {
+  const key = event.key.toLowerCase();
+  if (['arrowup','arrowdown','arrowleft','arrowright'].includes(key))
+    event.preventDefault();
+  if (keyStates[key]) return;
+  keyStates[key] = true;
+
+  switch (key) {
+    case 'arrowup':    moveForwardFull(); break;
+    case 'arrowdown':  moveBackwardFull(); break;
+    case 'arrowleft':  rotateCounterClockwiseFull(); break;
+    case 'arrowright': rotateClockwiseFull(); break;
+    case 'q': arm1Up(); break;
+    case 'a': arm1Down(); break;
+    case 'w': arm2Up(); break;
+    case 's': arm2Down(); break;
+  }
+}
+
+function onKeyUp(event) {
+  const key = event.key.toLowerCase();
+  keyStates[key] = false;
+  switch (key) {
+    case 'arrowup': case 'arrowdown':
+    case 'arrowleft': case 'arrowright':
+      stopTracks(); break;
+    case 'q': case 'a': arm1Neutral(); break;
+    case 'w': case 's': arm2Neutral(); break;
+  }
 }</code></pre>
+            </section>
 
-        <h3>Control Summary:</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Input</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>D-Pad ↑</strong></td>
-              <td>Forward</td>
-            </tr>
-            <tr>
-              <td><strong>D-Pad ↓</strong></td>
-              <td>Backward</td>
-            </tr>
-            <tr>
-              <td><strong>D-Pad ←</strong></td>
-              <td>Rotate counter-clockwise</td>
-            </tr>
-            <tr>
-              <td><strong>D-Pad →</strong></td>
-              <td>Rotate clockwise</td>
-            </tr>
-            <tr>
-              <td><strong>LB</strong></td>
-              <td>Arm 1 up</td>
-            </tr>
-            <tr>
-              <td><strong>RB</strong></td>
-              <td>Arm 2 up</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+            <hr>
 
-      <!-- Footer -->
-      <div style="margin-top: 60px; padding-top: 30px; border-top: 2px solid #e5e7eb; color: #64748b; font-size: 14px;">
-        <p><strong>Still have questions?</strong></p>
-        <ul>
-          <li>📖 Check the <a href="#quick-reference">Function Quick Reference</a></li>
-          <li>💾 Copy from the <a href="#code-templates">Code Templates</a></li>
-          <li>🐛 Use the <a href="#debugging">Debugging Guide</a></li>
-          <li>📊 Read the <a href="#performance">Performance Section</a></li>
-        </ul>
-        <p style="margin-top: 20px;"><strong>Generated from K10 Bot JavaScript User Guide</strong></p>
-      </div>
-    </main>
-  </div>
+            <!-- ════════════════════════════════════════════════════════════════ -->
+            <section id="next-steps">
+                <h2>Where to Go Next?</h2>
+                <p>✅ <strong>You've finished the Main Guide!</strong></p>
 
-  <!-- Back to Top Button -->
-  <button class="back-to-top" id="backToTop">↑</button>
+                <h3>What You Can Do Now</h3>
+                <ul>
+                    <li>✅ Attach servos</li>
+                    <li>✅ Control with gamepad/keyboard</li>
+                    <li>✅ Debug when something breaks</li>
+                </ul>
 
-  <script>
-    // Smooth scrolling and sidebar navigation
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          // Update active state
-          document.querySelectorAll('#sidebar a').forEach(a => a.classList.remove('active'));
-          this.classList.add('active');
-        }
-      });
-    });
+                <h3>Pick a Path</h3>
+                <table>
+                    <tr><th>Path</th><th>Focus</th><th>Read</th></tr>
+                    <tr><td><strong>🕹️ Real-Time Control Expert</strong></td><td>Analog sticks, differential steering, low latency</td><td>Analog Stick template + Performance section</td></tr>
+                    <tr><td><strong>🤖 Complex Behaviors</strong></td><td>State machines, sequenced actions, animations</td><td>State Machine template + Async section</td></tr>
+                    <tr><td><strong>⚡ Performance Optimization</strong></td><td>Reduce overhead, batch commands, eliminate lag</td><td>Performance section + Best Practices</td></tr>
+                    <tr><td><strong>🛠️ Custom Hardware</strong></td><td>More servos (up to 6), different types</td><td>Code templates, Steps 0–1</td></tr>
+                </table>
 
-    // Back to top button
-    const backToTop = document.getElementById('backToTop');
-    window.addEventListener('scroll', () => {
-      if (window.scrollY > 300) {
-        backToTop.classList.add('show');
-      } else {
-        backToTop.classList.remove('show');
-      }
-    });
+                <h3>Quick Reference Shortcuts</h3>
+                <ul>
+                    <li>🔍 <strong>Find a function</strong>: <a href="#ref-functions">Function Quick Reference</a></li>
+                    <li>⏱️ <strong>Understand timing</strong>: <a href="#advanced-async">Asynchronous Behavior</a></li>
+                    <li>💾 <strong>Copy working code</strong>: <a href="#templates">Code Templates</a></li>
+                    <li>🐛 <strong>Fix something</strong>: <a href="#troubleshooting">Troubleshooting</a></li>
+                    <li>📊 <strong>Optimize code</strong>: <a href="#performance">Performance</a></li>
+                </ul>
+            </section>
 
-    backToTop.addEventListener('click', () => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
+            <hr>
 
-    // Update active sidebar link on scroll
-    window.addEventListener('scroll', () => {
-      const sections = document.querySelectorAll('section, h1');
-      let current = '';
-
-      sections.forEach(section => {
-        const sectionTop = section.offsetTop;
-        if (window.scrollY >= sectionTop - 200) {
-          current = section.id || section.parentElement.id;
-        }
-      });
-
-      document.querySelectorAll('#sidebar a').forEach(link => {
-        link.classList.remove('active');
-        if (current && link.getAttribute('href') === '#' + current) {
-          link.classList.add('active');
-        }
-      });
-    });
-
-    // Add copy button to code blocks
-    document.querySelectorAll('pre').forEach(pre => {
-      const button = document.createElement('button');
-      button.textContent = 'Copy';
-      button.style.cssText = `
-        position: absolute;
-        top: 5px;
-        right: 5px;
-        padding: 5px 10px;
-        background: #3b82f6;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-        z-index: 10;
-      `;
-
-      button.addEventListener('click', () => {
-        const code = pre.textContent;
-        navigator.clipboard.writeText(code).then(() => {
-          button.textContent = 'Copied!';
-          setTimeout(() => button.textContent = 'Copy', 2000);
-        });
-      });
-
-      pre.style.position = 'relative';
-      pre.appendChild(button);
-    });
-  </script>
+            <p style="text-align: center; color: #7f8c8d; margin-top: 50px;">
+                <strong>K10 Bot JavaScript Guide</strong> | Last Updated: March 2026
+            </p>
+        </div>
+    </div>
 </body>
-
 </html>

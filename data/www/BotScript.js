@@ -9,10 +9,10 @@
 //
 // 📌 IMPORTANT: Two different servo control modes exist:
 //
-// MODE 1: REQUEST-RESPONSE (BotScript.js - UI Wrapper Functions)
-//   Functions: setServoAnglesUI(), setServoSpeedsUI(), attachServos(), detachServos()
-//   Behavior: Waits for response, shows status feedback, gets values from HTML inputs
-//   Use case: UI buttons, manual control with visual feedback
+// MODE 1: REQUEST-RESPONSE (BotScript.js - Confirmed Control Functions)
+//   Functions: requestSetServoAngles(pairs[]), requestSetServoSpeeds(pairs[]), attachServos(), detachServos()
+//   Behavior: Waits for response, shows status feedback, returns response code
+//   Use case: Sequential operations, scripted setup, any flow needing confirmation
 //
 // MODE 2: FIRE-AND-FORGET (BotScriptActions.js - Direct Control)
 //   Functions: attachServo(channel, type), setServoAngle(channel, angle),
@@ -878,54 +878,68 @@ function handleServoAttachResponse(respCode, mask, type) {
 // ── Servo Control ─────────────────────────────────────────────────────────────
 
 /**
- * Set servo angles for angular servos (0x24) - UI Version
- * Sets all selected servos to the same angle value
- * Request-response: gets values from HTML sliders, shows status feedback
- * Use setServoAngle() from BotScriptActions.js for fire-and-forget direct control
+ * Set servo angles for angular servos (0x24) with request-response.
+ * Sends the command and waits for bot confirmation.
+ * Use setServoAngle() from BotScriptActions.js for fire-and-forget direct control.
+ *
+ * @param {Array<[number, number]>} pairs - Array of [channel, angle] pairs
+ *   channel: servo channel number (0-7)
+ *   angle: angle in degrees (0 to 270 depending on type)
+ * @returns {Promise<number|null>} BOT_RESP code on success, null on error
+ * @example
+ *   const resp = await requestSetServoAngles([[2, 90], [3, 135]]);
+ *   if (resp === BOT_RESP.OK) _scriptLog('✓ Angles set');
  */
-async function setServoAnglesUI() {
+async function requestSetServoAngles(pairs) {
   if (!isMasterRegistered) {
     showStatus('Must be registered as master to control servos', true);
-    return;
+    return null;
   }
-  
+
+  if (!Array.isArray(pairs) || pairs.length === 0) {
+    showStatus('No servo pairs provided', true);
+    return null;
+  }
+
   try {
     showStatus('Setting servo angles...', false);
-    
-    // Get the angle value from the first slider
-    const angle = parseInt(document.getElementById('angle0').value);
-    
-    // Get selected servo mask
-    const mask = getServoMask();
-    if (mask === 0) {
-      showStatus('Please select at least one servo channel', true);
-      return;
+
+    // Protocol: SET_SERVOS_ANGLE [servo_mask:u8] [angle_hi:u8] [angle_lo:u8]
+    // Group channels that share the same angle into one packet.
+    const angleMap = new Map();
+    for (const [channel, angle] of pairs) {
+      const rounded = Math.round(angle);
+      angleMap.set(rounded, (angleMap.get(rounded) || 0) | (1 << channel));
     }
-    
-    // Convert angle to big-endian i16 format
-    const angleValue = Math.round(angle);
-    const angleHi = (angleValue >> 8) & 0xFF;
-    const angleLo = angleValue & 0xFF;
-    
-    // Build packet: SET_SERVOS_ANGLE [servo_mask] [angle_hi] [angle_lo]
-    const packet = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVOS_ANGLE, mask, angleHi, angleLo]);
-    
-    // Send WS packet
-    const response = await sendWSPacket(packet);
-    
-    // Parse response: 0x24 + resp_code
-    if (response && response.length >= 2) {
-      const respCode = response[1];
-      handleServoAngleResponse(respCode);
-    } else {
-      showStatus('Invalid response from bot', true);
-      updateLastResponse('Invalid response');
+
+    let lastRespCode = null;
+
+    for (const [angle, mask] of angleMap) {
+      const angleHi = (angle >> 8) & 0xFF;
+      const angleLo = angle & 0xFF;
+      const packet = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVOS_ANGLE, mask & 0xFF, angleHi, angleLo]);
+      const response = await sendWSPacket(packet);
+
+      if (response && response.length >= 2) {
+        lastRespCode = response[1];
+        handleServoAngleResponse(lastRespCode);
+        if (lastRespCode !== BOT_RESP.OK) {
+          return lastRespCode;
+        }
+      } else {
+        showStatus('Invalid response from bot', true);
+        updateLastResponse('Invalid response');
+        return null;
+      }
     }
-    
+
+    return lastRespCode;
+
   } catch (error) {
     console.error('Set servo angles failed:', error);
     showStatus('Failed to set angles: ' + error.message, true);
     updateLastResponse('Error: ' + error.message);
+    return null;
   }
 }
 
@@ -965,76 +979,65 @@ function centerAllAngles() {
 }
 
 /**
- * Set servo speeds for rotational servos (0x22) - UI Version
- * Request-response: gets values from HTML sliders, shows status feedback
- * Use setServoSpeeds(pairs[]) from BotScriptActions.js for fire-and-forget direct control
+ * Set servo speeds for rotational servos (0x23) with request-response.
+ * Sends the command and waits for bot confirmation.
+ * Use setServoSpeeds(pairs[]) from BotScriptActions.js for fire-and-forget direct control.
+ *
+ * @param {Array<[number, number]>} pairs - Array of [channel, speed] pairs
+ *   channel: servo channel number (0-7)
+ *   speed: speed value (-100 to +100)
+ * @returns {Promise<number|null>} BOT_RESP code on success, null on error
+ * @example
+ *   const resp = await requestSetServoSpeeds([[0, 100], [1, -50]]);
+ *   if (resp === BOT_RESP.OK) _scriptLog('✓ Speeds set');
  */
-async function setServoSpeedsUI() {
+async function requestSetServoSpeeds(pairs) {
   if (!isMasterRegistered) {
     showStatus('Must be registered as master to control servos', true);
-    return;
+    return null;
   }
-  
+
+  if (!Array.isArray(pairs) || pairs.length === 0) {
+    showStatus('No servo pairs provided', true);
+    return null;
+  }
+
   try {
     showStatus('Setting servo speeds...', false);
-    
-    // Build packet: 0x23 [servo_mask] [speed]
-    let mask = 0;
-    const speeds = [];
-    
-    // Always send all 8 speed bytes (protocol requirement)
-    for (let i = 0; i < 8; i++) {
-      let speed = 0;
-      
-      if (i >= 4 && i <= 7) {
-        // Speed channels (4-7)
-        const enabled = document.getElementById(`speed${i}-enable`).checked;
-        if (enabled) {
-          mask |= (1 << i);
-          speed = parseInt(document.getElementById(`speed${i}`).value);
+
+    // Protocol: SET_SERVOS_SPEED [servo_mask:u8] [speed:i8]
+    // Group channels that share the same speed into one packet.
+    const speedMap = new Map();
+    for (const [channel, speed] of pairs) {
+      speedMap.set(speed, (speedMap.get(speed) || 0) | (1 << channel));
+    }
+
+    let lastRespCode = null;
+
+    for (const [speed, mask] of speedMap) {
+      const packet = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVOS_SPEED, mask & 0xFF, speed & 0xFF]);
+      const response = await sendWSPacket(packet);
+
+      if (response && response.length >= 2) {
+        lastRespCode = response[1];
+        handleServoSpeedResponse(lastRespCode, mask);
+        if (lastRespCode !== BOT_RESP.OK) {
+          return lastRespCode;
         }
-      }
-      
-      // Encode: speed + 128
-      const encoded = speed + 128;
-      speeds.push(encoded);
-    }
-    
-    if (mask === 0) {
-      showStatus('Please enable at least one channel', true);
-      return;
-    }
-    
-    // Get speed value from first slider (all selected channels get same speed)
-    let speed = 0;
-    for (let i = 4; i < 8; i++) {
-      const slider = document.getElementById(`speed${i}`);
-      if (slider) {
-        speed = parseInt(slider.value);
-        break;
+      } else {
+        showStatus('Invalid response from bot', true);
+        updateLastResponse('Invalid response');
+        return null;
       }
     }
-    
-    // Build packet: SET_SERVOS_SPEED [servo_mask] [speed]
-    // speed is -100 to +100, encoded as-is (i8)
-    const packet = new Uint8Array([MOTOR_SERVO_ACTION.SET_SERVOS_SPEED, mask, speed & 0xFF]);
-    
-    // Send WS packet
-    const response = await sendWSPacket(packet);
-    
-    // Parse response: 0x23 + resp_code
-    if (response && response.length >= 2) {
-      const respCode = response[1];
-      handleServoSpeedResponse(respCode, mask);
-    } else {
-      showStatus('Invalid response from bot', true);
-      updateLastResponse('Invalid response');
-    }
-    
+
+    return lastRespCode;
+
   } catch (error) {
     console.error('Set servo speeds failed:', error);
     showStatus('Failed to set speeds: ' + error.message, true);
     updateLastResponse('Error: ' + error.message);
+    return null;
   }
 }
 

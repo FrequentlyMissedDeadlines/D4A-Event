@@ -324,13 +324,13 @@ setServoSpeeds([[0, 100]]);  // Returns immediately
 
 ### Mode 2: Request-Response 📊 (Feedback)
 ```javascript
-await setServoSpeedsUI();    // Waits for response
-// Use in: Button clicks (needs feedback)
+const resp = await requestSetServoSpeeds([[0, 100]]);  // Waits for response
+// Use when you need confirmation
 ```
 
 **Quick Rule:**
 - **🕹️ Gamepad/keyboard?** → Use `setServoSpeeds()`
-- **🔘 Button click?** → Use `setServoSpeedsUI()`
+- **🔘 Need confirmation?** → Use `requestSetServoSpeeds(pairs[])`
 
 ---
 
@@ -798,8 +798,8 @@ Quick lookup tables and reference material. Use when you need to find something 
 
 | Function | Use Case | Module | Example | Returns |
 |----------|----------|--------|---------|---------|
-| `setServoSpeedsUI()` | Button click with feedback | BotScript.js | `setServoSpeedsUI()` | Promise |
-| `setServoAnglesUI()` | Button click with feedback | BotScript.js | `setServoAnglesUI()` | Promise |
+| `requestSetServoSpeeds(pairs[])` | Confirmed speed control | BotScript.js | `await requestSetServoSpeeds([[0,100]])` | Promise<number\|null> |
+| `requestSetServoAngles(pairs[])` | Confirmed angle control | BotScript.js | `await requestSetServoAngles([[2,90]])` | Promise<number\|null> |
 | `attachServos()` | UI-based servo attachment | BotScript.js | `attachServos()` | Promise |
 | `getBattery()` | Query battery level | BotScript.js | `getBattery()` | Promise |
 
@@ -839,7 +839,7 @@ Quick lookup tables and reference material. Use when you need to find something 
 → Use `setServoSpeeds()` or `setServoAngle()` (fire-and-forget)
 
 **I want to move a servo and see confirmation:**
-→ Use `setServoSpeedsUI()` or `setServoAnglesUI()` (request-response)
+→ Use `requestSetServoSpeeds(pairs[])` or `requestSetServoAngles(pairs[])` (request-response)
 
 **I want gamepad buttons to trigger actions:**
 → Override `CUSTOMCONTROL.processGamepadInput()` and call your servo functions
@@ -928,14 +928,14 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 
 ### Request-Response Mode 📊 (Slower but Safe)
 
-**Functions**: `setServoSpeedsUI()`, `setServoAnglesUI()`, `attachServos()`, `getBattery()`
+**Functions**: `requestSetServoSpeeds(pairs[])`, `requestSetServoAngles(pairs[])`, `attachServos()`, `getBattery()`
 
 **Timeline**: 100-500 milliseconds (depends on network)
 
 ```
 Your Code                   Bot
 ═════════════════════════════════════════════════════════════
-setServoSpeedsUI()
+requestSetServoSpeeds([[0, 100]])
 │
 ├─ Send command packet ────────────────→ (WiFi, ~50-200ms)
 │
@@ -959,7 +959,7 @@ setServoSpeedsUI()
 **Execution flow in your code:**
 ```javascript
 _scriptLog('Before call');
-await setServoSpeedsUI();    // Waits for response!
+const resp = await requestSetServoSpeeds([[0, 100]]);  // Waits for response!
 _scriptLog('After call');    // Prints AFTER response arrives
 
 // Output:
@@ -981,7 +981,7 @@ async function onApplyButtonClicked() {
   _scriptLog('Setting servo speeds...');
   
   try {
-    await setServoSpeedsUI();  // Waits for response
+    const resp = await requestSetServoSpeeds([[0, 100]]);  // Waits for response
     _scriptLog('✓ Successfully applied speeds');
     // Show success message to user
   } catch (error) {
@@ -1001,7 +1001,7 @@ async function onApplyButtonClicked() {
 | **Blocks execution** | No - returns immediately | Yes - waits for response |
 | **Confirms success** | No - just sends | Yes - gets OK from bot |
 | **Use case** | Gamepad/keyboard loops | Button clicks, setup |
-| **Functions** | setServoSpeeds, setServoAngle | setServoSpeedsUI, setServoAnglesUI |
+| **Functions** | setServoSpeeds, setServoAngle | requestSetServoSpeeds, requestSetServoAngles |
 | **Best for** | Real-time control | User interaction |
 
 ---
@@ -1028,7 +1028,7 @@ _scriptLog('Speed command sent (will apply asynchronously)');
 ```javascript
 // DON'T DO THIS - too slow!
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  await setServoSpeedsUI();  // Waits 100-500ms each time
+  await requestSetServoSpeeds([[0, 100]]);  // Waits 100-500ms each time
   // Gamepad polling can't keep up!
 };
 ```
@@ -1047,7 +1047,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
 **❌ Mistake 3: Forgetting `await` on request-response**
 ```javascript
 async function setupServos() {
-  setServoSpeedsUI();  // Missing await!
+  requestSetServoSpeeds([[0, 100]]);  // Missing await!
   _scriptLog('Done');  // Prints immediately, before response
 }
 ```
@@ -1055,7 +1055,7 @@ async function setupServos() {
 **✅ Correct:**
 ```javascript
 async function setupServos() {
-  await setServoSpeedsUI();  // Wait for response
+  await requestSetServoSpeeds([[0, 100]]);  // Wait for response
   _scriptLog('Done');  // Prints after response arrives
 }
 ```
@@ -1082,7 +1082,7 @@ async function setupBot() {
   
   _scriptLog('All servos attached, testing movement...');
   
-  await setServoSpeedsUI();  // Wait for this before continuing
+  await requestSetServoSpeeds([[0, 100]]);  // Wait for this before continuing
   
   _scriptLog('✓ Setup complete!');
 }
@@ -1141,7 +1141,7 @@ Here's what to expect from the K10 bot system:
   - Network: 50-200ms back
   - UI update: 16ms
 - **Performance**: Slight delay is normal and expected
-- **Strategy**: Use request-response (setServoSpeedsUI) for feedback
+- **Strategy**: Use request-response (requestSetServoSpeeds) for feedback
 
 **Sequential Commands** 📋
 - Expected time for 3 operations: **300-1500ms** total
@@ -1186,7 +1186,7 @@ async function setupBot() {
   _scriptLog('Setting up...');
   
   // Use request-response to confirm each step
-  await setServoSpeedsUI();
+  await requestSetServoSpeeds([[0, 100]]);
   _scriptLog('✓ Speeds set');
   
   await delay(500);
@@ -1205,7 +1205,7 @@ async function setupBot() {
 ```javascript
 // ❌ BAD - will cause lag!
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {
-  await setServoSpeedsUI();  // Waits 100-500ms each time
+  await requestSetServoSpeeds([[0, 100]]);  // Waits 100-500ms each time
   // Gamepad polling can't keep up
   // Control feels sluggish and unresponsive
 };
@@ -1359,9 +1359,9 @@ setServoSpeeds([[0, speed0], [1, speed1]]);  // One network packet
 **Batch Setup Operations**
 ```javascript
 // ❌ BAD - multiple waits
-await setServoSpeedsUI();
+await requestSetServoSpeeds([[0, 100]]);
 await delay(100);
-await setServoAnglesUI();
+await requestSetServoAngles([[2, 90]]);
 await delay(100);
 // Takes 200ms+ just for delays
 

@@ -11,7 +11,7 @@
 // 📌 IMPORTANT: Two different servo control modes exist (choose carefully):
 //
 // MODE 1: REQUEST-RESPONSE (BotScript.js functions ending in "UI")
-//   Functions: setServoAnglesUI(), setServoSpeedsUI(), attachServos()
+//   Functions: requestSetServoAngles(pairs[]), requestSetServoSpeeds(pairs[]), attachServos()
 //   Behavior: Waits for response, shows status, gets values from HTML inputs
 //   Use case: UI buttons in WebSocketJoystick.html, manual control
 //
@@ -34,7 +34,7 @@
 //   - startHeartbeat(), stopHeartbeat() — Connection keepalive (auto-started)
 //   - setBotName(), getBattery() — Bot info queries
 //   - setScreen(), nextScreen(), previousScreen() — UI screen navigation
-//   - Request-response servo functions: setServoAnglesUI(), setServoSpeedsUI()
+//   - Request-response servo functions: requestSetServoAngles(), requestSetServoSpeeds()
 //
 // HOW TO USE:
 // 1. Override CUSTOMCONTROL hooks in your HTML page:
@@ -43,7 +43,7 @@
 //    - CUSTOMCONTROL.processGamepadInput(gamepad) — gamepad input
 // 2. Call fire-and-forget servo functions from within those hooks
 // 3. Functions return immediately (no waiting for responses)
-// 4. Use setServoSpeedsUI() from BotScript.js if you need status feedback
+// 4. Use requestSetServoSpeeds(pairs[]) from BotScript.js if you need confirmed response
 //
 // ═════════════════════════════════════════════════════════════════════════════
 

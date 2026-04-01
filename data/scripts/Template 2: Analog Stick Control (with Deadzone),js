@@ -1,0 +1,35 @@
+//Template 2: Analog Stick Control (with Deadzone)
+//Use this for smooth, analog left stick control with deadzone.
+
+const LEFT_WHEEL = 0;
+const RIGHT_WHEEL = 1;
+const DEADZONE = 0.15;  // Prevent stick drift
+
+function setSpeed(leftSpeed, rightSpeed) {
+  setServoSpeeds([[LEFT_WHEEL, leftSpeed], [RIGHT_WHEEL, rightSpeed]]);
+}
+
+// Attach servos
+attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
+attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
+_scriptLog('✓ Analog stick control ready');
+
+// Handle analog stick input
+CUSTOMCONTROL.processGamepadInput = function(gamepad) {
+  let stickX = gamepad.axes[STICK_AXES.LEFT_X];
+  let stickY = gamepad.axes[STICK_AXES.LEFT_Y];
+  
+  // Apply deadzone
+  if (Math.abs(stickX) < DEADZONE) stickX = 0;
+  if (Math.abs(stickY) < DEADZONE) stickY = 0;
+  
+  // Convert to motor speeds
+  const leftSpeed = Math.round((stickY - stickX) * 100);
+  const rightSpeed = Math.round((stickY + stickX) * 100);
+  
+  // Clamp to valid range
+  const leftClamped = Math.max(-100, Math.min(100, leftSpeed));
+  const rightClamped = Math.max(-100, Math.min(100, rightSpeed));
+  
+  setSpeed(leftClamped, rightClamped);
+};

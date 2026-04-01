@@ -136,14 +136,13 @@
               
                 
               <div style="display: flex; gap: 8px; align-items: center;">
-                <label class="control-label" for="boardScriptSlot">ESP32 FS</label>
+                <label class="control-label" for="boardScriptSlot">Board examples</label>
                 <select id="boardScriptSlot" class="input-field" style="flex: 1; min-width: 150px;"
                         onchange="loadScriptFromBoardSlot()" title="Load script from board"></select>
                 <button onclick="boardListScripts()" class="btn btn-primary" title="Refresh list from board">🔄 Refresh</button>
               
                 <button onclick="boardLoadScript()" class="btn btn-primary">📥 Load</button>
-                <button onclick="boardSaveScript()" class="btn btn-primary">📤 Save</button>
-                <button onclick="boardDeleteScript()" class="btn btn-danger">🗑️ Delete</button>
+               
               </div>
             </div>
 

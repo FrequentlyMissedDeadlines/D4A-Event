@@ -46,7 +46,7 @@
 // ── WebSocket Configuration ───────────────────────────────────────────────────
 
 // Global connection parameters (set by getBotControl or HTML form)
-let gBotIp = '';      // e.g., "192.168.1.178"
+let gBotIp = '';      // e.g., "192.168.4.1"
 let gBotPort = '';    // e.g., "80"
 
 let ws = null;  // WebSocket connection to bridge
@@ -381,14 +381,14 @@ function closeWebSocket() {
 /**
  * Unified function to connect to WebSocket and register as master
  * 
- * @param {string} ip - Bot IP address (e.g., "192.168.1.178")
+ * @param {string} ip - Bot IP address (e.g., "192.168.4.1")
  * @param {string|number} port - WebSocket port (e.g., "80" or 80)
  * @param {string} masterToken - 5-character master token (e.g., "abc12")
  * @returns {Promise<boolean>} - true if successfully connected and registered, false otherwise
  * 
  * @example
  * // Simple usage - await connection and registration
- * const success = await getBotControl("192.168.1.178", "80", "abc12");
+ * const success = await getBotControl("192.168.4.1", "80", "abc12");
  * if (success) {
  *   _scriptLog('✓ Connected and registered as master');
  * } else {
@@ -398,7 +398,7 @@ function closeWebSocket() {
  * @example
  * // With error handling
  * try {
- *   const connected = await getBotControl("192.168.1.178", 80, "abc12");
+ *   const connected = await getBotControl("192.168.4.1", 80, "abc12");
  *   if (connected) {
  *     // You can now use servo functions
  *     attachServo(0, SERVO_TYPES.ROTATIONAL);

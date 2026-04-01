@@ -405,7 +405,7 @@
                 <h3 id="step2-register">Step 2: Register as Master</h3>
                 <p>In your code, use the <code>getBotControl(ip, port)</code> function to connect and register in one call:</p>
 <pre><code>// Connect to bot and register as master - all in one line!
-await getBotControl('192.168.1.178', '81', 'mytoken');
+await getBotControl('192.168.4.1', '81', 'mytoken');
 _scriptLog('✓ Connected and registered!');</code></pre>
                 <p><strong>Why?</strong> You must register before controlling servos. This prevents accidental commands.</p>
 
@@ -516,7 +516,7 @@ const x = { a: 1 b: 2 };    // ❌ Wrong: missing comma</code></pre>
                     <strong>Symptom</strong>: Status shows "Registered: No" or "Connected: No"
                     <p><strong>Solution:</strong></p>
                     <ol>
-                        <li>✅ Fill in Bot IP → Default: <code>192.168.1.178</code></li>
+                        <li>✅ Fill in Bot IP → Default: <code>192.168.4.1</code></li>
                         <li>✅ Fill in WebSocket Port → Default: <code>81</code></li>
                         <li>✅ Enter Master Token → Any 5 letters/numbers (e.g., <code>abc12</code>)</li>
                         <li>✅ Click "Register as Master" → Wait for status change</li>
@@ -661,7 +661,7 @@ setServoSpeeds([[0, 150]]);    // ❌ Too high</code></pre>
 
                 <h2>One-Line Connection</h2>
 <pre><code>// Connect to bot, set IP/port, and register as master - all at once!
-await getBotControl('192.168.1.178', '81', 'mytoken');
+await getBotControl('192.168.4.1', '81', 'mytoken');
 
 // Now you can immediately control servos without any UI clicks
 attachServo(0, SERVO_TYPES.ROTATIONAL);
@@ -679,7 +679,7 @@ _scriptLog('✓ Connected and controlling servo!');</code></pre>
                 <h3 id="getbotcontrol-sig">Function Signature</h3>
 <pre><code>/**
  * Connect to bot and register as master (programmatic approach)
- * @param {string} ip - Bot IP address (e.g., "192.168.1.178")
+ * @param {string} ip - Bot IP address (e.g., "192.168.4.1")
  * @param {string} port - WebSocket port (e.g., "80", "81")
  * @param {string} masterToken - Master authentication token (e.g., "abc12")
  * @returns {Promise&lt;void&gt;} - Resolves when connected and registered
@@ -691,12 +691,12 @@ async function getBotControl(ip, port, masterToken)</code></pre>
 
                 <h4>Simple Connection</h4>
 <pre><code>// Basic usage - connect to bot and register
-await getBotControl('192.168.1.178', '81', 'abc12');
+await getBotControl('192.168.4.1', '81', 'abc12');
 _scriptLog('✓ Ready to control!');</code></pre>
 
                 <h4>With Error Handling</h4>
 <pre><code>try {
-  await getBotControl('192.168.1.178', '81', 'mytoken');
+  await getBotControl('192.168.4.1', '81', 'mytoken');
   _scriptLog('✓ Connected successfully');
   
   // Now control servos
@@ -707,7 +707,7 @@ _scriptLog('✓ Ready to control!');</code></pre>
 }</code></pre>
 
                 <h4>Dynamic IP from Variable</h4>
-<pre><code>const botIp = '192.168.1.178';
+<pre><code>const botIp = '192.168.4.1';
 const botPort = '81';
 const token = 'mytoken';
 
@@ -716,7 +716,7 @@ _scriptLog('✓ Connected to ' + botIp);</code></pre>
 
                 <h4>Multiple Bots (Sequential)</h4>
 <pre><code>// Control bot 1
-await getBotControl('192.168.1.178', '81', 'bot1token');
+await getBotControl('192.168.4.1', '81', 'bot1token');
 setServoSpeeds([[0, 100]]);
 await delay(2000);
 
@@ -760,7 +760,7 @@ setServoSpeeds([[1, 50]]);</code></pre>
 
                 <h3>Global Variables</h3>
                 <p><code>getBotControl()</code> sets these globals that all other functions use:</p>
-<pre><code>gBotIp = '192.168.1.178'    // Bot IP address
+<pre><code>gBotIp = '192.168.4.1'    // Bot IP address
 gBotPort = '81'               // WebSocket port</code></pre>
                 <p>All subsequent calls to functions like <code>setServoSpeeds()</code>, <code>attachServo()</code>, etc. will use these globals automatically.</p>
             </section>
@@ -1390,7 +1390,7 @@ CUSTOMCONTROL.processGamepadInput = function(gamepad) {
                 <h4>Connection &amp; Setup</h4>
                 <table>
                     <tr><th>Function</th><th>Call When</th><th>Module</th><th>Example</th><th>Returns</th></tr>
-                    <tr><td><code>getBotControl(ip, port, token)</code></td><td><strong>Easiest programmatic connect</strong></td><td>BotScript.js</td><td><code>await getBotControl('192.168.1.178', '81', 'abc12')</code></td><td>Promise</td></tr>
+                    <tr><td><code>getBotControl(ip, port, token)</code></td><td><strong>Easiest programmatic connect</strong></td><td>BotScript.js</td><td><code>await getBotControl('192.168.4.1', '81', 'abc12')</code></td><td>Promise</td></tr>
                     <tr><td><code>registerMaster(token)</code></td><td><strong>FIRST</strong> – before anything (alternative)</td><td>BotScript.js</td><td><code>registerMaster("abc12")</code></td><td>Promise</td></tr>
                     <tr><td><code>unregisterMaster()</code></td><td>Cleanup, when done</td><td>BotScript.js</td><td><code>unregisterMaster()</code></td><td>Promise</td></tr>
                     <tr><td><code>attachServo(channel, type)</code></td><td>Setup, before moving</td><td>BotScriptActions.js</td><td><code>attachServo(0, SERVO_TYPES.ROTATIONAL)</code></td><td>void</td></tr>

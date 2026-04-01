@@ -420,7 +420,7 @@ void AmakerBotService::checkHeartbeatTimeout()
 std::string AmakerBotService::generateRandomToken()
 {
     constexpr const char charset[] =
-        "0";
+        "D4A";
     constexpr int charset_size = sizeof(charset) - 1;
 
     std::string token;

@@ -58,7 +58,7 @@ In this case, connect to this access point `amaker-xxxxxx`, and open the [board 
 In your code, use the `getBotControl(ip, port )` function to connect and register in one call:
 ```javascript
 // Connect to bot and register as master - all in one line!
-await getBotControl('192.168.1.178', '81', 'mytoken');
+await getBotControl('192.168.4.1', '81', 'mytoken');
 _scriptLog('✓ Connected and registered!');
 ```
 
@@ -203,7 +203,7 @@ This guide is organized by **complexity level** with time estimates. Pick where 
 
 **Solution:**
 
-1. ✅ **Fill in Bot IP** → Default: `192.168.1.178`
+1. ✅ **Fill in Bot IP** → Default: `192.168.4.1`
 2. ✅ **Fill in WebSocket Port** → Default: `81`
 3. ✅ **Enter Master Token** → Any 5 letters/numbers (e.g., `abc12`)
 4. ✅ **Click "Register as Master"** → Wait for status change
@@ -393,7 +393,7 @@ Instead of clicking the Control Panel buttons, call this function:
 
 ```javascript
 // Connect to bot, set IP/port, and register as master - all at once!
-await getBotControl('192.168.1.178', '81', 'mytoken');
+await getBotControl('192.168.4.1', '81', 'mytoken');
 
 // Now you can immediately control servos without any UI clicks
 attachServo(0, SERVO_TYPES.ROTATIONAL);
@@ -414,11 +414,11 @@ _scriptLog('✓ Connected and controlling servo!');
 ```javascript
 // Step 1: Set connection parameters programmatically
 // (Instead of reading from HTML form)
-gBotIp = '192.168.1.178';
+gBotIp = '192.168.4.1';
 gBotPort = '81';
 
 // Step 2: Initialize WebSocket connection
-// (Establishes ws://192.168.1.178:81/ws)
+// (Establishes ws://192.168.4.1:81/ws)
 await initializeWebSocket();
 
 // Step 3: Register as Master
@@ -433,7 +433,7 @@ await registerMaster('mytoken');
 ```javascript
 /**
  * Connect to bot and register as master (programmatic approach)
- * @param {string} ip - Bot IP address (e.g., "192.168.1.178")
+ * @param {string} ip - Bot IP address (e.g., "192.168.4.1")
  * @param {string} port - WebSocket port (e.g., "81")
  * @param {string} masterToken - Master authentication token (e.g., "abc12")
  * @returns {Promise<void>} - Resolves when connected and registered
@@ -447,14 +447,14 @@ async function getBotControl(ip, port, masterToken)
 ### Simple Connection
 ```javascript
 // Basic usage - connect to bot and register
-await getBotControl('192.168.1.178', '81', 'abc12');
+await getBotControl('192.168.4.1', '81', 'abc12');
 _scriptLog('✓ Ready to control!');
 ```
 
 ### With Error Handling
 ```javascript
 try {
-  await getBotControl('192.168.1.178', '81', 'mytoken');
+  await getBotControl('192.168.4.1', '81', 'mytoken');
   _scriptLog('✓ Connected successfully');
   
   // Now control servos
@@ -468,7 +468,7 @@ try {
 
 ### Dynamic IP from Variable
 ```javascript
-const botIp = '192.168.1.178';  // Could come from config, user input, etc.
+const botIp = '192.168.4.1';  // Could come from config, user input, etc.
 const botPort = '81';
 const token = 'mytoken';
 
@@ -479,7 +479,7 @@ _scriptLog('✓ Connected to ' + botIp);
 ### Multiple Bots (Sequential)
 ```javascript
 // Control bot 1
-await getBotControl('192.168.1.178', '81', 'bot1token');
+await getBotControl('192.168.4.1', '81', 'bot1token');
 setServoSpeeds([[0, 100]]);
 await delay(2000);
 
@@ -521,7 +521,7 @@ setServoSpeeds([[1, 50]]);
 `getBotControl()` sets these globals that all other functions use:
 
 ```javascript
-gBotIp = '192.168.1.178'    // Bot IP address
+gBotIp = '192.168.4.1'    // Bot IP address
 gBotPort = '81'               // WebSocket port
 ```
 
@@ -781,7 +781,7 @@ Quick lookup tables and reference material. Use when you need to find something 
 
 | Function | Call When | Module | Example | Returns |
 |----------|-----------|--------|---------|---------|
-| `getBotControl(ip, port, token)` | **Easiest way to connect programmatically** | BotScript.js | `await getBotControl('192.168.1.178', '81', 'abc12')` | Promise |
+| `getBotControl(ip, port, token)` | **Easiest way to connect programmatically** | BotScript.js | `await getBotControl('192.168.4.1', '81', 'abc12')` | Promise |
 | `registerMaster(token)` | **FIRST** - before anything (alternative to getBotControl) | BotScript.js | `registerMaster("abc12")` | Promise |
 | `unregisterMaster()` | Cleanup, when done | BotScript.js | `unregisterMaster()` | Promise |
 | `attachServo(channel, type)` | Setup, before moving | BotScriptActions.js | `attachServo(0, SERVO_TYPES.ROTATIONAL)` | void |

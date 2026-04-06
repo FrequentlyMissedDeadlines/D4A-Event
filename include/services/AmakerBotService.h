@@ -30,6 +30,7 @@
  * | 0x47   | 0x07 | (none)                       | [0x47][resp_ok][ssid_len:1B][ssid…][pass_len:1B][pass…] |
  * | 0x48   | 0x08 | [ssid_len:1B][ssid…][pass_len:1B][pass…] (master) | [0x48][resp_ok or err] |
  * | 0x49   | 0x09 | (none, master only)          | [0x49][resp_ok or resp_not_master]  |
+ * | 0x4A   | 0x0A | (none, master only)          | (no reply; emergency reboot)        |
  */
 class AmakerBotService : public IsServiceInterface,
                          public IsBotActionHandlerInterface
@@ -110,6 +111,11 @@ public:
 
     /** @return Current bot name (default: "K10-Bot"). */
     std::string getBotName() const;
+
+    /**
+     * @brief Stop outputs via the emergency callback, then reboot the board.
+     */
+    void reboot();
 
     /**
      * @brief Register a new bot message handler.

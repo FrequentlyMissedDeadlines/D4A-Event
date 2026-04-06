@@ -728,7 +728,7 @@ Refer to existing service implementations:
 - [CameraService](src/services/camera/CameraService.h) - Camera frame streaming
 - [UDPService](src/services/UDPService.h) - UDP communication
 - [SettingsService](src/services/SettingsService.h) - Configuration persistence
-- [DFR1216Service](src/services/DFR1216Service.h) - UniHiker expansion board interface
+- [DFR1216Service](src/services/DFR1216Service.h) - UniHiker Extension board interface
 - [MusicService](src/services/MusicService.h) - Audio/buzzer control
 
 ---

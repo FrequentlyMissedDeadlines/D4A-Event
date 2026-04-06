@@ -23,6 +23,7 @@
 // ✅ USER-FACING FUNCTIONS (available after registerMaster):
 //   - registerMaster(token) — Register as master controller [CALL THIS FIRST]
 //   - unregisterMaster() — Unregister from master
+//   - rebootBot() — Emergency stop + reboot the board
 //   - setBotName(name) — Set bot display name
 //   - getBattery() — Query battery level
 //   - setScreen(screenIndex), nextScreen(), previousScreen() — Screen navigation
@@ -100,7 +101,8 @@ const WS_ACTION = {
   MASTER_REGISTER:   0x41, // AmakerBotService CMD_REGISTER
   MASTER_UNREGISTER: 0x42, // AmakerBotService CMD_UNREGISTER
   HEARTBEAT:         0x43, // AmakerBotService CMD_HEARTBEAT
-  PING:              0x44  // AmakerBotService CMD_PING
+  PING:              0x44, // AmakerBotService CMD_PING
+  REBOOT:            0x4A  // AmakerBotService CMD_REBOOT
 };
 
 // MotorServo action bytes — MotorServoService (service_id 0x02)
@@ -597,6 +599,47 @@ function handleMasterUnregistrationResponse(statusByte) {
     showStatus('Unregistration denied (not the registered master)', true);
   } else {
     showStatus(`Unregistration failed: ${statusName}`, true);
+  }
+}
+
+/**
+ * Emergency stop + reboot the bot.
+ * Uses fire-and-forget because the board restarts immediately.
+ */
+async function rebootBot() {
+  if (!isMasterRegistered) {
+    showStatus('Must be registered as master to reboot the bot', true);
+    return;
+  }
+
+  if (!confirm('Emergency reboot the K10 now? Motors will be stopped and the connection will drop.')) {
+    return;
+  }
+
+  try {
+    if (!wsConnected) {
+      await initializeWebSocket();
+    }
+
+    if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket bridge not connected');
+    }
+
+    stopHeartbeat();
+    sendWSFireAndForget(new Uint8Array([WS_ACTION.REBOOT]));
+    updateLastResponse('REBOOT: SENT');
+    showStatus('🛑 Emergency reboot command sent', false);
+    _scriptLog('🛑 Emergency reboot command sent to board', false);
+
+    setTimeout(() => {
+      isMasterRegistered = false;
+      closeWebSocket();
+      updateUIState();
+    }, 250);
+  } catch (error) {
+    console.error('Reboot failed:', error);
+    showStatus('Failed to send reboot: ' + error.message, true);
+    updateLastResponse('REBOOT: ERROR');
   }
 }
 
@@ -1111,11 +1154,11 @@ async function stopAllServos() {
 
 // ── UI Control ────────────────────────────────────────────────────────────────
 
-// UI Service action bytes (service_id 0x05)
+// UI Service action bytes (service_id 0x06)
 const UI_ACTION = {
-  NEXT_SCREEN: 0x51,  // Advance to next screen
-  PREV_SCREEN: 0x52,  // Go back to previous screen
-  SET_SCREEN:  0x53   // Set screen to specific index
+  NEXT_SCREEN: 0x61,  // Advance to next screen
+  PREV_SCREEN: 0x62,  // Go back to previous screen
+  SET_SCREEN:  0x63   // Set screen to specific index
 };
 
 /**

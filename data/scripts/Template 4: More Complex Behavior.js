@@ -1,7 +1,8 @@
-//Template 4: State Machine (Complex Behavior)
-//Use this when your bot needs different modes (explore, capture, return).
+// Template 4: State Machine (Complex Behavior)
+// Use this when your bot needs different modes (explore, capture, return).
+// ARM servo uses ANGULAR_270 type: valid angle range is 0° – 270°.
 
-onst LEFT_WHEEL = 0;
+const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;
 const ARM = 2;
 
@@ -27,19 +28,20 @@ async function explore() {
 
 async function capture() {
   if (currentState !== 'capture') return;
-  setServoAngle(ARM, 90);
+  setServoAngle(ARM, 225);  // arm up   (¾ of 270° range)
   await delay(500);
-  setServoAngle(ARM, 0);
-  
+  setServoAngle(ARM, 135);  // arm mid  (center of 270° range)
+
   if (currentState === 'capture') {
     setState('idle');
   }
 }
 
-// Attach servos
-attachServo(LEFT_WHEEL, SERVO_TYPES.ROTATIONAL);
+// Step 1 — attach servos
+attachServo(LEFT_WHEEL,  SERVO_TYPES.ROTATIONAL);
 attachServo(RIGHT_WHEEL, SERVO_TYPES.ROTATIONAL);
-attachServo(ARM, SERVO_TYPES.ANGULAR_270);
+attachServo(ARM,         SERVO_TYPES.ANGULAR_270);
+_scriptLog('✓ Servos attached — ARM range: 0°–270°');
 
 // Gamepad control
 CUSTOMCONTROL.processGamepadInput = function(gamepad) {

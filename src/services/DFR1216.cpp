@@ -1,7 +1,7 @@
 // DFR1216 (Unihiker Expansion) Service Implementation
 /**
  * @file DFR1216Board.cpp
- * @brief Implementation for DFR1216 expansion board integration with the main application
+ * @brief Implementation for DFR1216 Extension board integration with the main application
  * @details Exposed routes:
  *          - POST /api/dfr1216/setServoAngle - Set the angle of a servo motor on the expansion board
  *          - POST /api/dfr1216/setMotorSpeed - Set the speed and direction of a DC motor

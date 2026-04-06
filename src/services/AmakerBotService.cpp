@@ -11,6 +11,7 @@
 #include "FlashStringHelper.h"
 #include <Arduino.h>          // millis(), esp_random()
 #include <LittleFS.h>         // listScripts / getScript / saveScript / deleteScript
+#include <esp_efuse.h>        // esp_efuse_mac_get_default()
 
 // ---------------------------------------------------------------------------
 // PROGMEM constants (translation-unit local)
@@ -37,6 +38,7 @@ namespace AmakerBotConsts
     constexpr const char msg_wifi_not_set[]     PROGMEM = "AmakerBot: WiFi service not injected";
     constexpr const char msg_wifi_settings_set[] PROGMEM = "AmakerBot: WiFi credentials updated by master";
     constexpr const char msg_wifi_settings_reset[] PROGMEM = "AmakerBot: WiFi settings reset to defaults by master";
+    constexpr const char msg_reboot_requested[] PROGMEM = "AmakerBot: emergency reboot requested by master";
 
     constexpr uint8_t  BOT_SERVICE_ID      = 0x04;
     constexpr uint8_t  CMD_REGISTER        = 0x01; ///< [token bytes…]
@@ -48,6 +50,7 @@ namespace AmakerBotConsts
     constexpr uint8_t  CMD_GET_WIFI        = 0x07; ///< → [resp_ok][ssid_len:1B][ssid…][pass_len:1B][pass…]
     constexpr uint8_t  CMD_SET_WIFI        = 0x08; ///< [ssid_len:1B][ssid…][pass_len:1B][pass…] master-only; saves+applies
     constexpr uint8_t  CMD_RESET_WIFI      = 0x09; ///< (no payload) master-only; clears NVS, restores defaults
+    constexpr uint8_t  CMD_REBOOT          = 0x0A; ///< (no payload) master-only; emergency reboot, no reply
 
     constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 50;  ///< ms without heartbeat → emergency stop
 
@@ -310,6 +313,16 @@ std::string AmakerBotService::handleBotMessage(const uint8_t *data, size_t len,
         return BotProto::make_ack(action, BotProto::resp_ok);
     }
 
+    // ---- CMD_REBOOT 0x0A : (no payload, master only, no reply) ------
+    if (cmd == AmakerBotConsts::CMD_REBOOT)
+    {
+        if (!isMaster(senderIP))
+            return BotProto::make_ack(action, BotProto::resp_not_master);
+
+        reboot();
+        return {};
+    }
+
     return BotProto::make_ack(action, BotProto::resp_unknown_cmd);
 }
 
@@ -342,6 +355,18 @@ std::string AmakerBotService::getBotName() const
     const std::string name = bot_name_;
     xSemaphoreGive(name_mutex_);
     return name;
+}
+
+void AmakerBotService::reboot()
+{
+    if (debugLogger)
+        debugLogger->warning(FPSTR(AmakerBotConsts::msg_reboot_requested));
+
+    if (heartbeat_timeout_cb_)
+        heartbeat_timeout_cb_();
+
+    delay(20);
+    ESP.restart();
 }
 
 void AmakerBotService::setBotName(const std::string &name)
@@ -416,19 +441,22 @@ void AmakerBotService::checkHeartbeatTimeout()
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
 std::string AmakerBotService::generateRandomToken()
 {
-    constexpr const char charset[] =
-        "D4A";
-    constexpr int charset_size = sizeof(charset) - 1;
-
-    std::string token;
-    token.reserve(5);
-    for (int i = 0; i < 5; ++i)
-        token += charset[esp_random() % charset_size];
-    return token;
+    // Generate 5-char uppercase hex token from ESP32 unique chip ID (lower 20 bits)
+    // Uses esp_efuse_mac_get_default() from <esp_efuse.h> for a unique identifier
+    uint8_t mac[6];
+    esp_efuse_mac_get_default(mac);
+    
+    // Combine last 3 bytes into a 24-bit value, take lower 20 bits
+    uint32_t chip_id = ((uint32_t)mac[3] << 16) | ((uint32_t)mac[4] << 8) | mac[5];
+    chip_id &= 0xFFFFF;  // 20 bits
+    
+    char token_buf[6];
+    snprintf(token_buf, sizeof(token_buf), "%05X", chip_id);
+    return std::string(token_buf);
 }
+
 
 
 

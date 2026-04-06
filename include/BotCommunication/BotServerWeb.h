@@ -63,6 +63,7 @@ namespace BotServerWebConsts
 {
     constexpr const char str_service_name[]   PROGMEM = "BotServerWeb";
     constexpr const char path_botserver[]     PROGMEM = "/botserver";
+    constexpr const char path_buildinfo_api[] PROGMEM = "/api/buildinfo.json";
     constexpr const char param_cmd[]          PROGMEM = "cmd";
     constexpr const char mime_octet[]         PROGMEM = "application/octet-stream";
     constexpr const char mime_text[]          PROGMEM = "text/plain";
@@ -77,6 +78,7 @@ namespace BotServerWebConsts
     constexpr const char static_url_root[]    PROGMEM = "/";
     constexpr const char default_file[]       PROGMEM = "index.html";
     constexpr const char cache_control[]      PROGMEM = "max-age=86400"; ///< 1 day
+    constexpr const char cache_control_no_store[] PROGMEM = "no-store, max-age=0";
     constexpr const char msg_fs_ok[]          PROGMEM = "BotServerWeb: LittleFS mounted";
     constexpr const char msg_fs_failed[]      PROGMEM = "BotServerWeb: LittleFS mount failed (run uploadfs)";
     // ---- Camera routes ----
@@ -212,6 +214,15 @@ private:
      * Must be called from start() before server_->begin().
      */
     void registerScriptRoutes();
+
+    /**
+     * @brief Register GET /api/buildinfo.json route.
+     *
+     * The returned payload describes the running firmware only.
+     * Filesystem metadata is generated separately during `buildfs` / `uploadfs`
+     * and served as the static file `/buildinfo.json`.
+     */
+    void registerBuildInfoRoute();
 
     /**
      * @brief Decode a hex string into a binary std::string.

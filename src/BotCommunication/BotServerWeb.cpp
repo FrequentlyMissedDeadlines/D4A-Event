@@ -6,9 +6,73 @@
 #include "BotCommunication/BotServerWeb.h"
 #include "RollingLogger.h"
 #include "FlashStringHelper.h"
+#include "generated/BuildInfo.h"
 #include <Arduino.h>        // FPSTR()
 #include <esp_camera.h>
 #include <img_converters.h> // frame2jpg()
+
+namespace
+{
+/**
+ * @brief Escape a string so it is safe to embed as a JSON string value.
+ * @param input Source string.
+ * @return Escaped JSON string without surrounding quotes.
+ */
+std::string jsonEscape(const std::string &input)
+{
+    std::string out;
+    out.reserve(input.size() + 8);
+
+    for (const unsigned char c : input)
+    {
+        switch (c)
+        {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20)
+                {
+                    char buf[7];
+                    snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                }
+                else
+                {
+                    out += static_cast<char>(c);
+                }
+                break;
+        }
+    }
+
+    return out;
+}
+
+/**
+ * @brief Append a JSON string field to an existing object payload.
+ * @param json Destination JSON string.
+ * @param key Field name.
+ * @param value Field value.
+ * @param with_comma True to append a trailing comma after the field.
+ */
+void appendJsonStringField(std::string &json,
+                           const char *key,
+                           const std::string &value,
+                           bool with_comma = true)
+{
+    json += '"';
+    json += key;
+    json += "\":\"";
+    json += jsonEscape(value);
+    json += '"';
+    if (with_comma)
+        json += ',';
+}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -135,6 +199,62 @@ void BotServerWeb::register_get_botserver()
 }
 
 // ---------------------------------------------------------------------------
+// registerBuildInfoRoute
+// ---------------------------------------------------------------------------
+
+void BotServerWeb::registerBuildInfoRoute()
+{
+    server_->on(BotServerWebConsts::path_buildinfo_api, HTTP_GET,
+        [this](AsyncWebServerRequest *request)
+        {
+            std::string json;
+            json.reserve(768);
+
+            json += '{';
+            json += "\"schema_version\":";
+            json += std::to_string(BuildInfoConsts::schema_version);
+            json += ",\"firmware\":{";
+            appendJsonStringField(json, "build_role",
+                                  progmem_to_string(BuildInfoConsts::str_build_role));
+            appendJsonStringField(json, "generator_version",
+                                  progmem_to_string(BuildInfoConsts::str_generator_version));
+            appendJsonStringField(json, "project_name",
+                                  progmem_to_string(BuildInfoConsts::str_project_name));
+            appendJsonStringField(json, "pio_env",
+                                  progmem_to_string(BuildInfoConsts::str_pio_env));
+            appendJsonStringField(json, "board",
+                                  progmem_to_string(BuildInfoConsts::str_board));
+            appendJsonStringField(json, "built_at_utc",
+                                  progmem_to_string(BuildInfoConsts::str_built_at_utc));
+            appendJsonStringField(json, "code_tree_hash",
+                                  progmem_to_string(BuildInfoConsts::str_code_tree_hash));
+            json += "\"git\":{";
+            appendJsonStringField(json, "repository_name",
+                                  progmem_to_string(BuildInfoConsts::str_repository_name));
+            appendJsonStringField(json, "branch",
+                                  progmem_to_string(BuildInfoConsts::str_git_branch));
+            appendJsonStringField(json, "commit_sha",
+                                  progmem_to_string(BuildInfoConsts::str_git_commit_sha));
+            appendJsonStringField(json, "commit_short",
+                                  progmem_to_string(BuildInfoConsts::str_git_commit_short));
+            appendJsonStringField(json, "exact_tag",
+                                  progmem_to_string(BuildInfoConsts::str_git_exact_tag));
+            appendJsonStringField(json, "nearest_tag",
+                                  progmem_to_string(BuildInfoConsts::str_git_nearest_tag));
+            json += "\"dirty\":";
+            json += BuildInfoConsts::git_dirty ? "true" : "false";
+            json += "}}";
+            json += '}';
+
+            AsyncWebServerResponse *response = request->beginResponse(
+                200, FPSTR(BotServerWebConsts::mime_json), json.c_str());
+            response->addHeader("Cache-Control",
+                                FPSTR(BotServerWebConsts::cache_control_no_store));
+            request->send(response);
+        });
+}
+
+// ---------------------------------------------------------------------------
 // start
 // ---------------------------------------------------------------------------
 
@@ -163,6 +283,7 @@ bool BotServerWeb::start()
     }
 
     register_get_botserver();
+    registerBuildInfoRoute();
     registerScriptRoutes();
     server_->on("/", HTTP_GET, [this](AsyncWebServerRequest *request)   
     {

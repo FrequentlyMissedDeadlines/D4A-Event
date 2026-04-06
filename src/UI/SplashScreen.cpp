@@ -13,7 +13,7 @@ extern RollingLogger debug_logger;
 // ---------------------------------------------------------------------------
 namespace SplashScreenConsts
 {
-    constexpr const char splash_path[]     PROGMEM = "/www/splash.png";
+    constexpr const char splash_path[]     PROGMEM = "/www/splash.jpg";
     constexpr const char partition_label[] PROGMEM = "voice_data";
     constexpr uint16_t   max_img_width             = UILayout::SCREEN_W;
     constexpr uint8_t    max_open_files            = 10;
@@ -78,7 +78,7 @@ static int png_draw_cb(PNGDRAW *pDraw)
 // ---------------------------------------------------------------------------
 
 /**
- * @brief Draw /www/splash.png centred on the 240×320 display.
+ * @brief Draw /www/splash.jpg centred on the 240×320 display.
  *
  * Mounts LittleFS if not already mounted (BotServerWeb will reuse the
  * already-mounted filesystem — LittleFS.begin() is idempotent).
@@ -114,7 +114,7 @@ void SplashScreen::initScreen()
                 file = root.openNextFile();
             }
         }
-        debug_logger.error("[SplashScreen] splash.png not found in /www");
+        debug_logger.error("[SplashScreen] splash.jpg not found in /www");
         return;
     }
     

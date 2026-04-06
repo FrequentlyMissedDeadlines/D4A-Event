@@ -1,5 +1,5 @@
-//Template 1: Simple D-Pad Movement
-//Use this for basic forward/back/left/right control.
+// Template 3: Simple D-Pad Movement
+// Use this for basic forward/back/left/right control with the gamepad D-Pad.
 
 const LEFT_WHEEL = 0;
 const RIGHT_WHEEL = 1;

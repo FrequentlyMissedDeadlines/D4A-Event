@@ -117,13 +117,13 @@ CUSTOMCONTROL.onKeyUp = function (event) {
     case 'arrowdown':
     case 'arrowleft':
     case 'arrowright':
-      stopWheels();
+      stop();       // release arrow key → stop motor
       break;
     case 'space':
-      direction(0);
+      direction(0); // release space → re-center direction servo
       break;
     case 'q':
-      relax();
+      ARM_Mid();    // release Q → return arm to neutral position
       break;
   }
 }

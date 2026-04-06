@@ -17,5 +17,14 @@
 1. UI:
    set WS / UDP colored depending on heartbeats received
 
+Feedbacks 2026-04-02
+- Doc : doc ca dit d'aller dans le script mais dans l'interface le bouton est "play"
+- Ajouter une info sur le bouton reset 
+- Ajouter la version du firmware dans l'interface
+- faire un guide qui address aussi le hardware  : 
+  - comment monter les servos dans le meme sens
+  - commencer par faire des tests sans  monter les roues 
 
-  
+
+
+

@@ -196,7 +196,7 @@ public:
 
 private:
     UNIHIKER_K10  &k10_;    ///< K10 board (on-board NeoPixels)
-    DFR1216Board  &board_;  ///< Expansion board (DFR1216 WS2812 LEDs)
+    DFR1216Board  &board_;  ///< Extension board (DFR1216 WS2812 LEDs)
 
     /// Per-LED cached state — index 0–2 = K10, index 3–4 = DFR1216
     LEDState states_[LEDConsts::TOTAL_LEDS];

@@ -112,8 +112,7 @@
           </textarea>
 
             <div class="button-group" style="margin-top: 8px;">
-              <button onclick="runScript()" class="btn btn-primary">▶️ Run</button>
-              <button onclick="stopScript()" class="btn btn-danger">⏹️ Stop</button>
+              <button onclick="runScript()" class="btn btn-primary">▶️ Run script</button>
               
               <button onclick="exportScript()" class="btn btn-primary">⬇️ Download</button>
               <label class="btn btn-primary" style="text-align: center;">⬆️ Upload<input type="file" accept=".js,.txt" style="display: none;" onchange="importScript(event)" ></label>
@@ -121,6 +120,11 @@
             <div style="display: flex; gap: 8px; align-items: center;">
               <label class="control-label" for="scriptName">Script Name:</label>
             <input type="text" id="scriptName" class="input-field" placeholder="my-script" style="flex: 1; min-width: 150px;">
+            </div>
+            <h3 class="subsection-title">Emergency</h3>
+            <div class="emergency-action-row">
+              <button onclick="rebootBot()" class="btn btn-danger" title="Stop outputs and reboot the board immediately">🛑 Emergency reboot</button>
+              <span class="emergency-action-hint">Requires master registration. Stops motion and reboots the K10.</span>
             </div>
             <h3 class="subsection-title">Persistence:</h3>
 
@@ -154,6 +158,15 @@
                      box-sizing: border-box;"></div>
           </div>
         </div>
+      </div>
+    </div>
+        <div class="panel" style="flex:1;min-width:220px;">
+      <h2>🖥️ K10 Display</h2>
+      <div style="padding:8px 12px;border-radius:4px;font-size:13px;background:#f0f0f0;color:#555;line-height:1.6;">
+        Change the display on the device : 
+        Press <strong>Button A</strong> on the K10 to cycle through screens<br> 
+        Or use <button id="btn-next-screen" class="btn-secondary" onclick="nextScreen()">Next screen</button>
+        <button id="btn-prev-screen" class="btn-secondary" onclick="prevScreen()">Previous screen</button>
       </div>
     </div>
   </div>

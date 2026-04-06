@@ -61,7 +61,7 @@ namespace AmakerBotUIConsts
     constexpr const char scr_name_esp_log[]   PROGMEM = "5: ESP Log";
 
     // Bot protocol commands for remote UI control
-    constexpr uint8_t UI_SERVICE_ID      = 0x05;      ///< Service ID for UI commands
+    constexpr uint8_t UI_SERVICE_ID      = 0x06;      ///< Service ID for UI commands
     constexpr uint8_t CMD_NEXT_SCREEN    = 0x01;      ///< Advance to next screen
     constexpr uint8_t CMD_PREV_SCREEN    = 0x02;      ///< Go back to previous screen
     constexpr uint8_t CMD_SET_SCREEN     = 0x03;      ///< Set screen to specific index [index]

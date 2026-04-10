@@ -26,7 +26,7 @@ JS scripting API: the **🕹 Learn** tab in the web UI (`BotScriptUserGuide.html
 | [WiFiService](user%20guides/WiFiService.md) | STA / AP mode, credentials NVS, hostname generation |
 
 ---
-
+cd 
 ## 🔧 Contributor guides
 
 | Guide | Purpose |

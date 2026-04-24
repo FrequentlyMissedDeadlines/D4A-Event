@@ -15,6 +15,7 @@
 #include "BotCommunication/BotServerUDP.h"
 #include "BotCommunication/BotServerWeb.h"
 #include "BotCommunication/BotServerWebSocket.h"
+#include "BotCommunication/BotServerBLE.h"
 #include "services/WiFiService.h"
 #include "services/AmakerBotService.h"
 #include "services/AmakerBotUIService.h"
@@ -90,6 +91,7 @@ AmakerBotService amaker_bot_ = AmakerBotService({&motor_servo_, &board, &led_ser
 BotServerUDP bot_over_udp_ = BotServerUDP(amaker_bot_);
 BotServerWeb bot_over_web_ = BotServerWeb(amaker_bot_);
 BotServerWebSocket bot_over_websocket_ = BotServerWebSocket(amaker_bot_);
+BotServerBLE bot_over_ble_ = BotServerBLE(amaker_bot_);
 AmakerBotUIService ui_service =
     AmakerBotUIService(unihiker,
                        wifi_service_,
@@ -289,6 +291,14 @@ void setup()
   amaker_bot_.setWifiService(&wifi_service_);
 
   start_service(wifi_service_);
+
+  // BLE must be initialised here in setup() — NOT inside a max-priority FreeRTOS
+  // task. NimBLEDevice::init() blocks until the NimBLE host task starts; if called
+  // from a max-priority task that task starves NimBLE's lower-priority host task,
+  // causing a watchdog reboot.
+  bot_over_ble_.setBotMessageLogger(&debug_logger);
+  bot_over_ble_.setDeviceName(wifi_service_.getHostname());
+  bot_over_ble_.start();
 
   // Core 0 — UDP + WebSocket at maximum priority (real-time transport)
   xTaskCreatePinnedToCore(

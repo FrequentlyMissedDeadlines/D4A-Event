@@ -24,6 +24,7 @@ JS scripting API: the **🕹 Learn** tab in the web UI (`BotScriptUserGuide.html
 | Guide | Purpose |
 |-------|---------|
 | [WiFiService](user%20guides/WiFiService.md) | STA / AP mode, credentials NVS, hostname generation |
+| [Python UDP Client](../example-clients/python/README.md) | TUI controller — setup, keyboard/joystick input, calibration wizard |}
 
 ---
 cd 

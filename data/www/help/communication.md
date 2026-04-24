@@ -1,6 +1,6 @@
 # Communication Guide
 
-The K10 Bot exposes three independent transports that all speak the **same binary frame protocol**. This guide describes each transport's characteristics, behaviour, and usage patterns.
+The K10 Bot exposes four independent transports that all speak the **same binary frame protocol**. This guide describes each transport's characteristics, behaviour, and usage patterns.
 
 ---
 
@@ -11,19 +11,20 @@ Controller  ──────────────────────�
   │  UDP :24642         (Core 0, max priority) │
   │  WebSocket :81/ws   (Core 0, max priority) │  →  AmakerBotService → service handlers
   │  HTTP :80/botserver (Core 1, normal prio)  │
+  │  BLE NUS            (setup(), NimBLE task)  │
 Controller  ──────────────────────────────────┘
 ```
 
-| | UDP | WebSocket | HTTP |
-|---|---|---|---|
-| **Port** | 24642 | 81 | 80 |
-| **Endpoint** | — | `/ws` | `/botserver?cmd=<hex>` |
-| **Protocol** | Binary | Binary | Hex-encoded GET |
-| **Connection** | Connectionless | Persistent | One request per frame |
-| **Reply** | Same source port | Same client only | HTTP response body |
-| **FreeRTOS core** | 0 (max priority) | 0 (max priority) | 1 (normal priority) |
-| **Multiple clients** | Yes (last sender wins) | Yes | Yes |
-| **Best for** | Real-time, Python scripts | Web UI, BotScript | Debugging, curl |
+| | UDP | WebSocket | HTTP | BLE (NUS) |
+|---|---|---|---|---|
+| **Port** | 24642 | 81 | 80 | — (GATT) |
+| **Endpoint** | — | `/ws` | `/botserver?cmd=<hex>` | Nordic UART Service |
+| **Protocol** | Binary | Binary | Hex-encoded GET | Binary |
+| **Connection** | Connectionless | Persistent | One request per frame | Persistent (GATT) |
+| **Reply** | Same source port | Same client only | HTTP response body | Notify characteristic |
+| **FreeRTOS core** | 0 (max priority) | 0 (max priority) | 1 (normal priority) | NimBLE host task |
+| **Multiple clients** | Yes (last sender wins) | Yes | Yes | One at a time |
+| **Best for** | Real-time, Python scripts | Web UI, BotScript | Debugging, curl | No-WiFi, mobile apps |
 
 ---
 
@@ -207,9 +208,46 @@ curl -s http://192.168.1.100/botserver?cmd=29 | xxd
 
 ---
 
+## Transport 4 — BLE (Nordic UART Service)
+
+### Characteristics
+
+- **Library**: NimBLE-Arduino
+- **Profile**: Nordic UART Service (NUS) — the de-facto BLE UART standard
+- **Service UUID**: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
+- **RX characteristic** (write from client): `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
+- **TX characteristic** (notify to client): `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+- **Advertised name**: same as the bot's WiFi hostname (e.g. `K10-XXXX`)
+- **Initialised in**: `setup()` (not inside a FreeRTOS task — see notes below)
+- **Clients**: one BLE central at a time
+
+### Frame exchange
+
+```
+BLE Central (phone / laptop)         Bot
+    │── write NUS RX ────────────────►│  dispatch() called
+    │◄─ notify NUS TX ────────────────│  response (if non-empty)
+```
+
+The binary frame format is identical to UDP and WebSocket: byte 0 is the action byte, followed by payload bytes.
+
+### Sender identity
+
+BLE clients do not have an IP address. The BLE transport uses a fixed virtual IP (`0.0.0.0`) when calling `dispatch()`. This means a BLE master and a WiFi master are distinguished by IP, so BLE can coexist with WiFi transports.
+
+### Notes
+
+- The ESP32-S3 does **not** support Bluetooth Classic / SPP — only BLE is available
+- `NimBLEDevice::init()` blocks until the NimBLE host task starts; it **must** run in `setup()`, not in a max-priority FreeRTOS task (which would starve the NimBLE host task and cause a watchdog reboot)
+- BLE is always active alongside WiFi — no configuration needed
+- Use any BLE UART app (e.g. nRF Connect, Serial Bluetooth Terminal) to send raw binary frames
+- Diagnostics: `getRxCount()`, `getTxCount()`, `getDroppedCount()` are available on `BotServerBLE` just like the other transports
+
+---
+
 ## Concurrent use
 
-All three transports can be active simultaneously:
+All four transports can be active simultaneously:
 
 - A Python UDP controller can register as master and send heartbeats at 30 ms
 - Browser tabs can connect to the WebSocket for monitoring without being master
@@ -221,7 +259,7 @@ Only **master-protected commands** (motor/servo write, WiFi change, reboot) enfo
 
 ## Diagnostics
 
-All three servers expose live counters accessible from the **App Info** screen (Screen 1) on the TFT display and via `getRxCount()` / `getTxCount()` / `getDroppedCount()` in C++:
+All four servers expose live counters accessible from the **App Info** screen (Screen 1) on the TFT display and via `getRxCount()` / `getTxCount()` / `getDroppedCount()` in C++:
 
 | Counter | Meaning |
 |---|---|

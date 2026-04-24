@@ -3,9 +3,10 @@
 The aMaker Bot runs on a **UniHiker K10** board (ESP32-S3, dual-core, FreeRTOS, Arduino framework).
 
 **Core 0** runs the real-time transport task: UDP server (port 24642) and WebSocket server (port 81) at maximum FreeRTOS priority.  
-**Core 1** runs the web server (HTTP port 80) and the TFT display update loop at normal priority.
+**Core 1** runs the web server (HTTP port 80) and the TFT display update loop at normal priority.  
+**BLE** (Nordic UART Service) is initialised in `setup()` and runs on the NimBLE host task; it advertises the bot's hostname and accepts one BLE central at a time.
 
-All three transports feed binary frames into **AmakerBotService**, which owns the master-registration and heartbeat logic, then dispatches commands to the registered service handlers via **BotMessageHandler**.
+All four transports (UDP, WebSocket, HTTP, BLE) feed binary frames into **AmakerBotService**, which owns the master-registration and heartbeat logic, then dispatches commands to the registered service handlers via **BotMessageHandler**.
 
 Service handlers are independent C++ classes that each own one area of hardware:
 
@@ -17,7 +18,7 @@ Service handlers are independent C++ classes that each own one area of hardware:
 | `WifiService` | WiFi connection, NVS credential storage |
 | `AmakerBotUIService` | TFT screen manager + remote screen control |
 
-The web UI (static files in `/data/www/`) communicates exclusively over the **WebSocket** at port 81 using the same binary protocol as UDP.
+The web UI (static files in `/data/www/`) communicates exclusively over the **WebSocket** at port 81 using the same binary protocol as UDP and BLE.
 
 ---
 

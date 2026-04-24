@@ -2,7 +2,7 @@
 
 A PlatformIO project for the UniHiker K10 board, built on ESP32-S3 hardware with FreeRTOS for task execution.
 
-The project provides a modular, service-based architecture including UDP communication, async web server, camera streaming (MJPEG + audio), servo control, motor control, LED control, sensor management, and master-controller registration.
+The project provides a modular, service-based architecture including UDP communication, WebSocket, BLE (Bluetooth Low Energy) UART, async web server, camera streaming (MJPEG + audio), servo control, motor control, LED control, sensor management, and master-controller registration.
 
 Services run in dedicated FreeRTOS tasks for real-time performance. Hardware abstraction layers separate concerns.
 
@@ -17,6 +17,7 @@ Designed for low-memory and low-CPU optimization with Arduino-style APIs and C++
 - **Servo & motor control** — DFR0548 (8 servos) + DFR1216 expansion (6 servos, 4 motors)
 - **Sensors** — light, temperature, humidity, microphone, accelerometer
 - **UDP protocol** — binary + text commands on port 24642
+- **BLE UART (NUS)** — Bluetooth Low Energy transport using the Nordic UART Service, same binary protocol as UDP/WebSocket
 - **OpenAPI 3.0** — live spec at `/api/openapi.json`, interactive docs at `/api/docs`
 - **Multi-mode TFT display** — Button A cycles through UI / app log / debug log / ESP log
 

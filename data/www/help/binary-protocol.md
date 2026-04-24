@@ -1,7 +1,7 @@
 # Binary Protocol Reference
 
 Complete command reference for the K10 bot binary protocol.  
-All commands apply to **UDP port 24642** and **WebSocket port 81** equally.  
+All commands apply to **UDP port 24642**, **WebSocket port 81**, and **BLE NUS** equally.  
 See [communication.md](communication.md) for transport details, [quickstart.md](quickstart.md) for the minimal flow.
 
 ---

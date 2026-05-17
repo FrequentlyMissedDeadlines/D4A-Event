@@ -1,6 +1,265 @@
-# K10 Bot UDP Client
+# K10 Bot — Python UDP Client
 
-A cross-platform Python TUI (Terminal User Interface) application for controlling the K10 Bot robot via UDP. Built with Textual, supports keyboard and multiple joystick inputs.
+A cross-platform Python TUI controller for the K10 Bot robot.  Built with
+[Textual](https://textual.textualize.io/), supports keyboard and multiple
+gamepad/joystick inputs with live calibration.
+
+---
+
+## Quick Start
+
+```bash
+cd example-clients/python
+bash setup.sh          # create venv + pip install -e . (editable install)
+
+source venv/bin/activate
+python main.py         # launch the TUI  (or: k10-bot)
+```
+
+1. Enter the bot's IP address in the **Server** field and click **Connect**.
+2. Use the keyboard arrows (or gamepad) to drive the bot.
+
+> **First time with a gamepad?** Press `j` inside the app to run the
+> interactive calibration wizard.
+
+---
+
+## Customising Your Bot
+
+**`customize.py` is the only file you need to edit.**
+
+Open it and follow the four labelled sections:
+
+| Section | What you do |
+|---------|-------------|
+| **§ 1 Hardware** | Declare your motor ports and servo channels by name |
+| **§ 2 Actions** | Define named movements (e.g. `"forward"`, `"grip_close"`) as lists of motor/servo commands |
+| **§ 3 Keyboard** | Map keyboard keys → action names |
+| **§ 4 Joystick** | Map analog sticks (tank drive) and buttons → actions |
+
+### Example — differential-drive robot with an arm
+
+```python
+# § 1 — Hardware
+BOT_CONFIG.add_motor("left",  motor_id=1)
+BOT_CONFIG.add_motor("right", motor_id=2)
+BOT_CONFIG.add_servo("arm",   channel_id=0, servo_type=ServoType.CONTINUOUS)
+
+# § 2 — Actions
+BOT_CONFIG.add_action("forward",    [MotorCmd("left",  80), MotorCmd("right",  80)])
+BOT_CONFIG.add_action("backward",   [MotorCmd("left", -80), MotorCmd("right", -80)])
+BOT_CONFIG.add_action("turn_left",  [MotorCmd("left", -60), MotorCmd("right",  60)])
+BOT_CONFIG.add_action("turn_right", [MotorCmd("left",  60), MotorCmd("right", -60)])
+BOT_CONFIG.add_action("stop",       [MotorCmd("left",   0), MotorCmd("right",   0)])
+BOT_CONFIG.add_action("arm_extend", [ServoSpeedCmd("arm",  70)])
+BOT_CONFIG.add_action("arm_retract",[ServoSpeedCmd("arm", -70)])
+BOT_CONFIG.add_action("arm_stop",   [ServoSpeedCmd("arm",   0)])
+
+# § 3 — Keyboard
+KEYBOARD_ACTIONS = {
+    "up":    "forward",
+    "down":  "backward",
+    "left":  "turn_left",
+    "right": "turn_right",
+    "space": "arm_extend",
+    "shift": "arm_retract",
+}
+KEYBOARD_IDLE_ACTION = "stop"   # auto-stop when all keys released
+
+# § 4 — Joystick (tank drive)
+JOYSTICK_LEFT_STICK_MOTOR  = "left"
+JOYSTICK_RIGHT_STICK_MOTOR = "right"
+JOYSTICK_SPEED_SCALE       = 80
+JOYSTICK_BUTTON_ACTIONS    = {0: "arm_extend", 1: "arm_retract"}
+```
+
+---
+
+## Project Structure
+
+```
+python/
+├── customize.py                ★ EDIT THIS — your bot's hardware + bindings
+├── config.py                     Network / UI settings (rarely edited)
+├── main.py                       Textual TUI entry point (do not edit)
+├── requirements.txt
+├── setup.sh
+├── README.md
+└── udp_client/                   Framework — do not edit
+    ├── bot_config.py             BotConfig API: hardware declaration + packet builder
+    ├── control/
+    │   └── controller.py         Control loop: input state → UDP packets
+    ├── network/
+    │   └── udp_client.py         Async UDP socket with auto-reconnect
+    ├── input/
+    │   ├── keyboard_handler.py   Global keyboard listener (pynput)
+    │   ├── joystick_handler.py   Multi-gamepad handler (pygame)
+    │   ├── joystick_calibration.py  Calibration data model + JSON persistence
+    │   ├── calibration_wizard.py    Interactive CLI calibration wizard
+    │   └── input_manager.py      Unified input manager
+    ├── state/
+    │   └── app_state.py          Application state model
+    └── ui/
+        └── app.py                Reusable Textual widgets
+```
+
+---
+
+## How It Works
+
+```
+customize.py   ←  you define hardware + bindings here
+     │
+     └──► Controller (every 40 ms)
+               │
+         ┌─────┴──────────────────────────┐
+         │  Keyboard                      │  Joystick
+         │  pressed key → action name     │  left/right Y → motor speed packet
+         │             → BotConfig        │  button      → action → BotConfig
+         │             → UDP packets      │              → UDP packets
+         └────────────────────────────────┘
+                         │
+                    K10 Bot (UDP port 24642)
+```
+
+The **Controller** runs every 40 ms on the same timer as the heartbeat.
+It reads the current input state, looks up your mappings in `customize.py`,
+and calls `BotConfig.execute()` which translates action names into binary
+MotorServoService packets and sends them.
+
+### Binary protocol summary
+
+```
+SET_MOTORS_SPEED  0x21  [motor_mask:u8][speed:i8  -100…+100]
+SET_SERVO_TYPE    0x22  [servo_mask:u8][type:u8  0=180°, 1=270°, 2=continuous]
+SET_SERVOS_SPEED  0x23  [servo_mask:u8][speed:i8  -100…+100]
+SET_SERVOS_ANGLE  0x24  [servo_mask:u8][angle_hi:u8][angle_lo:u8]
+STOP_ALL_MOTORS   0x28
+```
+
+See [binary-protocol.md](../../data/www/help/binary-protocol.md) for the full reference.
+
+---
+
+## Controls
+
+### Keyboard shortcuts (TUI)
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit |
+| `c` | Connect to server |
+| `d` | Disconnect |
+| `j` | Run joystick calibration wizard |
+
+### Default bot control (from `customize.py`)
+
+| Key | Bot action |
+|-----|------------|
+| ↑ | Forward |
+| ↓ | Backward |
+| ← | Turn left |
+| → | Turn right |
+| *(release all)* | Stop |
+
+### Gamepad (tank drive by default)
+
+| Input | Effect |
+|-------|--------|
+| Left stick Y | Left motor speed |
+| Right stick Y | Right motor speed |
+| Buttons | Configurable via `JOYSTICK_BUTTON_ACTIONS` in `customize.py` |
+
+---
+
+## Infrastructure Settings (`config.py`)
+
+Edit `config.py` only for network/timing settings:
+
+```python
+DEFAULT_SERVER_IP   = "192.168.4.1"  # K10 Bot IP address
+DEFAULT_SERVER_PORT = 24642           # K10 Bot UDP port
+HEARTBEAT_INTERVAL  = 0.040           # 40 ms — keep-alive cadence
+JOYSTICK_DEADZONE   = 0.15            # fallback when no calibration file
+```
+
+---
+
+## Joystick Calibration
+
+The built-in wizard corrects for axis drift, asymmetric range, per-axis
+deadzone, and inverted axes.  Calibration is keyed by joystick name and
+persists across sessions in `joystick_calibration.json`.
+
+**Run from the TUI** — press `j` or click **🎮 Calibrate Joystick**.  
+The TUI suspends, the wizard runs, calibration is applied immediately.
+
+**Run standalone** (before first launch):
+
+```bash
+python -m udp_client.input.calibration_wizard
+```
+
+Wizard steps:
+
+1. **Center** — release all sticks/triggers → records neutral drift
+2. **Range** — guided axis-by-axis: push each direction, hold, press ENTER
+3. **Deadzone** — confirm or override (default 0.15)
+4. **Inversion** — choose axes to invert (Y-axes suggested automatically)
+
+---
+
+## Installation
+
+### Quick (Linux / macOS)
+
+```bash
+cd example-clients/python
+bash setup.sh
+```
+
+### Manual
+
+```bash
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Requirements
+
+- Python 3.9+
+- Linux, macOS, or Windows (Windows Terminal)
+
+### Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `textual` | 8.2.3 | TUI framework |
+| `pygame` | 2.5.2 | Joystick input |
+| `pynput` | 1.7.6 | Global keyboard listener |
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| *"customize.py not found"* warning | The template is already `customize.py` — edit it and restart |
+| Bot not responding | Check IP, power, and that UDP 24642 is not firewalled |
+| No joystick detected | Plug in the gamepad **before** starting; on Linux add yourself to the `input` group |
+| Joystick drifting / wrong direction | Press `j` to run the calibration wizard; delete `joystick_calibration.json` to reset |
+| Keyboard ignored on Linux | Run `sudo python main.py` |
+
+---
+
+## Related Documentation
+
+- [Binary protocol reference](../../data/www/help/binary-protocol.md)
+- [Communication transports](../../data/www/help/communication.md)
+- [Quick start guide](../../data/www/help/quickstart.md)
+- [K10 Bot project docs](../../docs/)
+
 
 ## Features
 

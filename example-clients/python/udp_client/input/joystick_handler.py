@@ -2,16 +2,23 @@
 Joystick input handler using pygame.
 """
 
+import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
 
 # Suppress pygame startup message
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 
-import pygame
+try:
+    import pygame
 
-from udp_client.input.joystick_calibration import CalibrationStore, DEFAULT_CALIBRATION_FILE
+    _PYGAME_AVAILABLE = True
+except ImportError:
+    _PYGAME_AVAILABLE = False
+    pygame = None  # type: ignore[assignment]
+
+from udp_client.input.joystick_calibration import DEFAULT_CALIBRATION_FILE, CalibrationStore
 
 
 @dataclass
@@ -27,7 +34,7 @@ class JoystickState:
     right_stick_y: float = 0.0
     left_trigger: float = 0.0
     right_trigger: float = 0.0
-    buttons: Dict[int, bool] = None
+    buttons: dict[int, bool] = None
     dpad: tuple = (0, 0)  # (x, y): x=-1/0/1 left/center/right, y=-1/0/1 down/center/up
 
     def __post_init__(self):
@@ -42,18 +49,18 @@ class JoystickHandler:
         self,
         deadzone: float = 0.15,
         max_joysticks: int = 4,
-        calibration_store: Optional[CalibrationStore] = None,
+        calibration_store: CalibrationStore | None = None,
         auto_load_calibration: bool = True,
     ):
         self.deadzone = deadzone
         self.max_joysticks = max_joysticks
-        self.joysticks: Dict[int, pygame.joystick.Joystick] = {}
-        self.joystick_states: Dict[int, JoystickState] = {}
-        self.on_joystick_change: Optional[Callable[[List[JoystickState]], None]] = None
+        self.joysticks: dict[int, pygame.joystick.Joystick] = {}
+        self.joystick_states: dict[int, JoystickState] = {}
+        self.on_joystick_change: Callable[[list[JoystickState]], None] | None = None
 
         # Calibration store: use provided, auto-load from file, or none
         if calibration_store is not None:
-            self.calibration_store: Optional[CalibrationStore] = calibration_store
+            self.calibration_store: CalibrationStore | None = calibration_store
         elif auto_load_calibration:
             store = CalibrationStore()
             try:
@@ -65,6 +72,11 @@ class JoystickHandler:
             self.calibration_store = None
 
         # Initialize pygame if needed
+        if not _PYGAME_AVAILABLE:
+            raise ImportError(
+                "pygame is required for joystick support but is not installed. "
+                "Install it with: pip install pygame"
+            )
         if not pygame.get_init():
             pygame.init()
             pygame.joystick.init()
@@ -85,7 +97,7 @@ class JoystickHandler:
                     connected=True,
                 )
             except Exception as e:
-                print(f"Error initializing joystick {i}: {e}")
+                logging.getLogger(__name__).warning("Error initializing joystick %d: %s", i, e)
 
     def stop(self) -> None:
         """Clean up joysticks."""
@@ -144,14 +156,14 @@ class JoystickHandler:
         raw = event.value
 
         # --- Apply calibration if a profile exists for this joystick ---
-        calibrated: Optional[float] = None
+        calibrated: float | None = None
         if self.calibration_store is not None:
             calibrated = self.calibration_store.apply_axis(state.name, event.axis, raw)
 
         if calibrated is not None:
             # Calibrated value is already in [-1, 1] with deadzone applied.
             # Triggers: calibration maps rest(-1) → 0, full-press → 1 naturally.
-            if event.axis == 0:    # Left Stick X
+            if event.axis == 0:  # Left Stick X
                 state.left_stick_x = calibrated
             elif event.axis == 1:  # Left Stick Y
                 state.left_stick_y = calibrated
@@ -165,7 +177,7 @@ class JoystickHandler:
                 state.right_trigger = max(0.0, calibrated)
         else:
             # Fallback: original uncalibrated logic
-            if event.axis == 0:    # Left Stick X
+            if event.axis == 0:  # Left Stick X
                 state.left_stick_x = self._apply_deadzone(raw)
             elif event.axis == 1:  # Left Stick Y
                 state.left_stick_y = self._apply_deadzone(raw)
@@ -221,7 +233,9 @@ class JoystickHandler:
                 connected=True,
             )
         except Exception as e:
-            print(f"Error adding joystick at index {device_index}: {e}")
+            logging.getLogger(__name__).warning(
+                "Error adding joystick at index %d: %s", device_index, e
+            )
 
     def _handle_device_removed(self, event: pygame.event.EventType) -> None:
         """Handle joystick disconnect."""
@@ -236,7 +250,7 @@ class JoystickHandler:
                 pass
             del self.joysticks[js_id]
 
-    def get_states(self) -> List[JoystickState]:
+    def get_states(self) -> list[JoystickState]:
         """Get states of all connected joysticks."""
         return list(self.joystick_states.values())
 
@@ -262,5 +276,7 @@ class JoystickHandler:
             return "(no joystick)"
 
         state = self.joystick_states[joystick_id]
-        pressed = [self.get_button_name(btn) for btn, is_pressed in state.buttons.items() if is_pressed]
-        return  " ".join(pressed)  if pressed else "-none-"
+        pressed = [
+            self.get_button_name(btn) for btn, is_pressed in state.buttons.items() if is_pressed
+        ]
+        return " ".join(pressed) if pressed else "-none-"

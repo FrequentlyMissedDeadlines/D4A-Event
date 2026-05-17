@@ -1,0 +1,37 @@
+[project]
+name = "k10-bot-client"
+version = "0.1.0"
+description = "Cross-platform TUI controller for K10 Bot via UDP"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.80",
+    "pygame>=2.5",
+    "pynput>=1.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "tox>=4.0"]
+
+[project.scripts]
+k10-bot = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "config", "customize"]
+packages = ["udp_client", "udp_client.control", "udp_client.input", "udp_client.network", "udp_client.state", "udp_client.ui", "udp_client.ui.widgets"]
+
+# ── Tool configuration ────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E402"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

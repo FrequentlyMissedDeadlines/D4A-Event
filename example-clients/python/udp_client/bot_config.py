@@ -41,25 +41,30 @@ Example
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import logging
+from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, List, Union
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
 # Servo type
 # ---------------------------------------------------------------------------
 
+
 class ServoType(IntEnum):
     """Operating mode of a servo channel, matches the device firmware values."""
-    SERVO_180  = 0  # Standard 180° positional servo
-    SERVO_270  = 1  # Wide-angle 270° positional servo
+
+    SERVO_180 = 0  # Standard 180° positional servo
+    SERVO_270 = 1  # Wide-angle 270° positional servo
     CONTINUOUS = 2  # Continuous-rotation servo — controlled via speed, not angle
 
 
 # ---------------------------------------------------------------------------
 # Command value-objects (what you put inside an action)
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class MotorCmd:
@@ -70,6 +75,7 @@ class MotorCmd:
         speed: Target speed in the range ``-100`` (full reverse) to
                ``+100`` (full forward).  ``0`` stops the motor.
     """
+
     motor_name: str
     speed: int  # -100..+100
 
@@ -83,6 +89,7 @@ class ServoAngleCmd:
         angle: Target angle in degrees.  Valid range depends on servo type:
                ``0–180`` for SERVO_180, ``0–270`` for SERVO_270.
     """
+
     servo_name: str
     angle: int  # degrees
 
@@ -95,17 +102,19 @@ class ServoSpeedCmd:
         servo_name: The name used in :py:meth:`BotConfig.add_servo`.
         speed: Speed in the range ``-100`` to ``+100``.  ``0`` stops the servo.
     """
+
     servo_name: str
     speed: int  # -100..+100
 
 
 #: Union type accepted by :py:meth:`BotConfig.add_action`.
-BotCmd = Union[MotorCmd, ServoAngleCmd, ServoSpeedCmd]
+BotCmd = MotorCmd | ServoAngleCmd | ServoSpeedCmd
 
 
 # ---------------------------------------------------------------------------
 # Internal channel descriptors
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class _MotorChannel:
@@ -134,6 +143,7 @@ class _ServoChannel:
 # BotConfig
 # ---------------------------------------------------------------------------
 
+
 class BotConfig:
     """Bot hardware configuration and named-action registry.
 
@@ -147,21 +157,21 @@ class BotConfig:
 
     # MotorServoService protocol constants
     _CMD_SET_MOTORS_SPEED: int = 0x21
-    _CMD_SET_SERVO_TYPE:   int = 0x22
+    _CMD_SET_SERVO_TYPE: int = 0x22
     _CMD_SET_SERVOS_SPEED: int = 0x23
     _CMD_SET_SERVOS_ANGLE: int = 0x24
-    _CMD_STOP_ALL_MOTORS:  int = 0x28
+    _CMD_STOP_ALL_MOTORS: int = 0x28
 
     def __init__(self) -> None:
-        self._motors:  Dict[str, _MotorChannel] = {}
-        self._servos:  Dict[str, _ServoChannel] = {}
-        self._actions: Dict[str, List[BotCmd]]  = {}
+        self._motors: dict[str, _MotorChannel] = {}
+        self._servos: dict[str, _ServoChannel] = {}
+        self._actions: dict[str, list[BotCmd]] = {}
 
     # ------------------------------------------------------------------
     # Hardware attachment
     # ------------------------------------------------------------------
 
-    def add_motor(self, name: str, motor_id: int) -> "BotConfig":
+    def add_motor(self, name: str, motor_id: int) -> BotConfig:
         """Register a DC motor channel under a friendly name.
 
         Args:
@@ -181,7 +191,7 @@ class BotConfig:
         name: str,
         channel_id: int,
         servo_type: ServoType = ServoType.SERVO_180,
-    ) -> "BotConfig":
+    ) -> BotConfig:
         """Register a servo channel under a friendly name.
 
         Args:
@@ -203,7 +213,7 @@ class BotConfig:
     # Action definition
     # ------------------------------------------------------------------
 
-    def add_action(self, name: str, commands: List[BotCmd]) -> "BotConfig":
+    def add_action(self, name: str, commands: list[BotCmd]) -> BotConfig:
         """Define a named action as a list of motor/servo commands.
 
         The order of commands within the list does not matter; they are
@@ -224,7 +234,7 @@ class BotConfig:
     # Packet building
     # ------------------------------------------------------------------
 
-    def build_packets(self, action_name: str) -> List[bytes]:
+    def build_packets(self, action_name: str) -> list[bytes]:
         """Translate a named action into binary UDP packet(s).
 
         Motors/servos that share the **same speed or angle value** are
@@ -242,61 +252,95 @@ class BotConfig:
                       references an unregistered motor/servo name.
         """
         if action_name not in self._actions:
-            raise KeyError(f"Unknown action '{action_name}'. "
-                           f"Registered: {list(self._actions)}")
-        commands = self._actions[action_name]
-        packets: List[bytes] = []
+            raise KeyError(f"Unknown action '{action_name}'. Registered: {list(self._actions)}")
+        return self.build_packets_from_cmds(self._actions[action_name])
+
+    def build_packets_from_cmds(self, commands: list[BotCmd]) -> list[bytes]:
+        """Translate a list of commands into binary UDP packet(s).
+
+        Motors/servos that share the **same speed or angle value** are
+        combined into a single packet using the bitmask protocol.
+
+        Args:
+            commands: List of :py:class:`MotorCmd`, :py:class:`ServoAngleCmd`,
+                      or :py:class:`ServoSpeedCmd` instances.
+
+        Returns:
+            Ordered list of ``bytes`` objects ready to send via UDP.
+        """
+        packets: list[bytes] = []
 
         # --- Motor speed commands ---
         # Group by speed value → accumulate bitmask per speed
-        motor_by_speed: Dict[int, int] = {}  # speed -> mask
+        motor_by_speed: dict[int, int] = {}  # speed -> mask
         for cmd in commands:
             if isinstance(cmd, MotorCmd):
-                motor = self._motors[cmd.motor_name]
+                motor = self._motors.get(cmd.motor_name)
+                if motor is None:
+                    logger.warning("Unknown motor '%s', skipping.", cmd.motor_name)
+                    continue
                 motor_by_speed.setdefault(cmd.speed, 0)
                 motor_by_speed[cmd.speed] |= motor.mask
 
         for speed, mask in motor_by_speed.items():
             # Frame: [0x21][motor_mask:u8][speed:i8]
-            packets.append(bytes([
-                self._CMD_SET_MOTORS_SPEED,
-                mask & 0xFF,
-                speed & 0xFF,  # Python int → unsigned byte (two's complement)
-            ]))
+            packets.append(
+                bytes(
+                    [
+                        self._CMD_SET_MOTORS_SPEED,
+                        mask & 0xFF,
+                        speed & 0xFF,  # Python int → unsigned byte (two's complement)
+                    ]
+                )
+            )
 
         # --- Continuous servo speed commands ---
-        servo_speed_by_speed: Dict[int, int] = {}  # speed -> mask
+        servo_speed_by_speed: dict[int, int] = {}  # speed -> mask
         for cmd in commands:
             if isinstance(cmd, ServoSpeedCmd):
-                servo = self._servos[cmd.servo_name]
+                servo = self._servos.get(cmd.servo_name)
+                if servo is None:
+                    logger.warning("Unknown servo '%s', skipping.", cmd.servo_name)
+                    continue
                 servo_speed_by_speed.setdefault(cmd.speed, 0)
                 servo_speed_by_speed[cmd.speed] |= servo.mask
 
         for speed, mask in servo_speed_by_speed.items():
             # Frame: [0x23][servo_mask:u8][speed:i8]
-            packets.append(bytes([
-                self._CMD_SET_SERVOS_SPEED,
-                mask & 0xFF,
-                speed & 0xFF,
-            ]))
+            packets.append(
+                bytes(
+                    [
+                        self._CMD_SET_SERVOS_SPEED,
+                        mask & 0xFF,
+                        speed & 0xFF,
+                    ]
+                )
+            )
 
         # --- Positional servo angle commands ---
-        servo_angle_by_angle: Dict[int, int] = {}  # angle -> mask
+        servo_angle_by_angle: dict[int, int] = {}  # angle -> mask
         for cmd in commands:
             if isinstance(cmd, ServoAngleCmd):
-                servo = self._servos[cmd.servo_name]
+                servo = self._servos.get(cmd.servo_name)
+                if servo is None:
+                    logger.warning("Unknown servo '%s', skipping.", cmd.servo_name)
+                    continue
                 servo_angle_by_angle.setdefault(cmd.angle, 0)
                 servo_angle_by_angle[cmd.angle] |= servo.mask
 
         for angle, mask in servo_angle_by_angle.items():
             # Frame: [0x24][servo_mask:u8][angle_hi:u8][angle_lo:u8]  (big-endian i16)
             angle_u16 = angle & 0xFFFF
-            packets.append(bytes([
-                self._CMD_SET_SERVOS_ANGLE,
-                mask & 0xFF,
-                (angle_u16 >> 8) & 0xFF,
-                angle_u16 & 0xFF,
-            ]))
+            packets.append(
+                bytes(
+                    [
+                        self._CMD_SET_SERVOS_ANGLE,
+                        mask & 0xFF,
+                        (angle_u16 >> 8) & 0xFF,
+                        angle_u16 & 0xFF,
+                    ]
+                )
+            )
 
         return packets
 
@@ -320,11 +364,13 @@ class BotConfig:
             3-byte ``bytes`` object: ``[0x22][mask][type]``.
         """
         servo = self._servos[servo_name]
-        return bytes([
-            self._CMD_SET_SERVO_TYPE,
-            servo.mask & 0xFF,
-            int(servo.servo_type),
-        ])
+        return bytes(
+            [
+                self._CMD_SET_SERVO_TYPE,
+                servo.mask & 0xFF,
+                int(servo.servo_type),
+            ]
+        )
 
     # ------------------------------------------------------------------
     # Execution helpers
@@ -357,16 +403,73 @@ class BotConfig:
         return await udp_client.send_raw(self.build_stop_all_packet())
 
     # ------------------------------------------------------------------
-    # Introspection
+    # Introspection (public read-only API)
     # ------------------------------------------------------------------
 
     @property
-    def motors(self) -> Dict[str, int]:
+    def motor_names(self) -> list[str]:
+        """Ordered list of registered motor names."""
+        return list(self._motors.keys())
+
+    @property
+    def servo_names(self) -> list[str]:
+        """Ordered list of registered servo names."""
+        return list(self._servos.keys())
+
+    @property
+    def action_names(self) -> list[str]:
+        """Ordered list of registered action names."""
+        return list(self._actions.keys())
+
+    def has_motor(self, name: str) -> bool:
+        """Return ``True`` if *name* is a registered motor."""
+        return name in self._motors
+
+    def has_servo(self, name: str) -> bool:
+        """Return ``True`` if *name* is a registered servo."""
+        return name in self._servos
+
+    def get_motor_info(self, name: str) -> dict:
+        """Return ``{name, motor_id}`` for a registered motor.
+
+        Raises:
+            KeyError: If *name* is not registered.
+        """
+        ch = self._motors[name]
+        return {"name": ch.name, "motor_id": ch.motor_id}
+
+    def get_servo_info(self, name: str) -> dict:
+        """Return ``{name, channel_id, servo_type}`` for a registered servo.
+
+        Raises:
+            KeyError: If *name* is not registered.
+        """
+        ch = self._servos[name]
+        return {"name": ch.name, "channel_id": ch.channel_id, "servo_type": ch.servo_type}
+
+    def get_servo_type(self, name: str) -> ServoType:
+        """Return the :py:class:`ServoType` of a registered servo.
+
+        Raises:
+            KeyError: If *name* is not registered.
+        """
+        return self._servos[name].servo_type
+
+    def get_action_commands(self, action_name: str) -> list[BotCmd]:
+        """Return a copy of the command list for a named action.
+
+        Raises:
+            KeyError: If *action_name* is not registered.
+        """
+        return list(self._actions[action_name])
+
+    @property
+    def motors(self) -> dict[str, int]:
         """Mapping of motor name → motor_id for inspection."""
         return {name: ch.motor_id for name, ch in self._motors.items()}
 
     @property
-    def servos(self) -> Dict[str, dict]:
+    def servos(self) -> dict[str, dict]:
         """Mapping of servo name → {channel_id, servo_type} for inspection."""
         return {
             name: {"channel_id": ch.channel_id, "servo_type": ch.servo_type.name}
@@ -374,7 +477,7 @@ class BotConfig:
         }
 
     @property
-    def actions(self) -> List[str]:
+    def actions(self) -> list[str]:
         """Names of all registered actions."""
         return list(self._actions.keys())
 

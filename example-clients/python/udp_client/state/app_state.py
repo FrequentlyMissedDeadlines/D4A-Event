@@ -4,7 +4,6 @@ Application state management.
 
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
 from udp_client.network.udp_client import UDPClient
 
@@ -17,21 +16,21 @@ class AppState:
     server_ip: str = "192.168.1.100"
     server_port: int = 24642
     connected: bool = False
-    connection_error: Optional[str] = None
+    connection_error: str | None = None
     reconnect_in_progress: bool = False
 
     # Statistics
     packets_sent: int = 0
     commands_per_sec: float = 0.0
-    latency_ms: Optional[float] = None
-    ping_avg_ms: Optional[float] = None
+    latency_ms: float | None = None
+    ping_avg_ms: float | None = None
     last_update_time: float = field(default_factory=time.time)
     update_count_this_second: int = 0
 
     # Device states
     keyboard_connected: bool = True
     joystick_count: int = 0
-    joystick_names: Dict[int, str] = field(default_factory=dict)
+    joystick_names: dict[int, str] = field(default_factory=dict)
 
     # UI state
     show_help: bool = False
@@ -55,7 +54,7 @@ class AppState:
         else:
             self.update_count_this_second += 1
 
-    def set_connection_error(self, error: Optional[str]) -> None:
+    def set_connection_error(self, error: str | None) -> None:
         """Set connection error message."""
         self.connection_error = error
 

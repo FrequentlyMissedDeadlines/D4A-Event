@@ -1,0 +1,5 @@
+# Frozen dependency versions — generated 2026-05-17
+# Recreate with: pip freeze > requirements.lock
+textual==8.2.3
+pygame==2.5.2
+pynput==1.7.6

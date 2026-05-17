@@ -1,1 +1,1 @@
-"""Textual UI components."""
+"""Textual UI components — constants and widget panels."""

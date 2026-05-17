@@ -11,8 +11,9 @@
 
 ### FreeRTOS Task Architecture
 **Fixed task allocation** (defined in [main.cpp](src/main.cpp) `setup()`):
-- **Core 0** (real-time critical): `udp_svr_task` - UDP message handling
-- **Core 1** (UI/HTTP): `display_task`, `http_svr_task` - Display updates and web server
+- **Core 0** (real-time critical): `xtask_bot_transport` - UDP + WebSocket message handling
+- **Core 1** (UI/HTTP): `xtask_web_server` - Display updates, HTTP web server, camera routes
+- **BLE** (NimBLE host task): `BotServerBLE` — initialised in `setup()`, runs on the NimBLE host task (Nordic UART Service)
 - **DO NOT** introduce new RTOS tasks without explicit justification
 
 ## Coding Conventions

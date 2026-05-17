@@ -39,8 +39,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
-
 
 # Default path: example-clients/python/joystick_calibration.json
 DEFAULT_CALIBRATION_FILE: Path = (
@@ -52,6 +50,7 @@ DEFAULT_CALIBRATION_FILE: Path = (
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class AxisCalibration:
     """Per-axis calibration parameters.
@@ -62,9 +61,10 @@ class AxisCalibration:
         max:      Maximum raw value observed during range sampling.
         inverted: When ``True`` the normalised output is negated.
     """
+
     center: float = 0.0
-    min:    float = -1.0
-    max:    float = 1.0
+    min: float = -1.0
+    max: float = 1.0
     inverted: bool = False
 
 
@@ -78,9 +78,10 @@ class JoystickCalibration:
         deadzone:      Fraction of the range around zero to treat as idle.
         axes:          Mapping of axis index → :class:`AxisCalibration`.
     """
+
     joystick_name: str
     deadzone: float = 0.15
-    axes: Dict[int, AxisCalibration] = field(default_factory=dict)
+    axes: dict[int, AxisCalibration] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Public API
@@ -142,6 +143,7 @@ class JoystickCalibration:
 # Persistence
 # ---------------------------------------------------------------------------
 
+
 class CalibrationStore:
     """Registry of :class:`JoystickCalibration` objects, backed by JSON.
 
@@ -153,13 +155,13 @@ class CalibrationStore:
     """
 
     def __init__(self) -> None:
-        self._calibrations: Dict[str, JoystickCalibration] = {}
+        self._calibrations: dict[str, JoystickCalibration] = {}
 
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------
 
-    def get(self, joystick_name: str) -> Optional[JoystickCalibration]:
+    def get(self, joystick_name: str) -> JoystickCalibration | None:
         """Return the calibration for a joystick, or ``None`` if absent."""
         return self._calibrations.get(joystick_name)
 
@@ -187,9 +189,7 @@ class CalibrationStore:
     # Convenience
     # ------------------------------------------------------------------
 
-    def apply_axis(
-        self, joystick_name: str, axis_id: int, raw: float
-    ) -> Optional[float]:
+    def apply_axis(self, joystick_name: str, axis_id: int, raw: float) -> float | None:
         """Apply calibration to a raw axis value.
 
         Args:
@@ -223,12 +223,12 @@ class CalibrationStore:
             FileNotFoundError: If *path* does not exist.
             json.JSONDecodeError: If the file is malformed.
         """
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             data: dict = json.load(fh)
 
         self._calibrations.clear()
         for js_name, js_data in data.items():
-            axes: Dict[int, AxisCalibration] = {}
+            axes: dict[int, AxisCalibration] = {}
             for str_id, axis_data in js_data.get("axes", {}).items():
                 axes[int(str_id)] = AxisCalibration(
                     center=float(axis_data.get("center", 0.0)),
@@ -259,9 +259,9 @@ class CalibrationStore:
                 "deadzone": cal.deadzone,
                 "axes": {
                     str(axis_id): {
-                        "center":   ac.center,
-                        "min":      ac.min,
-                        "max":      ac.max,
+                        "center": ac.center,
+                        "min": ac.min,
+                        "max": ac.max,
                         "inverted": ac.inverted,
                     }
                     for axis_id, ac in sorted(cal.axes.items())

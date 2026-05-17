@@ -2,19 +2,37 @@
 Unified input manager combining keyboard and joystick inputs.
 """
 
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
 
 from udp_client.input.keyboard_handler import KeyboardHandler
-from udp_client.input.joystick_handler import JoystickHandler, JoystickState
+
+try:
+    from udp_client.input.joystick_handler import JoystickHandler, JoystickState
+
+    _JOYSTICK_AVAILABLE = True
+except ImportError:
+    _JOYSTICK_AVAILABLE = False
+    JoystickHandler = None  # type: ignore[assignment,misc]
+    from dataclasses import dataclass as _dc
+
+    @_dc
+    class JoystickState:  # type: ignore[no-redef]
+        id: int = 0
+        name: str = ""
+        connected: bool = False
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class InputState:
     """Combined state from all input devices."""
 
-    keyboard_keys: Dict[str, bool]
-    joystick_states: List[JoystickState]
+    keyboard_keys: dict[str, bool]
+    joystick_states: list[JoystickState]
     last_update_ms: float = 0.0
 
 
@@ -25,11 +43,11 @@ class InputManager:
         self.keyboard_enabled = keyboard_enabled
         self.joystick_enabled = joystick_enabled
 
-        self.keyboard_handler: Optional[KeyboardHandler] = None
-        self.joystick_handler: Optional[JoystickHandler] = None
+        self.keyboard_handler: KeyboardHandler | None = None
+        self.joystick_handler: JoystickHandler | None = None
 
         self.current_state: InputState = InputState(keyboard_keys={}, joystick_states=[])
-        self.on_input_change: Optional[Callable[[InputState], None]] = None
+        self.on_input_change: Callable[[InputState], None] | None = None
 
         self._initialize()
 
@@ -40,8 +58,15 @@ class InputManager:
             self.keyboard_handler.on_key_change = self._on_keyboard_change
 
         if self.joystick_enabled:
-            self.joystick_handler = JoystickHandler()
-            self.joystick_handler.on_joystick_change = self._on_joystick_change
+            if not _JOYSTICK_AVAILABLE:
+                logger.warning(
+                    "Joystick support disabled: pygame is not installed. "
+                    "Install it with: pip install pygame"
+                )
+                self.joystick_enabled = False
+            else:
+                self.joystick_handler = JoystickHandler()
+                self.joystick_handler.on_joystick_change = self._on_joystick_change
 
     def start(self) -> None:
         """Start listening to all input devices."""
@@ -64,12 +89,12 @@ class InputManager:
         if self.joystick_handler:
             self.joystick_handler.update()
 
-    def _on_keyboard_change(self, state: Dict[str, bool]) -> None:
+    def _on_keyboard_change(self, state: dict[str, bool]) -> None:
         """Handle keyboard state change."""
         self.current_state.keyboard_keys = state
         self._notify_change()
 
-    def _on_joystick_change(self, states: List[JoystickState]) -> None:
+    def _on_joystick_change(self, states: list[JoystickState]) -> None:
         """Handle joystick state change."""
         self.current_state.joystick_states = states
         self._notify_change()
@@ -83,7 +108,7 @@ class InputManager:
         """Get current combined input state."""
         return self.current_state
 
-    def get_active_devices(self) -> List[str]:
+    def get_active_devices(self) -> list[str]:
         """Get list of active input devices."""
         devices = []
 
@@ -94,7 +119,12 @@ class InputManager:
 
         if self.joystick_handler:
             for state in self.joystick_handler.get_states():
-                if state.connected and (any(state.buttons.values()) or state.left_stick_x != 0 or state.left_stick_y != 0):
+                has_input = (
+                    any(state.buttons.values())
+                    or state.left_stick_x != 0
+                    or state.left_stick_y != 0
+                )
+                if state.connected and has_input:
                     devices.append(f"Joystick: {state.name}")
 
         return devices

@@ -24,14 +24,14 @@ source venv/bin/activate
 echo "📥 Upgrading pip..."
 pip install --upgrade pip setuptools wheel
 
-# Install dependencies
+# Install dependencies (editable install from pyproject.toml)
 echo "📥 Installing dependencies..."
-pip install -r requirements.txt
+pip install -e .
 
 echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "To run the client:"
 echo "  source venv/bin/activate"
-echo "  python main.py"
+echo "  python main.py          # or: k10-bot"
 echo ""

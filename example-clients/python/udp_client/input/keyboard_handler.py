@@ -2,8 +2,7 @@
 Keyboard input handler using pynput.
 """
 
-import asyncio
-from typing import Callable, Dict, Optional, Set
+from collections.abc import Callable
 
 from pynput import keyboard
 
@@ -12,9 +11,9 @@ class KeyboardHandler:
     """Handle keyboard input without requiring window focus."""
 
     def __init__(self):
-        self.listener: Optional[keyboard.Listener] = None
-        self.pressed_keys: Set[keyboard.Key] = set()
-        self.on_key_change: Optional[Callable[[Dict[str, bool]], None]] = None
+        self.listener: keyboard.Listener | None = None
+        self.pressed_keys: set[keyboard.Key] = set()
+        self.on_key_change: Callable[[dict[str, bool]], None] | None = None
 
         # Key name mapping for display
         self.key_names = {
@@ -59,7 +58,7 @@ class KeyboardHandler:
             state = self.get_key_state()
             self.on_key_change(state)
 
-    def get_key_state(self) -> Dict[str, bool]:
+    def get_key_state(self) -> dict[str, bool]:
         """Get current state of all relevant keys."""
         state = {
             "up": keyboard.Key.up in self.pressed_keys,
@@ -67,7 +66,9 @@ class KeyboardHandler:
             "left": keyboard.Key.left in self.pressed_keys,
             "right": keyboard.Key.right in self.pressed_keys,
             "space": keyboard.Key.space in self.pressed_keys,
-            "shift": keyboard.Key.shift in self.pressed_keys or keyboard.Key.shift_r in self.pressed_keys,
+            "shift": (
+                keyboard.Key.shift in self.pressed_keys or keyboard.Key.shift_r in self.pressed_keys
+            ),
             "enter": keyboard.Key.enter in self.pressed_keys,
         }
         return state

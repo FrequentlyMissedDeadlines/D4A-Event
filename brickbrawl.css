@@ -44,13 +44,13 @@ body::after {
   height: 34px;
   background: repeating-linear-gradient(
     90deg,
-    transparent 0 28px,
+    var(--panel) 0 28px,
     var(--yellow) 28px 76px,
-    transparent 76px 126px
+    var(--panel) 76px 126px
   );
   opacity: 0.95;
   pointer-events: none;
-  z-index: 0;
+  z-index: 10;
 }
 
 body::before {

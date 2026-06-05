@@ -35,7 +35,7 @@ Each transport extracts the sender's IP and passes it to `AmakerBotService::disp
 
 - **UDP** — `packet.remoteIP()` (the source IP of the UDP datagram)
 - **WebSocket** — `client->remoteIP()` (the TCP connection's remote IP)
-- **HTTP** — the HTTP client's remote IP
+
 
 Only one IP can hold master control at a time. A second `REGISTER` from a *different* IP fails with `resp_operation_failed (0x03)` until the current master unregisters or its heartbeat times out.
 

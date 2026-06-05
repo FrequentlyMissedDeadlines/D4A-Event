@@ -140,5 +140,5 @@ You can code your own controller with your own code that will interact via  webs
 No example but but the online javascript. Documentation of service is provided.
 
 #### Code your own firmware 
-You can code your own firmware using VisualStudio and PlatformIO, but you'd better forget about cloning the code repo a starting this.
+No, please, no, don't code your own firmware !!! :)
 

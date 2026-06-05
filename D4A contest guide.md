@@ -13,7 +13,7 @@ You should have received:
 * 1 extension board, with a battery holder, lots of pins, **power switch** and **USB connector** for battery charging.
 ![DFR1216Board.svg](DFR1216Board.svg)
 * 1 battery 18650 (loaded). **Be extremely carefull with polarity when plugin the battery**
-* 1 set of lego bricks with plates, wheels, axles, tracks, gears. ![Bill%20of%20material%20pieces.jpg](Bill%20of%20material%20pieces.jpg) ~[book_chapters.png](book_chapters.png)
+* 1 set of lego bricks with plates, wheels, axles, tracks, gears. ![Bill%20of%20material%20pieces.jpg](Bill%20of%20material%20pieces.jpg) 
 * 2 servo motors : green ones 
 ![svgreen64.png](svgreen64.png)
 * 2 angular servos : grey  ones ![svgrey64.png](svgrey64.png)

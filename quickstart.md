@@ -7,7 +7,7 @@ The smallest possible program to take control of the bot and move a servo.
   │ All documentation is available in markdown  │  
   │ for your prefered LLM.                      │  
   └─────────────────────────────────────────────┘  
----
+```
 ## 0. Setup
 
 Plug the board with screen in the slot near the battery with the screen facing outside an camera the inside.

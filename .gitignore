@@ -1,6 +1,0 @@
-.pio
-.idea/
-.vscode/
-**/*.gz
-include/generated/BuildInfo.h
-data/www/buildinfo.html

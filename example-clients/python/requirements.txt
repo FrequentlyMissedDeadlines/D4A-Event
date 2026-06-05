@@ -1,3 +1,0 @@
-textual>=0.80
-pygame>=2.5
-pynput>=1.7

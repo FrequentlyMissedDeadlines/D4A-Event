@@ -2,6 +2,11 @@
 
 The smallest possible program to take control of the bot and move a servo.
 
+```
+  ┌─ IMPORTANT ─────────────────────────────────┐  
+  │ All documentation is available in markdown  │  
+  │ for your prefered LLM.                      │  
+  └─────────────────────────────────────────────┘  
 ---
 ## 0. Setup
 
@@ -58,7 +63,6 @@ All frames start with one **action byte** = `(service_id << 4) | command_id`.
 | WebSocket | `<bot-ip>` | **81** | `/ws` |
 | UDP | `<bot-ip>` | **24642** | — |
 | HTTP | `<bot-ip>` | **80** | `/botserver?cmd=<hex>` |
-| BLE (NUS) | `<bot-name>` | — | Nordic UART Service (write RX char) |
 
 ---
 

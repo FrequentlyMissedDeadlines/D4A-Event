@@ -7,24 +7,24 @@ The K10 Bot exposes four independent transports that all speak the **same binary
 ## Overview
 
 ```
-Controller  ──────────────────────────────────┐
-  │  UDP :24642         (Core 0, max priority) │
-  │  WebSocket :81/ws   (Core 0, max priority) │  →  AmakerBotService → service handlers
-  │  HTTP :80/botserver (Core 1, normal prio)  │
-  │  BLE NUS            (setup(), NimBLE task)  │
-Controller  ──────────────────────────────────┘
+   your client               the bot board                                    
+  ┌──────────────┐     ┌────────────┐┌────────────┐┌─ ─ ─ ─ ─ ─ ─┐ 
+  │              │     │ UDP :24645 ││ transform  ││             │ 
+  │ UDP or WS    │<--> │            ││  to i2c    ││  servos     │ 
+  │ Websocket    │     │   WS :81   ││ impulses   ││  activation │ 
+  └──────────────┘     └────────────┘└────────────┘└─ ─ ─ ─ ─ ─ ─┘ 
+                                                                      
 ```
 
-| | UDP | WebSocket | HTTP | BLE (NUS) |
+| | UDP | WebSocket | 
 |---|---|---|---|---|
-| **Port** | 24642 | 81 | 80 | — (GATT) |
-| **Endpoint** | — | `/ws` | `/botserver?cmd=<hex>` | Nordic UART Service |
-| **Protocol** | Binary | Binary | Hex-encoded GET | Binary |
-| **Connection** | Connectionless | Persistent | One request per frame | Persistent (GATT) |
-| **Reply** | Same source port | Same client only | HTTP response body | Notify characteristic |
-| **FreeRTOS core** | 0 (max priority) | 0 (max priority) | 1 (normal priority) | NimBLE host task |
-| **Multiple clients** | Yes (last sender wins) | Yes | Yes | One at a time |
-| **Best for** | Real-time, Python scripts | Web UI, BotScript | Debugging, curl | No-WiFi, mobile apps |
+| **Port** | 24642 | 81 | 
+| **Endpoint** | | `/ws` |
+| **Protocol** | Binary | Binary | 
+| **Reply** | Same source port | Same client only | 
+| **FreeRTOS core** | 0 (max priority) | 0 (max priority) | 
+| **Multiple clients** | Yes (last sender wins) | Yes |
+| **Best for** | Real-time, Python scripts | Web UI, BotScript |
 
 ---
 

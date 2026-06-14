@@ -35,6 +35,12 @@ body {
   overflow-x: hidden;
 }
 
+/* Reserve space so page content doesn't scroll under the fixed bars */
+body {
+  padding-top: 34px;
+  padding-bottom: 34px;
+}
+
 body::before,
 body::after {
   content: "";
@@ -42,15 +48,16 @@ body::after {
   left: 0;
   width: 100%;
   height: 34px;
+  /* Use fully opaque panel color so bars are not translucent */
   background: repeating-linear-gradient(
     90deg,
-    var(--panel) 0 28px,
+    rgba(13,20,34,1) 0 28px,
     var(--yellow) 28px 76px,
-    var(--panel) 76px 126px
+    rgba(13,20,34,1) 76px 104px
   );
-  opacity: 0.95;
+  opacity: 1;
   pointer-events: none;
-  z-index: 10;
+  z-index: 9999;
 }
 
 body::before {
